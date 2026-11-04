@@ -236,6 +236,9 @@ type Writer struct {
 	HealEvery time.Duration
 	// Written counts bytes (diagnostics).
 	Written int64
+	// Slow, when set, hears about writes the terminal took long to accept
+	// (it is behind: ConPTY back-pressure, slow image drawing).
+	Slow func(d time.Duration, bytes int, images bool)
 }
 
 // NewWriter starts the render goroutine.
@@ -338,8 +341,12 @@ func (w *Writer) render(heal bool) bool {
 		front = nil
 	}
 	s := Diff(front, f, clear, heal)
+	t0 := time.Now()
 	if _, err := io.WriteString(w.out, s); err == nil {
 		w.Written += int64(len(s))
+	}
+	if d := time.Since(t0); w.Slow != nil && d > 50*time.Millisecond {
+		w.Slow(d, len(s), strings.Contains(s, "P"))
 	}
 	if w.front != nil && w.front != f {
 		Recycle(w.front) // what the terminal showed before; nobody reads it now

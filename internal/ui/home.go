@@ -63,15 +63,13 @@ func indexOf(xs []string, x string) int {
 
 type home struct {
 	in      input
-	focus   int // 0 search, 1 continue shelf, 2 feed, 3 menu dock
+	focus   int // 0 search box, 1 menu
 	zones   []zone
 	inX     int // search cursor cell (body coords) for typing sparks
 	inY     int
-	hCur    int
-	hOff    int
-	fCur    int
-	fOff    int
-	fGl     glide
+	mCur    int   // menu cursor (index into items)
+	mGl     glide // the sliding selection band
+	shelfN  int   // continue cards that fit (set by the last view)
 	feed    []source.FeedItem
 	feedErr error
 	feedOK  bool
@@ -82,17 +80,10 @@ type home struct {
 	sugX, sugY, sugW int
 	feedCached       bool
 	news             []newEp // new episodes on shows you follow
-
-	// spotlight
-	spotKey    string
-	spotFrom   string
-	spotFade   tween
-	autoIdx    int
-	autoRotate time.Time
 }
 
 func newHome(a *App) *home {
-	return &home{in: input{placeholder: "anime ara…   frieren, one piece, mouryou no hako"}}
+	return &home{in: input{placeholder: "anime ara…   frieren, one piece, mouryou no hako"}, shelfN: 3, mCur: -1}
 }
 
 func (h *home) crumb() string { return "" }
@@ -107,16 +98,6 @@ func (h *home) animating(a *App) bool {
 		return true
 	}
 	return a.motion() // weather, logo, spotlight rotation
-}
-
-func (h *home) hints() []hint {
-	switch h.focus {
-	case 0:
-		return []hint{{"enter", "ara (boşken: devam et)"}, {"↓", "listeler"}, {"alt+m", "menü"}, {"alt+n", "bildirimler"}, {"ctrl+k", "komutlar"}, {"?", "yardım"}}
-	case 1:
-		return []hint{{"enter", "devam et"}, {"← →", "gez"}, {"a", "kitaplık"}, {"x", "geçmişten sil"}, {"m", "menü"}, {"n", "bildirimler"}}
-	}
-	return []hint{{"enter", "aç"}, {"a", "kitaplığa ekle"}, {"r", "yenile"}, {"/", "ara"}, {"m", "menü"}, {"n", "bildirimler"}}
 }
 
 func (h *home) update(a *App, msg tea.Msg) tea.Cmd {
@@ -155,7 +136,6 @@ func (h *home) update(a *App, msg tea.Msg) tea.Cmd {
 					return tea.Batch(a.push(sc), sc.start(a))
 				}})
 		}
-		h.autoRotate = time.Now()
 		var cmds []tea.Cmd
 		for i, it := range h.feed {
 			if i < 10 && a.cfg.Posters {
@@ -172,10 +152,9 @@ func (h *home) update(a *App, msg tea.Msg) tea.Cmd {
 			if m.Button == tea.MouseButtonWheelUp {
 				d = -1
 			}
-			if h.focus == 2 {
-				h.fCur = clamp(h.fCur+d, 0, len(h.feed)-1)
-			} else if h.focus == 1 {
-				h.hCur = clamp(h.hCur+d, 0, len(a.recent())-1)
+			if h.focus == 1 {
+				_, items := h.selItem(a)
+				h.mCur = menuMove(items, h.mCur, d)
 			}
 		}
 	case sugFireMsg:
@@ -191,30 +170,6 @@ func (h *home) update(a *App, msg tea.Msg) tea.Cmd {
 		return tea.Batch(h.key(a, m), h.prefetchShelf(a))
 	}
 	return nil
-}
-
-// prefetchShelf loads posters (or details, for the poster URL) of the
-// continue-watching cards that are about to be visible.
-func (h *home) prefetchShelf(a *App) tea.Cmd {
-	if !a.cfg.Posters {
-		return nil
-	}
-	recent := a.recent()
-	var cmds []tea.Cmd
-	for i := max(0, h.hCur-2); i < len(recent) && i < h.hCur+10; i++ {
-		an := recent[i].Anime()
-		if t := thumbURL(an.Key()); t != "" {
-			cmds = append(cmds, a.posters.want(t)) // the resume frame
-		}
-		if an.Poster != "" {
-			cmds = append(cmds, a.posters.want(an.Poster))
-		} else if d, ok := a.details[an.Key()]; ok && d.Poster != "" {
-			cmds = append(cmds, a.posters.want(d.Poster))
-		} else {
-			cmds = append(cmds, a.fetchDetails(an))
-		}
-	}
-	return tea.Batch(cmds...)
 }
 
 func clamp(v, lo, hi int) int {
@@ -300,25 +255,6 @@ func indexOfTheme(ts []Theme, name string) int {
 	return 0
 }
 
-func (h *home) click(a *App, z zone) tea.Cmd {
-	a.flash()
-	switch z.kind {
-	case "shelf":
-		if h.focus == 1 && h.hCur == z.idx {
-			return h.key(a, tea.KeyMsg{Type: tea.KeyEnter})
-		}
-		h.focus, h.hCur = 1, z.idx
-	case "feed":
-		if h.focus == 2 && h.fCur == z.idx {
-			return h.key(a, tea.KeyMsg{Type: tea.KeyEnter})
-		}
-		h.focus, h.fCur = 2, z.idx
-	case "search":
-		h.focus = 0
-	}
-	return a.tick()
-}
-
 func (h *home) key(a *App, k tea.KeyMsg) tea.Cmd {
 	recent := a.recent()
 	if h.focus == 0 && h.sug.open() {
@@ -326,23 +262,13 @@ func (h *home) key(a *App, k tea.KeyMsg) tea.Cmd {
 			return cmd
 		}
 	}
-
 	switch k.String() {
 	case "ctrl+o":
 		return a.push(newSettings())
 	case "alt+a":
 		return toggleLegacy(a)
-	case "tab":
-		h.focus = map[int]int{0: 1, 1: 2, 2: 0}[h.focus]
-		if h.focus == 1 && len(recent) == 0 {
-			h.focus = 2
-		}
-		return nil
-	case "shift+tab":
-		h.focus = map[int]int{0: 2, 2: 1, 1: 0}[h.focus]
-		if h.focus == 1 && len(recent) == 0 {
-			h.focus = 0
-		}
+	case "tab", "shift+tab":
+		h.focus = 1 - h.focus
 		return nil
 	case "esc":
 		switch {
@@ -351,151 +277,46 @@ func (h *home) key(a *App, k tea.KeyMsg) tea.Cmd {
 		case h.in.Value() != "":
 			h.in.Set("")
 			h.sug.close()
-		case len(recent) > 0:
-			h.focus = 1 // out of the search box: single keys are shortcuts again
 		default:
-			h.focus = 2
+			h.focus = 1 // out of the search box: single keys are shortcuts again
 		}
 		return nil
 	}
-	if h.focus == 0 {
-		switch k.Type {
-		case tea.KeyEnter:
-			q := CleanQuery(h.in.Value())
-			if q == "" && len(recent) > 0 {
-				// empty box + enter: carry on with the last thing you watched
-				h.focus, h.hCur = 1, 0
-				return h.key(a, tea.KeyMsg{Type: tea.KeyEnter})
-			}
-			if len([]rune(q)) < 2 {
-				a.notify("en az 2 harf yaz", "warn")
-				return a.tick()
-			}
-			a.flash()
-			h.sug.close()
-			a.logoKick = newTween(1200 * time.Millisecond)
-			r := newResults(q)
-			return tea.Batch(a.push(r), r.start(a))
-		case tea.KeyDown:
-			if len(recent) > 0 {
-				h.focus = 1
-			} else {
-				h.focus = 2
-			}
-			return nil
-		}
-		before := h.in.Value()
-		h.in.handle(k)
-		if h.in.Value() == before {
-			return nil
-		}
-		if k.Type == tea.KeyRunes && a.motion() {
-			// every keystroke fizzes a little
-			a.fx.sparks(float64(h.inX), float64(h.inY), 4, brand, a.frame+len(before))
-		}
-		return h.sug.changed(a, h.in.Value())
+	if h.focus != 0 {
+		return h.menuKey(a, k)
 	}
-	switch k.String() {
-	case "/":
-		h.focus = 0
-	case "left", "h":
-		if h.focus == 1 {
-			h.hCur = max(0, h.hCur-1)
+	switch k.Type {
+	case tea.KeyEnter:
+		q := CleanQuery(h.in.Value())
+		if q == "" && len(recent) > 0 {
+			// empty box + enter: carry on with the last thing you watched
+			return continueEntry(a, recent[0])
 		}
-	case "right", "l":
-		if h.focus == 1 {
-			h.hCur = clamp(h.hCur+1, 0, len(recent)-1)
+		if len([]rune(q)) < 2 {
+			a.notify("en az 2 harf yaz", "warn")
+			return a.tick()
 		}
-	case "m":
-		a.openDropdown("menu")
-		return a.tick()
-	case "n":
-		a.openDropdown("bell")
-		return a.tick()
-	case "up", "k":
-		if h.focus == 1 {
-			h.focus = 0
-		} else if h.fCur == 0 {
-			if len(recent) > 0 {
-				h.focus = 1
-			} else {
-				h.focus = 0
-			}
-		} else {
-			h.fCur--
-		}
-	case "down", "j":
-		if h.focus == 1 {
-			h.focus = 2
-		} else {
-			h.fCur = clamp(h.fCur+1, 0, len(h.feed)-1)
-		}
-	case "pgdown":
-		if h.focus == 2 {
-			h.fCur = clamp(h.fCur+10, 0, len(h.feed)-1)
-		}
-	case "pgup":
-		if h.focus == 2 {
-			h.fCur = max(0, h.fCur-10)
-		}
-	case "home", "g":
-		h.hCur, h.fCur = 0, 0
-	case "end", "G":
-		h.hCur, h.fCur = max(0, len(recent)-1), max(0, len(h.feed)-1)
-	case "r":
-		h.feedOK = false
-		return tea.Batch(a.loadFeed(), a.tick())
-	case "a", "+":
-		if h.focus == 1 && h.hCur < len(recent) {
-			a.openPopup(recent[h.hCur].Anime())
-		} else if h.focus == 2 && h.fCur < len(h.feed) {
-			a.openPopup(h.feed[h.fCur].Anime)
-		}
-		return a.tick()
-	case "delete", "x":
-		if h.focus == 1 && h.hCur < len(recent) {
-			// the card stands for the show on every source: remove them all,
-			// or the older source's entry would pop right back in
-			gone := []store.Entry{}
-			for _, x := range a.hist.Recent() {
-				if sameAnime(recent[h.hCur].Anime(), x.Anime()) {
-					a.hist.Remove(x.Anime().Key())
-					gone = append(gone, x)
-				}
-			}
-			a.remember(recent[h.hCur].Title+" geçmişten silindi", func(a *App) {
-				for _, x := range gone {
-					a.hist.Restore(x)
-				}
-			})
-			h.hCur = clamp(h.hCur, 0, len(recent)-2)
-			if len(recent) <= 1 {
-				h.focus = 2
-			}
-		}
-	case "enter":
 		a.flash()
-		if h.focus == 1 && h.hCur < len(recent) {
-			e := recent[h.hCur]
-			s, ep := e.Season, e.Episode
-			if e.Watched[store.EpKey(s, ep)] {
-				ep++
-			}
-			sc := newAnime(e.Anime(), a.siblings(e.Anime()), s, ep)
-			return tea.Batch(a.push(sc), sc.start(a))
-		}
-		if h.focus == 2 && h.fCur < len(h.feed) {
-			it := h.feed[h.fCur]
-			sc := newAnime(it.Anime, nil, it.Season, it.Episode)
-			return tea.Batch(a.push(sc), sc.start(a))
-		}
-	default:
-		if k.Type == tea.KeyRunes {
-			h.focus = 0
-			h.in.handle(k)
-		}
+		h.sug.close()
+		a.logoKick = newTween(1200 * time.Millisecond)
+		r := newResults(q)
+		return tea.Batch(a.push(r), r.start(a))
+	case tea.KeyDown:
+		h.focus = 1
+		_, items := h.selItem(a)
+		h.mCur = menuFirst(items)
+		return nil
 	}
-	return nil
+	before := h.in.Value()
+	h.in.handle(k)
+	if h.in.Value() == before {
+		return nil
+	}
+	if k.Type == tea.KeyRunes && a.motion() {
+		// every keystroke fizzes a little
+		a.fx.sparks(float64(h.inX), float64(h.inY), 4, brand, a.frame+len(before))
+	}
+	return h.sug.changed(a, h.in.Value())
 }
 
 // ---- view ----
@@ -509,73 +330,6 @@ func (h *home) view(a *App, w, ht int) string {
 	a.hideImages = true
 	lines := strings.Split(s, "\n")
 	return strings.Join(overlayAt(lines, h.sug.box(a, h.sugW), h.sugX, h.sugY, w), "\n")
-}
-
-func (h *home) viewBase(a *App, w, ht int) string {
-	var out []string
-	h.zones = h.zones[:0]
-	const top = 2 // body starts under the header and its rule
-	big := ht >= 34 && w >= logoWidth+8
-	if big {
-		out = append(out, h.hero(a, w, 8)...)
-	} else {
-		out = append(out, "", center(gradient("aniclitr", brand, true), w), "")
-	}
-	iw := min(72, w-8)
-	h.zones = append(h.zones, zone{kind: "search", x0: (w - iw) / 2, x1: (w-iw)/2 + iw, y0: top + len(out), y1: top + len(out) + 3})
-	h.inX = (w-iw)/2 + 4 + min(lipgloss.Width(h.in.Value()), iw-8)
-	h.inY = len(out) + 1
-	for _, l := range h.in.view(iw, h.focus == 0, a.frame) {
-		out = append(out, center(l, w))
-	}
-	h.sugY, h.sugX, h.sugW = len(out)-1, (w-iw)/2, iw // dropdown hangs from the input
-
-	recent := a.recent()
-	pad := 2
-	if a.cfg.Compact {
-		pad = 1
-	}
-	gw := min(w-pad*2, 180)
-	margin := strings.Repeat(" ", (w-gw)/2)
-
-	// continue-watching shelf
-	if len(recent) > 0 {
-		posterShelf := a.cfg.Posters && ht-len(out) >= 36
-		out = append(out, "")
-		shelf := h.shelf(a, recent, gw, posterShelf, len(margin), top+len(out))
-		for _, l := range shelf {
-			out = append(out, margin+l)
-		}
-	}
-	listH := ht - len(out) - 1
-	if listH < 5 {
-		return strings.Join(out, "\n")
-	}
-	out = append(out, "")
-	rightW := 38
-	var cols []string
-	fw := gw
-	switch {
-	case gw >= 150 && a.cfg.Posters:
-		sw := 34
-		fw = gw - sw - rightW - 2
-		cols = hjoin(1, h.feedPane(a, fw, listH), h.spotlight(a, sw, listH, recent), h.rightCol(a, rightW, listH))
-	case gw >= 112:
-		fw = gw - rightW - 1
-		cols = hjoin(1, h.feedPane(a, fw, listH), h.rightCol(a, rightW, listH))
-	default:
-		cols = h.feedPane(a, gw, listH)
-	}
-	for r := 0; r < listH-2; r++ {
-		if i := h.fOff + r; i < len(h.feed) {
-			y := top + len(out) + 1 + r
-			h.zones = append(h.zones, zone{kind: "feed", idx: i, x0: len(margin), x1: len(margin) + fw, y0: y, y1: y + 1})
-		}
-	}
-	for _, l := range cols {
-		out = append(out, margin+l)
-	}
-	return strings.Join(out, "\n")
 }
 
 // hero: the wordmark enters (bouncing drop, glitch or matrix rain), then
@@ -715,176 +469,12 @@ func (h *home) hero(a *App, w, ht int) []string {
 	return c.lines()
 }
 
-// shelf: "devam et" — horizontal cards for what you were watching. With
-// room and posters on, each card is a cover; otherwise a compact text card.
-func (h *home) shelf(a *App, recent []store.Entry, w int, posters bool, zx, zy int) []string {
-	focused := h.focus == 1
-	h.hCur = clamp(h.hCur, 0, len(recent)-1)
-	cw := 26
-	if posters {
-		cw = 18
-	}
-	n := max(1, w/cw)
-	h.hOff = scroll(h.hCur, h.hOff, n, len(recent))
-	title := sectionTitle(ic("history")+" devam et", w-12, focused)
-	more := ""
-	if len(recent) > n {
-		more = stMuted.Render(fmt.Sprintf("%d/%d ", h.hCur+1, len(recent)))
-	}
-	out := []string{row2(title, more, w)}
-	var cards [][]string
-	for i := h.hOff; i < len(recent) && i < h.hOff+n; i++ {
-		e := recent[i]
-		an := e.Anime()
-		if d, ok := a.details[an.Key()]; ok && an.Poster == "" && d.Poster != "" {
-			an.Poster = d.Poster
-		}
-		sel := focused && i == h.hCur
-		acc := a.posters.accent(an.Poster, cAccent).hex()
-		pw := cw - 4
-		var body []string
-		if posters {
-			body = append(body, a.posters.render(an.Poster, pw, pw*3/4, a.frame)...)
-		}
-		tc := cText
-		if sel {
-			tc = acc
-		}
-		body = append(body, span{t: truncate(e.Title, pw), c: tc, bold: sel}.style("").Render(truncate(e.Title, pw)))
-		pos := fmt.Sprintf("S%d·B%d", e.Season, e.Episode)
-		if strings.EqualFold(e.Kind, "film") {
-			pos = "Film"
-		}
-		var meta string
-		if e.Watched[store.EpKey(e.Season, e.Episode)] {
-			meta = stMuted.Render(pos+" ") + stOK.Render("✓") + stMuted.Render(" sıradaki →")
-		} else {
-			bw := max(4, pw-lipgloss.Width(pos)-6)
-			meta = stMuted.Render(pos+" ") + renderSpans(miniBar(bw, float64(e.Percent())/100, acc)) + stMuted.Render(fmt.Sprintf(" %d%%", e.Percent()))
-		}
-		body = append(body, meta)
-		bc := cFaint
-		if !posters {
-			bc = cBand
-		}
-		if posters {
-			bc = cBg // covers carry the card; only the selection is framed
-		}
-		if sel {
-			bc = acc
-		}
-		bs := fg(bc)
-		card := []string{bs.Render("╭" + strings.Repeat("─", pw+2) + "╮")}
-		for j, ln := range body {
-			pre := bs.Render("│ ")
-			if j == 0 && sel {
-				pre = anchor() + pre
-			}
-			card = append(card, pre+fit(ln, pw)+bs.Render(" │"))
-		}
-		card = append(card, bs.Render("╰"+strings.Repeat("─", pw+2)+"╯"))
-		// the selected card lifts one row, the others rest on the shelf
-		if sel && a.motion() {
-			card = append(card, "")
-		} else {
-			card = append([]string{""}, card...)
-		}
-		k := len(cards)
-		h.zones = append(h.zones, zone{kind: "shelf", idx: i, x0: zx + k*cw, x1: zx + (k+1)*cw, y0: zy + 1, y1: zy + 1 + len(card)})
-		cards = append(cards, block(card, cw, len(card)))
-	}
-	if len(cards) > 0 {
-		out = append(out, hjoin(0, cards...)...)
-	}
-	return out
-}
-
 func renderSpans(ss []span) string {
 	var b strings.Builder
 	for _, s := range ss {
 		b.WriteString(s.style("").Render(s.t))
 	}
 	return b.String()
-}
-
-func (h *home) feedPane(a *App, w, ht int) []string {
-	title := ic("feed") + " yeni bölümler"
-	tag := ""
-	if h.feedOK && h.feedErr == nil {
-		tag = fmt.Sprint(len(h.feed))
-	}
-	iw, ih := w-4, ht-2
-	var out []string
-	switch {
-	case !h.feedOK && !h.feedCached:
-		for i := 0; i < min(8, ih); i++ { // skeleton rows breathing while loading
-			t := (math.Sin(float64(a.frame)/6+float64(i)*.7) + 1) / 2
-			c := mix(hex(cSurface), hex(cShade), t).hex()
-			out = append(out, "  "+fg(c).Render(strings.Repeat("▬", 5))+"  "+fg(c).Render(strings.Repeat("▬", 14+int(hash(i)*16))))
-		}
-		return panel(title, out, w, ht, h.focus == 2, cAccent, tag)
-	case h.feedErr != nil:
-		out = append(out, stErr.Render("✗ akış alınamadı"), stMuted.Render(truncate(h.feedErr.Error(), iw)), "", stMuted.Render("r ile tekrar dene"))
-		return panel(title, out, w, ht, h.focus == 2, cAccent, tag)
-	case len(h.feed) == 0:
-		return panel(title, []string{stMuted.Render("Akış boş.")}, w, ht, h.focus == 2, cAccent, tag)
-	}
-	h.fCur = clamp(h.fCur, 0, len(h.feed)-1)
-	h.fOff = scroll(h.fCur, h.fOff, ih, len(h.feed))
-	selRow := h.fGl.row(a, h.fCur)
-	for i := h.fOff; i < len(h.feed) && i < h.fOff+ih; i++ {
-		it := h.feed[i]
-		sel := h.focus == 2 && i == selRow
-		rv := reveal(h.feedAt, i-h.fOff, a.motion())
-		if rv <= 0 {
-			out = append(out, "")
-			continue
-		}
-		bg, bar := "", sp("  ", cText)
-		tc := mix(hex(cFaint), hex(cText), rv).hex()
-		if sel {
-			bg, bar, tc = cBand, sp("▌ ", cAccent), cAccent
-		}
-		// a quiet mark for shows you follow (not a whole coloured title)
-		mark := sp("  ", cText)
-		if _, mine := a.libItem(it.Anime); mine {
-			mark = sp("◆ ", cAccent2)
-		}
-		fresh := time.Since(it.Released) < 12*time.Hour
-		when := fmt.Sprintf("%-7s", ago(it.Released))
-		wc := cMuted
-		if fresh {
-			wc = cAccent2
-		}
-		// the episode and fansub sit in fixed columns on the right; the title
-		// takes what is left (it is the one that gets an ellipsis)
-		ep := fmt.Sprintf("%d. bölüm", it.Episode)
-		if it.Season > 1 {
-			ep = fmt.Sprintf("S%d · %d. bölüm", it.Season, it.Episode)
-		}
-		right := []span{sp(fmt.Sprintf("%-14s", ep), cSub)}
-		if fs := shortFansub(it.Fansub); iw > 72 && fs != "" && fs != "Bilinmeyen" && !strings.Contains(fs, "www.") && !strings.Contains(fs, "://") {
-			right = append(right, sp(fmt.Sprintf("%-13s", truncate(fs, 12)), cMuted))
-		}
-		line := row(iw, bg, []span{bar, sp(when, wc), mark, span{t: it.Anime.Title, c: tc, bold: sel}}, right)
-		if sel {
-			line = anchor() + line
-		}
-		out = append(out, line)
-	}
-	return panel(title, out, w, ht, h.focus == 2, cAccent, tag)
-}
-
-// rightCol stacks the weekly schedule and the stats card.
-func (h *home) rightCol(a *App, w, ht int) []string {
-	calH := min(ht, 11)
-	out := panel(ic("calendar")+" bu hafta", h.calendar(a, w-4, calH-2), w, calH, false, cAccent)
-	if rest := ht - calH; rest >= 7 {
-		out = append(out, panel(ic("stats")+" istatistik", h.stats(a, w-4, rest-2), w, rest, false, cAccent)...)
-	} else {
-		out = append(out, block(nil, w, rest)...)
-	}
-	return out
 }
 
 var trDays = []string{"Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"}
@@ -1037,112 +627,6 @@ func (h *home) stats(a *App, w, ht int) []string {
 	out = append(out, stBold.Render(fmt.Sprint(eps))+stMuted.Render(" bölüm izlendi"),
 		stBold.Render(fmt.Sprint(len(a.lib.All())))+stMuted.Render(" kitaplıkta · ")+stBold.Render(fmt.Sprint(done))+stMuted.Render(" bitti"))
 	return block(out, w, ht)
-}
-
-// spotlight is a big poster card for whatever is highlighted; otherwise it
-// slowly rotates through the newest releases.
-func (h *home) spotlight(a *App, w, ht int, recent []store.Entry) []string {
-	var an source.Anime
-	var line1, line2, thumb string
-	switch {
-	case h.focus == 1 && h.hCur < len(recent):
-		e := recent[h.hCur]
-		an = e.Anime()
-		if d, ok := a.details[an.Key()]; ok && an.Poster == "" && d.Poster != "" {
-			an.Poster = d.Poster
-		}
-		line1 = fmt.Sprintf("Sezon %d · Bölüm %d", e.Season, e.Episode)
-		line2 = fmt.Sprintf("%%%d izlendi · %s", e.Percent(), agoLong(e.UpdatedAt))
-		thumb = thumbURL(an.Key())
-		if thumb != "" {
-			line2 = fmt.Sprintf("kaldığın yer %s · %%%d", clock(e.Position), e.Percent())
-		}
-	case len(h.feed) > 0:
-		idx := h.fCur
-		if h.focus != 2 {
-			n := min(8, len(h.feed))
-			if a.motion() && time.Since(h.autoRotate) > spotEvery {
-				h.autoIdx = (h.autoIdx + 1) % n
-				h.autoRotate = time.Now()
-			}
-			idx = h.autoIdx % n
-		}
-		it := h.feed[idx]
-		an = it.Anime
-		line1 = fmt.Sprintf("%d. bölüm", it.Episode)
-		if it.Season > 1 {
-			line1 = fmt.Sprintf("Sezon %d · %d. bölüm", it.Season, it.Episode)
-		}
-		line2 = agoLong(it.Released)
-		if it.Fansub != "" && it.Fansub != "Bilinmeyen" {
-			line2 += " · " + shortFansub(it.Fansub)
-		}
-	default:
-		return panel(ic("spark")+" öne çıkan", nil, w, ht, false, cAccent)
-	}
-	key := an.Poster
-	if key != h.spotKey {
-		h.spotFrom, h.spotKey = h.spotKey, key
-		h.spotFade = newTween(450 * time.Millisecond)
-		if !a.motion() {
-			h.spotFade = tween{}
-		}
-	}
-	iw := w - 4
-	var out []string
-	// keep the poster's 2:3 shape: height first, width follows
-	ph := ht - 2 - 7
-	pw := min(iw, ph*4/3)
-	ph = min(ph, pw*3/4)
-	if ph >= 6 {
-		p := a.posters.renderFade(h.spotFrom, h.spotKey, pw, ph, h.spotFade.p(), a.frame)
-		indent := strings.Repeat(" ", max(0, (iw-pw)/2))
-		if thumb != "" {
-			// the frame you stopped at (16:9), instead of the poster
-			tw := iw
-			th := max(4, tw*9/32)
-			if a.posters.ready(thumb) || a.posters.items[thumb] != nil {
-				p = a.posters.render(thumb, tw, th, a.frame)
-				indent = ""
-			}
-		}
-		for _, l := range p {
-			out = append(out, indent+l)
-		}
-		out = append(out, "")
-	}
-	acc := a.posters.accent(an.Poster, cAccent)
-	for i, l := range wrap(an.Title, iw-1) {
-		if i > 1 {
-			break
-		}
-		out = append(out, gradient(l, []string{acc.hex(), cAccent2}, true))
-	}
-	out = append(out, stText.Render(truncate(line1, iw)), stMuted.Render(truncate(line2, iw)))
-	if h.focus != 2 && h.focus != 1 && len(h.feed) > 1 {
-		n := min(8, len(h.feed))
-		var dots strings.Builder
-		for i := 0; i < n; i++ {
-			if i == h.autoIdx%n {
-				dots.WriteString(fg(acc.hex()).Render("━━"))
-			} else {
-				dots.WriteString(stFaint.Render("──"))
-			}
-			dots.WriteString(" ")
-		}
-		out = append(out, dots.String())
-	}
-	// the panel says what it is showing
-	title := ic("spark") + " öne çıkan"
-	switch {
-	case h.focus == 1 && thumb != "":
-		title = ic("history") + " kaldığın yer"
-	case h.focus == 1:
-		title = ic("history") + " devam et"
-	case h.focus == 2:
-		title = ic("feed") + " seçili bölüm"
-	}
-	return panel(title, out, w, ht, false, acc.hex())
 }
 
 func toggleLegacy(a *App) tea.Cmd {

@@ -332,9 +332,9 @@ func TestSelfPaintNoBlink(t *testing.T) {
 		}
 	}
 	// overlay hides it; closing brings it back
-	a.Update(tea.KeyMsg{Type: tea.KeyF1})
+	a.Update(tea.KeyMsg{Type: tea.KeyF1}) // işlemler panel
 	out.Reset()
-	a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	a.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if !strings.Contains(out.String(), "\x1bP") {
 		t.Fatal("poster should come back after the overlay closes")
 	}

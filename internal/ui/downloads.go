@@ -254,7 +254,11 @@ func (d *downloads) view(a *App, w, h int) string {
 	if speed > 0 {
 		stats = append(stats, fg(cAccent).Render("↓ ")+stBold.Render(fmtSpeed(speed)))
 	}
-	out := []string{"", row2(gradient("indirilenler", brand, true), strings.Join(stats, stFaint.Render("  ·  ")), inner), ""}
+	sub := "Çevrimdışı izleme için indirilen bölümler"
+	if d.queue {
+		sub = "İndirme kuyruğu"
+	}
+	out := pageHeadIn("İndirilenler", sub, strings.Join(stats, stFaint.Render("  ·  ")), inner, h)
 	aria, yt := download.Tools()
 	tools := []string{}
 	if aria {

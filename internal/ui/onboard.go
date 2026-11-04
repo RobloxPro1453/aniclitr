@@ -15,6 +15,13 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"0.12.0": {
+		"Yenilenen arayüz: her ekran tek bir işe odaklanır, bölgeler çerçeveli panellerde durur ve her sayfanın başında amacı yazar",
+		"Ana sayfa menü tabanlı: Devam et, Yeni bölümler, Kitaplık, Keşfet, İndirilenler ve Ayarlar; seçilen öğenin önizlemesi yanda gösterilir",
+		"Keşfet adım adım ilerler: önce bölüm (takvim, bu akşam, sezon, türler…), sonra içerik; Türler'de önce tür seçilir",
+		"? tuşu her ekranda İşlemler menüsünü açar: o ekrandaki tüm eylemler kısayollarıyla listelenir ve doğrudan çalıştırılabilir",
+		"Kaldığınız yerin görüntüsü artık kırpılmadan gösterilir; görsel içeren ekranlarda kaydırma daha akıcıdır",
+	},
 	"0.11.0": {
 		"Kendini güncelleyen kurulum: aniclitr artık %LOCALAPPDATA%\\Programs\\aniclitr altında; yeni sürümleri GitHub'dan kendisi alır",
 		"Terminal kısayolu kurulu kopyayı açar; geliştirme klasörüyle karışıklık yok",
@@ -133,7 +140,7 @@ const (
 	obKeys
 )
 
-var onboardSteps = []string{"hoş geldin", "araçlar", "nasıl çalışır", "izlerken", "kitaplık ve keşif", "MyAnimeList", "terminal kısayolu", "tuşlar"}
+var onboardSteps = []string{"hoş geldiniz", "gerekli araçlar", "nasıl çalışır", "oynatma", "kitaplık ve keşif", "MyAnimeList", "terminalden erişim", "temel tuşlar"}
 
 func (o *onboard) crumb() string {
 	if o.isUpdate {
@@ -169,7 +176,7 @@ func (o *onboard) finish(a *App) tea.Cmd {
 	a.anchorOK = false
 	a.celebrate(60)
 	if !o.isUpdate {
-		a.notify("hazırsın — aramaya bir isim yaz ya da alt+m ile menüyü aç", "ok")
+		a.notify("Hazırsınız. Aramak için bir anime adı yazın ya da menüden bir ekran seçin.", "ok")
 	}
 	return a.tick()
 }
@@ -245,7 +252,7 @@ func (o *onboard) view(a *App, w, h int) string {
 				body = append(body, prefix+stText.Render(wl))
 			}
 		}
-		body = append(body, "", stMuted.Render("Hepsi her zaman ? ve alt+m menüsünde."))
+		body = append(body, "", stMuted.Render("Her ekrandaki tüm eylemlere ? (işlemler) menüsünden ulaşılabilir."))
 	} else {
 		title = onboardSteps[o.step]
 		para := func(s string) []string {
@@ -257,9 +264,9 @@ func (o *onboard) view(a *App, w, h int) string {
 		}
 		switch o.step {
 		case obWelcome:
-			body = []string{stText.Render("aniclitr: terminalde, Türkçe altyazılı anime."), ""}
-			body = append(body, para("Ara, fansubunu seç, izle. Kaldığın yer, sıradaki bölüm, açılış ve bitiş atlama kendiliğinden. İnternetsiz izlemek için indir, MyAnimeList ile listeni eşitle.")...)
-			body = append(body, "", stMuted.Render("Bu kısa tur her şeyi bir dakikada gösterir. Önce bir görünüm seç: ")+stText.Bold(true).Render("t"))
+			body = []string{stText.Render("aniclitr: Türkçe altyazılı anime için terminal oynatıcısı."), ""}
+			body = append(body, para("Bir anime arayın, çeviri grubunu seçin ve izleyin. Kaldığınız yer, sıradaki bölüm ve jenerik atlama otomatik olarak yönetilir. Bölümleri çevrimdışı izlemek için indirebilir, listenizi MyAnimeList ile eşitleyebilirsiniz.")...)
+			body = append(body, "", stMuted.Render("Bu tur temel kullanımı yaklaşık bir dakikada anlatır. Bir tema seçmek için: ")+stText.Bold(true).Render("t"))
 		case obTools:
 			check := func(name, why, install string) []string {
 				if o.tools[name] {
@@ -267,16 +274,16 @@ func (o *onboard) view(a *App, w, h int) string {
 				}
 				return []string{stErr.Render(" ✗ ") + stBold.Render(name) + stMuted.Render("  "+why), "     " + stAccent.Render(install)}
 			}
-			body = append(body, check("mpv", "oynatıcı (gerekli)", "winget install mpv-player.mpv-CI.MSVC")...)
-			body = append(body, check("yt-dlp", "bazı kaynaklar ve fragmanlar için", "winget install yt-dlp.yt-dlp")...)
-			body = append(body, check("aria2c", "hızlı indirme (yoksa dahili indirici)", "winget install aria2.aria2")...)
-			body = append(body, check("ffmpeg", "HLS indirmeleri mp4'e çevirmek için", "winget install Gyan.FFmpeg")...)
+			body = append(body, check("mpv", "video oynatıcı (zorunlu)", "winget install mpv-player.mpv-CI.MSVC")...)
+			body = append(body, check("yt-dlp", "bazı kaynaklar ve fragmanlar için (önerilir)", "winget install yt-dlp.yt-dlp")...)
+			body = append(body, check("aria2c", "hızlı indirme (yoksa dahili indirici kullanılır)", "winget install aria2.aria2")...)
+			body = append(body, check("ffmpeg", "HLS indirmelerini MP4'e dönüştürmek için", "winget install Gyan.FFmpeg")...)
 			if !o.tools["mpv"] {
-				body = append(body, "", stWarn.Render("mpv olmadan izleyemezsin — kurup aniclitr'i yeniden aç."))
+				body = append(body, "", stWarn.Render("Oynatma için mpv gereklidir. mpv'yi kurduktan sonra aniclitr'i yeniden başlatın."))
 			}
 		case obHow:
 			type stp struct{ n, head, sub string }
-			cols := []stp{{"1", "ara", "bir isim yaz"}, {"2", "bölüm", "enter ya da p"}, {"3", "fansub", "çeviri ekibi"}, {"4", "izle", "mpv açılır"}}
+			cols := []stp{{"1", "ara", "anime adı"}, {"2", "bölüm", "enter ya da p"}, {"3", "çeviri", "fansub seçimi"}, {"4", "izle", "mpv açılır"}}
 			cell := max(12, (cw-6)/4)
 			var top, bot string
 			for i, c := range cols {
@@ -291,59 +298,59 @@ func (o *onboard) view(a *App, w, h int) string {
 			}
 			body = append(body, " "+top, " "+bot, "")
 			body = append(body, keyRows([][2]string{
-				{"p", "fansub sormadan en iyi kaynakla hemen oynat"},
-				{"s", "başka kaynakta aç: " + turkishSources()},
-				{"d · D", "bölümü · sezonu indir, internetsiz izle"},
+				{"p", "çeviri grubu sormadan en uygun kaynakla oynat"},
+				{"s", "başka bir kaynakta aç: " + turkishSources()},
+				{"d · D", "bölümü · sezonu indir (çevrimdışı izleme)"},
 			}, 10)...)
 			body = append(body, "")
-			body = append(body, para("Bir kaynak açılmazsa sıradaki kendiliğinden denenir; seçtiğin fansub hatırlanır.")...)
+			body = append(body, para("Bir kaynak açılmazsa sıradaki otomatik olarak denenir. Seçilen çeviri grubu bir sonraki bölüm için hatırlanır.")...)
 		case obWatch:
-			body = append(body, para("mpv penceresi öndedir; terminal boşta bekler. Bu tuşlar mpv'de de çalışır:")...)
+			body = append(body, para("Oynatma sırasında mpv penceresi öndedir ve terminal boşta bekler. Aşağıdaki tuşlar mpv içinde de çalışır:")...)
 			body = append(body, "")
 			body = append(body, keyRows([][2]string{
 				{"n · b", "sonraki · önceki bölüm"},
 				{"space", "duraklat"},
 				{"← →", "10 saniye sar"},
-				{"u", "internetten altyazı ara (terminalde)"},
-				{"q", "çık; kaldığın saniye ve kare kaydedilir"},
+				{"u", "çevrimiçi altyazı ara (terminalde)"},
+				{"q", "çık; kalınan an ve görüntü kaydedilir"},
 			}, 10)...)
 			body = append(body, "")
-			body = append(body, para("Açılış ve bitiş kendiliğinden atlanır. Bölümün %75'i izlenince izlendi sayılır, sıradaki aynı fansubla başlar.")...)
+			body = append(body, para("Açılış ve bitiş jenerikleri otomatik olarak atlanır. Bir bölüm %75 oranında izlendiğinde izlenmiş sayılır ve sonraki bölüm aynı çeviri grubuyla başlar.")...)
 		case obShelves:
 			body = append(body, keyRows([][2]string{
-				{"ctrl+b", "kitaplık: izliyor, tamamlandı, puanlar, listeler"},
-				{"ctrl+e", "keşfet: takvim, bu akşam, türler, öneriler"},
-				{"ctrl+d", "indirilenler: kapaklı çevrimdışı raf"},
-				{"ctrl+k", "komut paleti: her şeye yazarak ulaş"},
+				{"ctrl+b", "kitaplık: durumlar, puanlar ve listeler"},
+				{"ctrl+e", "keşfet: yayın takvimi, sezon, türler ve öneriler"},
+				{"ctrl+d", "indirilenler: çevrimdışı kitaplık"},
+				{"ctrl+k", "komut paleti: her işleve yazarak erişim"},
 			}, 10)...)
 			body = append(body, "")
-			body = append(body, para("İzlediğin her anime kitaplığa kendiliğinden girer. Ana sayfadaki “devam et” rafı kaldığın yerden başlatır; boş arama kutusunda enter da aynısını yapar.")...)
+			body = append(body, para("İzlenen her anime kitaplığa otomatik olarak eklenir. Ana sayfadaki “Devam et” bölümü kalınan yerden devam eder; arama kutusu boşken enter da aynı işi görür.")...)
 		case obMal:
 			if a.mal.Connected() {
-				body = []string{stOK.Render("● bağlı: ") + stBold.Render(a.mal.User()), "", stSub.Render("Kitaplığın MAL listenle iki yönlü eşitleniyor.")}
+				body = []string{stOK.Render("● bağlı: ") + stBold.Render(a.mal.User()), "", stSub.Render("Kitaplığınız MyAnimeList listenizle iki yönlü eşitleniyor.")}
 			} else {
-				body = append(body, para("İsteğe bağlı: MAL hesabını bağlarsan izlediğin bölümler, puanların ve listelerin MyAnimeList'e kendiliğinden gider; MAL'deki listen de buraya gelir.")...)
-				body = append(body, "", stText.Bold(true).Render("b")+stMuted.Render(" şimdi bağlan   ·   ")+stText.Bold(true).Render("→")+stMuted.Render(" sonra (ayarlar → MyAnimeList)"))
+				body = append(body, para("İsteğe bağlı: MyAnimeList hesabınızı bağladığınızda izlenen bölümler, puanlar ve listeler otomatik olarak eşitlenir; MyAnimeList'teki listeniz de buraya aktarılır.")...)
+				body = append(body, "", stText.Bold(true).Render("b")+stMuted.Render(" şimdi bağla   ·   ")+stText.Bold(true).Render("→")+stMuted.Render(" daha sonra (Ayarlar → MyAnimeList)"))
 			}
 		case obPath:
 			dir, _ := a.path.Dir()
-			body = append(body, para("Her terminalde yalnızca aniclitr yazarak açabilmen için aniclitr'i şuraya kurup PATH'e ekleyebilirim:")...)
+			body = append(body, para("aniclitr'i her terminalden aniclitr komutuyla açabilmeniz için aşağıdaki klasöre kurup PATH'e ekleyebiliriz:")...)
 			body = append(body, "", "  "+stAccent.Render(truncate(dir, cw-8)), "")
 			if a.path.Has() {
-				body = append(body, stOK.Render(" ✓ ")+stSub.Render("zaten ekli — yeni bir terminalde aniclitr yaz."))
+				body = append(body, stOK.Render(" ✓ ")+stSub.Render("Zaten kurulu. Yeni bir terminalde aniclitr yazmanız yeterli."))
 			} else {
-				body = append(body, " "+stText.Bold(true).Render("y")+stMuted.Render(" ekle   ·   ")+stText.Bold(true).Render("n")+stMuted.Render(" şimdi değil"), "")
-				body = append(body, para("Yönetici izni gerekmez, yalnızca senin kullanıcı PATH'in değişir. Kurulu kopya yeni sürümleri kendisi alır. Ayarlar → Terminalden aç ile istediğin zaman geri alırsın.")...)
+				body = append(body, " "+stText.Bold(true).Render("y")+stMuted.Render(" kur   ·   ")+stText.Bold(true).Render("n")+stMuted.Render(" şimdi değil"), "")
+				body = append(body, para("Yönetici izni gerekmez; yalnızca kullanıcı PATH değişkeni güncellenir. Kurulu kopya yeni sürümleri otomatik olarak alır. Bu işlem Ayarlar → Terminalden aç ile her zaman geri alınabilir.")...)
 			}
 		case obKeys:
 			body = append(body, keyRows([][2]string{
-				{"yaz + enter", "ara (boşken enter: son izlediğine devam)"},
+				{"yaz + enter", "ara (kutu boşken: son izlenene devam)"},
 				{"alt+m  ·  alt+n", "menü  ·  bildirimler"},
-				{"ctrl+o", "ayarlar (bu tur da orada)"},
-				{"ctrl+z", "son silmeyi ya da değişikliği geri al"},
-				{"?", "bulunduğun ekranın bütün tuşları"},
+				{"ctrl+o", "ayarlar (tanıtım turu da buradadır)"},
+				{"ctrl+z", "son silme ya da değişikliği geri al"},
+				{"?", "işlemler: bu ekrandaki tüm eylemler ve kısayolları"},
 			}, 22)...)
-			body = append(body, "", stMuted.Render("enter ile bitir. İyi seyirler."))
+			body = append(body, "", stMuted.Render("Turu bitirmek için enter. İyi seyirler."))
 		}
 	}
 	// step dots

@@ -165,6 +165,7 @@ type App struct {
 	out        io.Writer // self-paint target (nil: Bubble Tea renders View)
 	pt         *painter
 	paintCost  time.Duration
+	picsOn     bool // the last frame had pictures (glides jump instead)
 	hideImages bool // a screen covers its own pictures this frame (dropdowns)
 
 	// look & feel
@@ -541,8 +542,8 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			}
 		}
 		if m.Type == tea.KeyF1 || (m.String() == "?" && !typing) {
-			a.help = true
-			return a, nil
+			a.openActions()
+			return a, a.tick()
 		}
 		switch m.String() {
 		case "ctrl+k":
@@ -820,23 +821,20 @@ func (a *App) header() string {
 		}
 		left += stFaint.Render("  ╱  ") + strings.Join(parts, stFaint.Render(" › "))
 	}
-	var right []string
+	var right, dots []string
 	for _, p := range source.All() {
 		in := p.Info()
 		if in.Legacy && !a.cfg.Legacy {
 			continue
 		}
 		dot := stFaint.Render("○")
-		name := stMuted.Render(in.Name)
 		if a.cfg.Enabled(in.ID, in.Legacy) {
 			dot = a.healthDot(in.ID)
-			name = stSub.Render(in.Name)
 		}
-		if a.w < 120 {
-			right = append(right, dot) // narrow: the dots alone (names in "kaynak durumu")
-			continue
-		}
-		right = append(right, dot+" "+name)
+		dots = append(dots, dot) // the dots alone: names and details are on "kaynak durumu"
+	}
+	if len(dots) > 0 {
+		right = append(right, stFaint.Render("kaynaklar ")+strings.Join(dots, " "))
 	}
 	if a.cfg.Legacy {
 		right = append(right, pill("ARŞİV", cWarn))
@@ -890,35 +888,35 @@ func (a *App) footer() string {
 		right = fg(c).Render("▌") + fg(c).Render(msg)
 	}
 	lw := a.w - lipgloss.Width(right)
-	return fit(hintLine(a.top().hints(), lw), lw) + right
+	return fit(hintLine(a.footerHints(), lw), lw) + right
 }
 
-// hintLine fits key hints into w cells in priority order (screens list the
-// important ones first); whatever does not fit is behind "?".
+// hintLine fits key hints into w cells. The last two (işlemler, geri)
+// always stay; screen keys are dropped from the end until the line fits.
 func hintLine(hs []hint, w int) string {
-	sep := stFaint.Render("  ·  ")
-	more := stText.Bold(true).Render("?") + " " + stMuted.Render("hepsi")
-	moreW := lipgloss.Width(sep + more)
-	out := " "
-	for i, h := range hs {
-		part := stText.Bold(true).Render(h.key)
-		if h.label != "" {
-			part += " " + stMuted.Render(h.label)
-		}
-		if i > 0 {
-			part = sep + part
-		}
-		budget := w
-		if i < len(hs)-1 {
-			budget -= moreW // keep room for "? hepsi" unless this is the last one
-		}
-		if lipgloss.Width(out+part) > budget {
+	sep := stFaint.Render("   ")
+	render := func(hs []hint) string {
+		out := " "
+		for i, h := range hs {
 			if i > 0 {
-				return out + sep + more
+				out += sep
 			}
-			return truncate(out+part, w)
+			out += stText.Bold(true).Render(h.key)
+			if h.label != "" {
+				out += " " + stMuted.Render(h.label)
+			}
 		}
-		out += part
+		return out
 	}
-	return out
+	tail := 0
+	for i := len(hs) - 1; i >= 0 && (hs[i].key == "?" || hs[i].key == "F1" || hs[i].key == "esc"); i-- {
+		tail++
+	}
+	for n := len(hs) - tail; n >= 0; n-- {
+		cut := append(append([]hint{}, hs[:n]...), hs[len(hs)-tail:]...)
+		if l := render(cut); lipgloss.Width(l) <= w {
+			return l
+		}
+	}
+	return truncate(render(hs[len(hs)-tail:]), w)
 }

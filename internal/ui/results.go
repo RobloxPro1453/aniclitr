@@ -278,7 +278,7 @@ func (r *results) move(a *App, d int) tea.Cmd {
 	return tea.Batch(r.onMove(a), a.tick())
 }
 
-func (r *results) view(a *App, w, h int) string {
+func (r *results) view(a *App, w, ht int) string {
 	pad := 2
 	inner := w - pad*2
 	showDetail := inner >= 96
@@ -286,7 +286,7 @@ func (r *results) view(a *App, w, h int) string {
 	rw := 0
 	if showDetail {
 		lw = inner * 50 / 100
-		rw = inner - lw - 3
+		rw = inner - lw - kitGap
 	}
 	var chips []string
 	for _, id := range r.order {
@@ -307,11 +307,12 @@ func (r *results) view(a *App, w, h int) string {
 		}
 		chips = append(chips, st+" "+name)
 	}
-	head := stBold.Render(fmt.Sprintf("%d anime", len(r.items))) + stMuted.Render("  “"+r.query+"”")
 	status := strings.Join(chips, stFaint.Render("   "))
-
-	listH := h - 3
-	left := []string{row2(head, status, lw), ""}
+	sub := fmt.Sprintf("%d sonuç · farklı kaynaklardaki aynı anime tek satırda gösterilir", len(r.items))
+	page := pageHeadIn("“"+r.query+"”", sub, status, inner, ht)
+	h := ht - len(page)
+	listH := h - 2
+	var left []string
 	switch {
 	case len(r.items) == 0 && r.animating(a):
 		for i := 0; i < min(5, listH); i++ {
@@ -323,7 +324,7 @@ func (r *results) view(a *App, w, h int) string {
 		left = append(left, stSub.Render("Hiçbir kaynakta sonuç yok."), "")
 		for _, id := range r.order {
 			if s := r.states[id]; s.err != nil {
-				left = append(left, stErr.Render("✗ ")+stSub.Render(s.info.Name+": ")+stMuted.Render(truncate(shortErr(s.err), lw-20)))
+				left = append(left, stErr.Render("✗ ")+stSub.Render(s.info.Name+": ")+stMuted.Render(truncate(shortErr(s.err), lw-24)))
 			}
 		}
 		left = append(left, "", stMuted.Render("Yazımı değiştirmeyi dene: japonca / ingilizce ad, ya da daha kısa bir kelime."))
@@ -336,17 +337,16 @@ func (r *results) view(a *App, w, h int) string {
 		var rows []string
 		band := r.gl.row(a, r.cur)
 		for i := r.off; i < len(r.items) && len(rows) < listH; i++ {
-			line := resultRow(r.items[i], lw-1, i == band, reveal(r.revealAt, i-r.off, a.motion()))
+			line := resultRow(r.items[i], lw-5, i == band, reveal(r.revealAt, i-r.off, a.motion()))
 			if i == r.cur {
 				line = anchor() + line
 			}
 			rows = append(rows, line)
 		}
-		rows = block(rows, lw-1, listH)
+		rows = block(rows, lw-5, listH)
 		left = append(left, hjoin(0, rows, scrollbar(listH, r.off, len(r.items)))...)
 	}
-	left = block(left, lw, h)
-	cols := [][]string{left}
+	cols := [][]string{panel("sonuçlar", left, lw, h, true, cAccent, plural(len(r.items)))}
 	if showDetail {
 		var right []string
 		if it, ok := r.selected(); ok {
@@ -360,11 +360,11 @@ func (r *results) view(a *App, w, h int) string {
 					r.posterAt = newTween(380 * time.Millisecond)
 				}
 			}
-			right = detailPane(a, an, it.alts, rw, h, r.descOff, r.prevPost, r.posterAt.p())
+			right = detailPane(a, an, it.alts, rw-4, h-2, r.descOff, r.prevPost, r.posterAt.p())
 		}
-		cols = append(cols, vrule(h), block(right, rw, h))
+		cols = append(cols, panel("ayrıntı", right, rw, h, false, cAccent))
 	}
-	lines := hjoin(1, cols...)
+	lines := append(page, hjoin(kitGap, cols...)...)
 	for i := range lines {
 		lines[i] = strings.Repeat(" ", pad) + lines[i]
 	}

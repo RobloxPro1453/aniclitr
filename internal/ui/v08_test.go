@@ -42,7 +42,7 @@ func TestV08Screens(t *testing.T) {
 
 	// tonight
 	d := newDiscover()
-	d.tab = tTonight
+	d.tab, d.menu = tTonight, false
 	a.stack = append(a.stack, d)
 	if picks := tonightPicks(a, 60, homeFeed(a)); len(picks) == 0 {
 		t.Fatal("tonight should have picks from history")

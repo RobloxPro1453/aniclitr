@@ -58,27 +58,27 @@ func newSettings() *settings {
 	}
 	s.items = append(s.items,
 		setting{
-			label: "Tanıtım turu", desc: "Uygulamanın nasıl kullanıldığını adım adım gösteren turu yeniden başlatır.",
+			label: "Tanıtım turu", desc: "Uygulamanın temel kullanımını adım adım anlatan tanıtım turunu yeniden başlatır.",
 			value: func(a *App) string { return "başlat" },
 			run:   func(a *App) tea.Cmd { return a.startTour() },
 		},
 		setting{
-			label: "Terminalden aç", desc: "Her yeni terminalde yalnızca aniclitr yazarak açılır: aniclitr %LOCALAPPDATA%\\Programs\\aniclitr altına kurulur, o klasör kullanıcı PATH'ine eklenir (yönetici izni gerekmez). Kendini güncelleyen kopya budur.",
+			label: "Terminalden aç", desc: "aniclitr'i %LOCALAPPDATA%\\Programs\\aniclitr klasörüne kurar ve bu klasörü kullanıcı PATH'ine ekler; böylece her terminalde aniclitr komutuyla açılır. Yönetici izni gerekmez. Otomatik güncellenen kopya budur.",
 			on:  func(a *App) bool { return a.path.Has() },
 			run: func(a *App) tea.Cmd { return a.togglePath(!a.path.Has()) },
 		},
 		setting{
-			label: "Otomatik güncelle", desc: "Kurulu kopya açılışta GitHub'daki son sürüme bakar; varsa indirir, SHA-256 ile doğrular, bir sonraki açılışta geçerli olur.",
+			label: "Otomatik güncelle", desc: "Kurulu kopya açılışta GitHub'daki son sürümü denetler. Yeni sürüm varsa indirilir, SHA-256 özetiyle doğrulanır ve bir sonraki açılışta etkinleşir.",
 			on:  func(a *App) bool { return a.cfg.AutoUpdate },
 			act: func(a *App) { a.cfg.AutoUpdate = !a.cfg.AutoUpdate },
 		},
 		setting{
-			label: "Güncellemeleri denetle", desc: "Şimdi GitHub'a bak.",
+			label: "Güncellemeleri denetle", desc: "Yeni sürüm olup olmadığını şimdi denetler.",
 			value: func(a *App) string { return Version },
 			run:   func(a *App) tea.Cmd { return a.checkUpdate(true) },
 		},
 		setting{
-			label: "MyAnimeList", desc: "Kitaplığı MAL listenle iki yönlü eşitler (durum, puan, izlenen bölüm, listeler).",
+			label: "MyAnimeList", desc: "Kitaplığı MyAnimeList hesabınızla iki yönlü eşitler: durum, puan, izlenen bölüm sayısı ve listeler.",
 			value: func(a *App) string {
 				if a.mal.Connected() {
 					return "bağlı · " + a.mal.User()
@@ -88,12 +88,12 @@ func newSettings() *settings {
 			act: func(a *App) { a.stack = append(a.stack, newMalScreen(a)) },
 		},
 		setting{
-			label: "Kapaktan tema", desc: "Bir animeyi açınca arayüz kapağının renklerine bürünür; çıkınca temana döner.",
+			label: "Kapaktan tema", desc: "Bir anime açıldığında arayüz kapak görselinin renklerini alır; çıkınca seçili temaya döner.",
 			on:  func(a *App) bool { return a.cfg.CoverTheme },
 			act: func(a *App) { a.cfg.CoverTheme = !a.cfg.CoverTheme },
 		},
 		setting{
-			label: "Arayüz sesleri", desc: "Gezinirken minik tık, seçerken çın, kutlamada arpej. 0 = kapalı.",
+			label: "Arayüz sesleri", desc: "Gezinme, seçim ve bildirimler için kısa arayüz sesleri. 0 kapalı demektir.",
 			value: func(a *App) string {
 				if a.cfg.Sounds <= 0 {
 					return "kapalı"
@@ -113,19 +113,19 @@ func newSettings() *settings {
 			},
 		},
 		setting{
-			label: "Tema", desc: "ctrl+t ile canlı önizlemeli seçici açılır. Kendi temanı %APPDATA%\\aniclitr\\themes\\*.json olarak ekleyebilirsin.",
+			label: "Tema", desc: "ctrl+t canlı önizlemeli tema seçiciyi açar. Özel temalar %APPDATA%\\aniclitr\\themes\\*.json dosyası olarak eklenebilir.",
 			value: func(a *App) string { return a.themeName },
 			act:   func(a *App) { a.openPalette("tema ") },
 		},
-		cycle("Ambiyans", "Ana ekrandaki hava: otomatik mevsime ve saate göre seçer (gece yıldız, kışın kar…).", ambientKinds, func(a *App) *string { return &a.cfg.Ambient }, nil),
-		cycle("Logo efekti", "Açılışta logonun gelişi. Komut paletinden (ctrl+k) yeniden oynatabilirsin.", introKinds, func(a *App) *string { return &a.cfg.Intro }, nil),
+		cycle("Ambiyans", "Ana sayfadaki arka plan efekti. otomatik: mevsime ve saate göre seçilir (gece yıldızlar, kışın kar…).", ambientKinds, func(a *App) *string { return &a.cfg.Ambient }, nil),
+		cycle("Logo efekti", "Açılışta logonun beliriş efekti. Komut paletinden (ctrl+k) yeniden oynatılabilir.", introKinds, func(a *App) *string { return &a.cfg.Intro }, nil),
 		setting{
-			label: "Terminal zeminini boya", desc: "Pencere arka planını temanın rengine boyar (OSC 11); çıkışta eski haline döner.",
+			label: "Terminal zeminini boya", desc: "Terminal arka planını temanın rengine ayarlar (OSC 11); çıkışta eski rengi geri yükler.",
 			on:  func(a *App) bool { return a.cfg.ThemeBg },
 			act: func(a *App) { a.cfg.ThemeBg = !a.cfg.ThemeBg; a.oscUntil = time.Now().Add(300 * time.Millisecond) },
 		},
 		setting{
-			label: "Nerd Font ikonları", desc: "Terminal yazı tipin bir Nerd Font ise zengin ikonlar kullanılır.",
+			label: "Nerd Font ikonları", desc: "Terminal yazı tipi bir Nerd Font ise ayrıntılı ikonlar kullanılır.",
 			on: func(a *App) bool { return nerd },
 			act: func(a *App) {
 				nerd = !nerd
@@ -133,7 +133,7 @@ func newSettings() *settings {
 			},
 		},
 		setting{
-			label: "Çizici", desc: "hücre: kendi çizicimiz — yalnızca değişen hücreleri yazar, kapaklar titremez, kendini onarır. klasik: Bubble Tea'nın satır çizicisi (yedek). Yeniden başlatınca geçerli olur. Ekran bozulursa ctrl+l.",
+			label: "Çizici", desc: "hücre (önerilen): yalnızca değişen hücreleri yazar, görselleri titretmez ve kendini onarır. klasik: Bubble Tea'nın satır tabanlı çizicisi; uyumluluk sorunlarında yedek olarak kullanılır. Değişiklik yeniden başlatınca geçerli olur. Ekran bozulursa ctrl+l ekranı yeniden çizer.",
 			value: func(a *App) string {
 				if a.cfg.Renderer == "klasik" {
 					return "klasik"
@@ -149,7 +149,7 @@ func newSettings() *settings {
 				a.notify("çizici değişikliği yeniden başlatınca geçerli olur", "warn")
 			},
 		},
-		toggle("Sıkı düzen", "Kenar boşluklarını daraltır (küçük pencereler için).", func(a *App) *bool { return &a.cfg.Compact }),
+		toggle("Sıkı düzen", "Küçük pencereler için kenar boşluklarını daraltır.", func(a *App) *bool { return &a.cfg.Compact }),
 		toggle("Arşiv modu", legacyDesc(), func(a *App) *bool { return &a.cfg.Legacy }),
 	)
 	for _, p := range source.All() {
@@ -169,17 +169,17 @@ func newSettings() *settings {
 		})
 	}
 	s.items = append(s.items,
-		toggle("OP/ED otomatik atla", "AniSkip verisiyle opening ve ending'i atlar.", func(a *App) *bool { return &a.cfg.AutoSkip }),
-		toggle("Otomatik sonraki bölüm", "Bölüm bitince aynı fansubla sıradakine geçer (6 sn geri sayım).", func(a *App) *bool { return &a.cfg.AutoNext }),
-		toggle("Tam ekran başlat", "mpv tam ekran açılır.", func(a *App) *bool { return &a.cfg.Fullscreen }),
+		toggle("OP/ED otomatik atla", "AniSkip verisini kullanarak açılış ve bitiş jeneriklerini atlar.", func(a *App) *bool { return &a.cfg.AutoSkip }),
+		toggle("Otomatik sonraki bölüm", "Bölüm bitince 6 saniyelik geri sayımın ardından aynı çeviri grubuyla sonraki bölüme geçer.", func(a *App) *bool { return &a.cfg.AutoNext }),
+		toggle("Tam ekran başlat", "Oynatıcı tam ekran açılır.", func(a *App) *bool { return &a.cfg.Fullscreen }),
 		setting{
-			label: "Kapak görselleri", desc: "Posterleri terminalde çizer.",
+			label: "Kapak görselleri", desc: "Anime kapaklarını terminalde gösterir.",
 			on:  func(a *App) bool { return a.cfg.Posters },
 			act: func(a *App) { a.cfg.Posters = !a.cfg.Posters; a.applyGraphics() },
 		},
 		setting{
 			label: "Görsel kalitesi",
-			desc:  "otomatik: terminal Sixel destekliyorsa tam çözünürlük (Windows Terminal destekler). sixel: zorla. blok: renkli karakterlerle (her terminalde çalışır).",
+			desc:  "otomatik: terminal Sixel destekliyorsa tam çözünürlük kullanılır (Windows Terminal destekler). sixel: Sixel her zaman kullanılır. blok: renkli karakterlerle çizilir ve her terminalde çalışır.",
 			value: func(a *App) string {
 				label := map[string]string{"auto": "otomatik", "sixel": "sixel", "blocks": "blok"}[a.cfg.Graphics]
 				if label == "" {
@@ -196,9 +196,9 @@ func newSettings() *settings {
 				a.applyGraphics()
 			},
 		},
-		toggle("Animasyonlar", "Logo, sakura yaprakları, geçişler. Kapatınca her şey anında ve sabit çizilir.", func(a *App) *bool { return &a.cfg.Motion }),
+		toggle("Animasyonlar", "Logo, arka plan efektleri ve geçiş animasyonları. Kapatıldığında arayüz sabit ve anında çizilir.", func(a *App) *bool { return &a.cfg.Motion }),
 		setting{
-			label: "Tercih edilen kalite", desc: "Mevcut değilse bir altındaki seçilir.",
+			label: "Tercih edilen kalite", desc: "Seçilen kalite yoksa bir alt kalite kullanılır.",
 			value: func(a *App) string {
 				if a.cfg.Quality == "" || a.cfg.Quality == "best" {
 					return "en iyi"
@@ -274,7 +274,7 @@ var settingGroups = []string{"genel", "görünüm", "oynatma", "kaynaklar"}
 
 func (s *settings) view(a *App, w, h int) string {
 	cw := min(80, w-4)
-	head := []string{"", center(gradient("ayarlar", brand, true), w), ""}
+	head := pageHeadCol("Ayarlar", "Görünüm, oynatma, kaynak ve hesap tercihleri", "", cw, w, h)
 	// rows grouped under headings; remember where the cursor's row lands
 	var lines []string
 	selLine := 0

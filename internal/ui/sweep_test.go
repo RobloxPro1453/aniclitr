@@ -35,8 +35,12 @@ func TestScreenSweep(t *testing.T) {
 			"home":      func() screen { return a.stack[0] },
 			"library":   func() screen { return newLibrary() },
 			"discover":  func() screen { d := newDiscover(); d.schedOK = true; return d },
-			"tonight":   func() screen { d := newDiscover(); d.tab = tTonight; return d },
+			"discsec":   func() screen { d := newDiscover(); d.schedOK = true; d.menu = false; return d },
+			"genrepick": func() screen { d := newDiscover(); d.tab, d.menu, d.gpick = tGenre, false, true; return d },
+			"tonight":   func() screen { d := newDiscover(); d.tab = tTonight; d.menu = false; return d },
 			"downloads": func() screen { return newDownloads() },
+			"feed":      func() screen { return newFeedScreen() },
+			"homemenu":  func() screen { h := a.stack[0].(*home); h.focus = 1; h.mCur = 1; return h },
 			"queue":     func() screen { d := newDownloads(); d.queue = true; return d },
 			"settings":  func() screen { return newSettings() },
 			"sources":   func() screen { return &sourcesScreen{} },
@@ -93,7 +97,7 @@ func TestScreenSweep(t *testing.T) {
 		}
 		// overlays on top of home
 		a.stack = a.stack[:1]
-		for _, ov := range []string{"palette", "bell", "menu", "help", "popup"} {
+		for _, ov := range []string{"palette", "bell", "menu", "help", "popup", "actions"} {
 			switch ov {
 			case "palette":
 				a.openPalette("")
@@ -105,6 +109,9 @@ func TestScreenSweep(t *testing.T) {
 				a.help = true
 			case "popup":
 				a.openPopup(an)
+			case "actions":
+				a.stack[0].(*home).focus = 1
+				a.openActions()
 			}
 			if a.pal != nil {
 				a.pal.openT = tween{}

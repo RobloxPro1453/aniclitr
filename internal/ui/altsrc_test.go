@@ -121,7 +121,7 @@ func TestShelfDeleteRemovesAllSources(t *testing.T) {
 		a.hist.Update(an, func(e *store.Entry) { e.Season, e.Episode = 1, 1 })
 	}
 	h := a.stack[0].(*home)
-	h.focus, h.hCur = 1, 0
+	h.focusRecent(a, 0)
 	a.Update(key("x"))
 	if n := len(a.hist.Recent()); n != 0 {
 		t.Fatalf("all three source entries should go, %d left", n)
@@ -146,7 +146,7 @@ func TestShelfOpensOnPrimarySource(t *testing.T) {
 		t.Fatalf("shelf card should be the HiAnime entry: %+v", r)
 	}
 	h := a.stack[0].(*home)
-	h.focus, h.hCur = 1, 0
+	h.focusRecent(a, 0)
 	a.Update(key("enter"))
 	sc, ok := a.top().(*animeScreen)
 	if !ok || sc.base.Source != "animecix" || sc.srcIdx != 0 {

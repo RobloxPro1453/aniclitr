@@ -26,7 +26,9 @@ type glide struct {
 // row returns the list index the band should be drawn on this frame.
 func (g *glide) row(a *App, target int) int {
 	now := time.Now()
-	if !g.init || !a.motion() {
+	// next to a picture the band jumps instead of sliding: every extra
+	// frame makes the terminal redraw the image too (Windows Terminal)
+	if !g.init || !a.motion() || a.picsOn {
 		g.pos, g.last, g.init = float64(target), now, true
 		return target
 	}

@@ -23,6 +23,9 @@ type painter struct {
 func (a *App) SelfPaint(w io.Writer) {
 	a.out = w
 	a.pt = &painter{tw: tty.NewWriter(w)}
+	a.pt.tw.Slow = func(d time.Duration, n int, images bool) {
+		logx.Infof("yavaş terminal: %d bayt %v sürdü (resim: %v)", n, d.Round(time.Millisecond), images)
+	}
 }
 
 // selfPaintSync renders every frame inline (tests).
@@ -74,6 +77,7 @@ func (a *App) buildFrame() *tty.Frame {
 		}
 	}
 	a.gfx.reqs = a.gfx.reqs[:0]
+	a.picsOn = len(f.Images) > 0
 	return f
 }
 
@@ -93,6 +97,9 @@ func (a *App) paint() {
 		return
 	}
 	a.paintCost = time.Since(t0)
+	if a.paintCost > 30*time.Millisecond {
+		logx.Infof("yavaş kare: %v (%T)", a.paintCost.Round(time.Millisecond), a.top())
+	}
 	if a.pt.tw != nil {
 		a.pt.tw.Submit(f)
 		return

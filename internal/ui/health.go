@@ -113,7 +113,7 @@ func (s *sourcesScreen) update(a *App, msg tea.Msg) tea.Cmd {
 
 func (s *sourcesScreen) view(a *App, w, h int) string {
 	cw := min(100, w-6)
-	out := []string{"", center(gradient("kaynaklar", brand, true), w), ""}
+	out := pageHeadCol("Kaynaklar", "Kaynakların erişilebilirliği ve etkinlik durumu", "", cw, w, h)
 	band := s.gl.row(a, s.cur)
 	for i, p := range source.All() {
 		in := p.Info()

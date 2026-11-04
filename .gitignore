@@ -15,3 +15,6 @@ skills-lock.json
 mpv-shot*.jpg
 *.ans
 *.log
+
+# isolated data dirs used while developing (ANICLITR_HOME)
+/.yerel/

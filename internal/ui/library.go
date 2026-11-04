@@ -515,21 +515,23 @@ func (l *library) view(a *App, w, h int) string {
 	if st := a.hist.Streak(); st > 0 {
 		stats = append(stats, fg(cAccent).Render(ic("fire"))+" "+stBold.Render(fmt.Sprint(st))+stMuted.Render(" gün seri"))
 	}
-	title := gradient("kitaplık", brand, true) + "   " + a.malLine()
 	// numbers drop from the right until the line fits (never an ellipsis mid-way)
-	for len(stats) > 0 && lipgloss.Width(title)+lipgloss.Width(strings.Join(stats, stFaint.Render("  ·  ")))+4 > inner {
+	for len(stats) > 0 && lipgloss.Width("Kitaplık")+lipgloss.Width(strings.Join(stats, stFaint.Render("  ·  ")))+8 > inner {
 		stats = stats[:len(stats)-1]
 	}
-	out = append(out, "", row2(title, strings.Join(stats, stFaint.Render("  ·  ")), inner), "")
+	head := pageHeadIn("Kitaplık", stMuted.Render("Durumlar, listeler ve puanlar  ·  ")+a.malLine(), strings.Join(stats, stFaint.Render("  ·  ")), inner, h)
+	for _, l := range head {
+		out = append(out, strings.Repeat(" ", pad)+l)
+	}
 	bodyH := h - len(out)
 	sideW := 26
 	detailW := 0
 	if inner >= 120 {
 		detailW = min(44, inner/3)
 	}
-	mainW := inner - sideW - 1
+	mainW := inner - sideW - kitGap
 	if detailW > 0 {
-		mainW -= detailW + 1
+		mainW -= detailW + kitGap
 	}
 	l.lastW = mainW - 4
 	acc := cAccent
@@ -556,7 +558,7 @@ func (l *library) view(a *App, w, h int) string {
 		}
 		cols = append(cols, panel("ayrıntı", body, detailW, bodyH, false, acc))
 	}
-	lines := hjoin(1, cols...)
+	lines := hjoin(kitGap, cols...)
 	for _, ln := range lines {
 		out = append(out, strings.Repeat(" ", pad)+ln)
 	}
@@ -860,14 +862,14 @@ func wrapChips(chips []string, w int) []string {
 // the top edge, an optional right-hand tag; the focused panel's border
 // takes the accent colour.
 func panel(title string, body []string, w, h int, focused bool, acc string, tag ...string) []string {
+	// A rounded box with its label set into the top border; the focused
+	// one takes the accent. Content is w-4 wide and h-2 tall.
 	bc := cFaint
-	tc := stMuted
 	if focused {
 		bc = mix(hex(cFaint), hex(acc), .8).hex()
-		tc = stText.Bold(true)
 	}
 	bs := fg(bc)
-	t := tc.Render(strings.ToUpperSpecial(unicode.TurkishCase, title))
+	t := label(title, focused)
 	right := ""
 	if len(tag) > 0 && tag[0] != "" {
 		right = stMuted.Render(" " + tag[0] + " ")
@@ -878,11 +880,8 @@ func panel(title string, body []string, w, h int, focused bool, acc string, tag 
 		fillW = 0
 	}
 	out := []string{bs.Render("╭─ ") + t + bs.Render(" "+strings.Repeat("─", fillW)) + right + bs.Render("─╮")}
-	inner := w - 4
-	b := block(body, inner, h-2)
-	for _, ln := range b {
+	for _, ln := range block(body, w-4, h-2) {
 		out = append(out, bs.Render("│ ")+ln+bs.Render(" │"))
 	}
-	out = append(out, bs.Render("╰"+strings.Repeat("─", w-2)+"╯"))
-	return out
+	return append(out, bs.Render("╰"+strings.Repeat("─", w-2)+"╯"))
 }

@@ -46,6 +46,16 @@ type randMsg struct {
 
 var discoverTabs = []string{"takvim", "bu akşam", "bu sezon", "türler", "öneriler", "rastgele"}
 
+// discoverDesc says, in one line, what each section answers.
+var discoverDesc = []string{
+	"Bu haftanın yayın akışı ve bölüm saatleri",
+	"Ayrılan süreye göre izleme önerileri",
+	"Bu sezonun yapımları, en beğenilenler önce",
+	"Türe göre en iyi ve en popüler yapımlar",
+	"Beğendiklerinize benzeyen yapımlar",
+	"Rastgele bir anime önerisi",
+}
+
 // tab indices
 const (
 	tCal = iota
@@ -63,6 +73,9 @@ type drow struct {
 }
 
 type discover struct {
+	menu     bool // the section menu (step one) instead of a section
+	gpick    bool // türler: choosing the genre (step two) before its list
+	mgl      glide
 	tab      int
 	cur, off [6]int
 	gl       glide
@@ -102,7 +115,7 @@ type discover struct {
 
 func newDiscover() *discover {
 	s, y := anilist.SeasonOf(time.Now())
-	return &discover{at: time.Now(), sName: s, sYear: y, budget: 60, gmode: anilist.ModeTop}
+	return &discover{menu: true, at: time.Now(), sName: s, sYear: y, budget: 60, gmode: anilist.ModeTop}
 }
 
 // openDiscover brings Keşfet forward.
@@ -118,23 +131,34 @@ func (a *App) openDiscover() tea.Cmd {
 	return tea.Batch(a.push(d), d.load(a))
 }
 
-func (d *discover) crumb() string { return "keşfet" }
+func (d *discover) crumb() string {
+	if d.menu {
+		return "keşfet"
+	}
+	return "keşfet › " + discoverTabs[d.tab]
+}
 
 func (d *discover) hints() []hint {
-	h := []hint{{"tab 1-6", "sekme"}, {"enter", "aç"}, {"a", "listeme ekle"}, {"t", "fragman"}}
+	if d.menu {
+		return []hint{{"enter", "aç"}, {"1-6", "bölüme git"}, {"esc", "geri"}}
+	}
+	h := []hint{{"enter", "aç"}, {"a", "listeme ekle"}, {"t", "fragman"}}
 	switch d.tab {
 	case tCal:
 		h = append(h, hint{"f", "sadece takip"}, hint{"p", "hepsi"})
 	case tSeason:
 		h = append(h, hint{"[ ]", "sezon"})
 	case tTonight:
-		return []hint{{"tab 1-6", "sekme"}, {"+ -", "süre"}, {"enter", "aç"}, {"esc", "geri"}}
+		return []hint{{"+ -", "süre"}, {"enter", "aç"}, {"tab", "sonraki bölüm"}, {"esc", "bölümler"}}
 	case tGenre:
-		h = append(h, hint{"[ ]", "tür"}, hint{"m", "sırala"}, hint{"space", "zar"})
+		if d.gpick {
+			return []hint{{"enter", "bu türü aç"}, {"m", "sıralama: " + d.gmode}, {"tab", "sonraki bölüm"}, {"esc", "bölümler"}}
+		}
+		h = append(h, hint{"m", "sıralama: " + d.gmode}, hint{"[ ]", "önceki / sonraki tür"}, hint{"space", "bu türden zar at"})
 	case tRandom:
 		h = append(h, hint{"space", "zar at"})
 	}
-	return append(h, hint{"esc", "geri"})
+	return append(h, hint{"tab", "sonraki bölüm"}, hint{"esc", "bölümler"})
 }
 
 func (d *discover) animating(a *App) bool {
@@ -396,6 +420,24 @@ func (d *discover) wantPosters(a *App) tea.Cmd {
 }
 
 func (d *discover) key(a *App, k tea.KeyMsg) tea.Cmd {
+	if d.menu {
+		return d.menuKey(a, k)
+	}
+	if d.tab == tGenre && d.gpick {
+		if cmd, ok := d.genrePickKey(a, k); ok {
+			return cmd
+		}
+	}
+	switch k.String() {
+	case "esc", "q", "backspace":
+		if d.tab == tGenre && !d.gpick {
+			d.gpick = true // back to the genre list
+			return a.tick()
+		}
+		d.menu = true // one step back: the section menu
+		a.slide(-1)
+		return a.tick()
+	}
 	switch d.tab {
 	case tTonight:
 		if cmd, ok := d.tonightKey(a, k); ok {
@@ -412,19 +454,19 @@ func (d *discover) key(a *App, k tea.KeyMsg) tea.Cmd {
 	rows := d.rows(a)
 	c := &d.cur[d.tab]
 	switch k.String() {
-	case "esc", "q", "backspace":
-		a.pop()
-		return nil
 	case "tab", "right", "l":
 		d.tab = (d.tab + 1) % len(discoverTabs)
+		d.gpick = d.tab == tGenre
 		d.at = time.Now()
 		return tea.Batch(d.load(a), a.tick())
 	case "shift+tab", "left", "h":
 		d.tab = (d.tab + len(discoverTabs) - 1) % len(discoverTabs)
+		d.gpick = d.tab == tGenre
 		d.at = time.Now()
 		return tea.Batch(d.load(a), a.tick())
 	case "1", "2", "3", "4", "5", "6":
 		d.tab = int(k.String()[0] - '1')
+		d.gpick = d.tab == tGenre
 		d.at = time.Now()
 		return tea.Batch(d.load(a), a.tick())
 	case "up", "k":
@@ -527,35 +569,11 @@ func (a *App) trailer(malID int, name string) tea.Cmd {
 // ---- view ----
 
 func (d *discover) view(a *App, w, h int) string {
+	if d.menu {
+		return d.menuView(a, w, h)
+	}
 	pad := 2
 	inner := w - pad*2
-	var out []string
-	// tabs with the accent underline; narrower terminals get shorter
-	// labels and smaller gaps instead of an ellipsis
-	short := []string{"takvim", "akşam", "sezon", "türler", "öneri", "zar"}
-	var tabs, under strings.Builder
-	build := func(labels []string, gap int) {
-		tabs.Reset()
-		under.Reset()
-		for i, t := range labels {
-			label := fmt.Sprintf("%d %s", i+1, t)
-			lw := len([]rune(label))
-			if i == d.tab {
-				tabs.WriteString(stBold.Render(label))
-				under.WriteString(stAccent.Render(strings.Repeat("━", lw)))
-			} else {
-				tabs.WriteString(stMuted.Render(label))
-				under.WriteString(stFaint.Render(strings.Repeat("─", lw)))
-			}
-			tabs.WriteString(strings.Repeat(" ", gap))
-			under.WriteString(stFaint.Render(strings.Repeat("─", gap)))
-		}
-	}
-	build(discoverTabs, 4)
-	brandW := lipglossWidth("keşfet") + 3
-	if brandW+lipglossWidth(tabs.String()) > inner {
-		build(short, 2)
-	}
 	info := ""
 	switch d.tab {
 	case tCal:
@@ -565,21 +583,12 @@ func (d *discover) view(a *App, w, h int) string {
 		}
 	case tSeason:
 		info = fmt.Sprintf("%s %d", anilist.SeasonTR(d.sName), d.sYear)
-	case tRecs:
-		info = "beğendiklerine göre"
-	case tTonight:
-		info = "elindekilerden, vaktine göre"
 	case tGenre:
 		info = "AniList · " + d.gmode
 	case tRandom:
 		info = d.rndNote
 	}
-	if brandW+lipglossWidth(tabs.String())+lipglossWidth(info)+2 > inner {
-		info = "" // no room: the tabs matter more
-	}
-	out = append(out, "", row2(gradient("keşfet", brand, true)+"   "+tabs.String(), stMuted.Render(info), inner))
-	uw := lipglossWidth(under.String())
-	out = append(out, strings.Repeat(" ", lipglossWidth(gradient("keşfet", brand, true))+3)+under.String()+stFaint.Render(strings.Repeat("─", max(0, inner-uw-lipglossWidth("keşfet")-3))), "")
+	out := pageHead(capTR(discoverTabs[d.tab]), discoverDesc[d.tab], info, w, h)
 	bodyH := h - len(out)
 	if d.tab == tRandom {
 		body := d.randomCard(a, inner, bodyH)
@@ -592,18 +601,40 @@ func (d *discover) view(a *App, w, h int) string {
 	rw := 0
 	if inner >= 110 {
 		rw = min(48, inner*2/5)
-		lw = inner - rw - 1
+		lw = inner - rw - kitGap
+	}
+	if d.tab == tGenre && d.gpick {
+		for _, l := range d.genrePickView(a, lw, rw, bodyH) {
+			out = append(out, strings.Repeat(" ", pad)+l)
+		}
+		return strings.Join(out, "\n")
+	}
+	title, tag := discoverTabs[d.tab], ""
+	switch d.tab {
+	case tCal:
+		title = "yayın akışı"
+		if d.onlyMine {
+			tag = "sadece takip ettiklerin"
+		}
+	case tSeason:
+		title, tag = anilist.SeasonTR(d.sName)+fmt.Sprint(" ", d.sYear), "[ ] sezon"
+	case tGenre:
+		_, tr := d.genreName()
+		title, tag = tr, "m: "+d.gmode
+	case tTonight:
+		title, tag = "sığanlar", "+ − süre"
+	case tRecs:
+		title = "sana göre"
 	}
 	var left []string
+	iw, ih := lw-4, bodyH-2
 	switch d.tab {
 	case tTonight:
-		left = d.tonightView(a, lw, bodyH)
-	case tGenre:
-		left = append([]string{d.genreHeader(lw), ""}, d.list(a, lw, bodyH-2)...)
+		left = d.tonightView(a, iw, ih)
 	default:
-		left = d.list(a, lw, bodyH)
+		left = d.list(a, iw, ih)
 	}
-	cols := [][]string{block(left, lw, bodyH)}
+	cols := [][]string{panel(title, left, lw, bodyH, true, cAccent, tag)}
 	if rw > 0 {
 		if d.tab == tTonight {
 			cols = append(cols, d.tonightCard(a, rw, bodyH))
@@ -611,7 +642,7 @@ func (d *discover) view(a *App, w, h int) string {
 			cols = append(cols, d.card(a, d.selected(a), rw, bodyH))
 		}
 	}
-	for _, l := range hjoin(1, cols...) {
+	for _, l := range hjoin(kitGap, cols...) {
 		out = append(out, strings.Repeat(" ", pad)+l)
 	}
 	return strings.Join(out, "\n")

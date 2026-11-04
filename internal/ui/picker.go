@@ -428,27 +428,28 @@ func (p *picker) view(a *App, w, h int) string {
 	pad := 2
 	inner := w - pad*2
 	var out []string
-	// heading: episode identity
-	title := gradient(truncate(p.an.Title, inner/2), brand, true)
+	// heading: the anime, then which episode and what this page asks
+	meta := ""
 	switch p.dlMode {
 	case 1:
-		title = pill("↓ İNDİRME", cAccent) + "  " + title
+		meta = pill("↓ İNDİRME", cAccent)
 	case 2:
-		title = pill(fmt.Sprintf("↓ SEZON · %d BÖLÜM", len(p.dlSeason)), cAccent) + "  " + title
+		meta = pill(fmt.Sprintf("↓ SEZON · %d BÖLÜM", len(p.dlSeason)), cAccent)
 	}
-	epl := fmt.Sprintf("  %d. Bölüm", p.ep.Number)
+	epl := fmt.Sprintf("%d. Bölüm", p.ep.Number)
 	if p.ep.Season > 1 || (len(p.an.Seasons) > 1) {
-		epl = fmt.Sprintf("  Sezon %d · Bölüm %d", p.ep.Season, p.ep.Number)
+		epl = fmt.Sprintf("Sezon %d · Bölüm %d", p.ep.Season, p.ep.Number)
 	}
 	if p.an.IsMovie() {
-		epl = "  Film"
+		epl = "Film"
 	}
-	head := title + stText.Render(epl)
+	sub := stText.Render(epl)
 	if p.ep.Title != "" && !strings.HasSuffix(p.ep.Title, "Bölüm") && !p.an.IsMovie() {
-		head += stMuted.Render("  — " + p.ep.Title)
+		sub += stMuted.Render("  — " + p.ep.Title)
 	}
-	out = append(out, truncate(head, inner), "")
-	bodyH := h - 2
+	sub += stFaint.Render("  ·  ") + stMuted.Render("önce çeviri grubunu, ardından kaynağı seçin")
+	out = append(out, pageHeadIn(truncate(p.an.Title, inner*2/3), sub, meta, inner, h)...)
+	bodyH := h - len(out)
 	switch {
 	case p.err != nil:
 		out = append(out, stErr.Render("✗ seçenekler alınamadı: ")+stMuted.Render(p.err.Error()), stMuted.Render("esc ile geri dön"))
@@ -456,10 +457,10 @@ func (p *picker) view(a *App, w, h int) string {
 		out = append(out, stAccent.Render(spinner(a.frame/2))+stMuted.Render(" fansub ve kaynaklar aranıyor…"))
 	default:
 		lw := min(44, inner*2/5)
-		rw := inner - lw - 3
+		rw := inner - lw - kitGap
 		left := p.fansubPane(a, lw, bodyH)
 		right := p.hostPane(a, rw, bodyH)
-		out = append(out, hjoin(1, block(left, lw, bodyH), vrule(bodyH), block(right, rw, bodyH))...)
+		out = append(out, columns(left, lw, right, rw, bodyH)...)
 	}
 	for i := range out {
 		out[i] = strings.Repeat(" ", pad) + out[i]

@@ -243,7 +243,7 @@ func (s *malScreen) update(a *App, msg tea.Msg) tea.Cmd {
 
 func (s *malScreen) view(a *App, w, h int) string {
 	cw := min(90, w-6)
-	out := []string{"", center(gradient("MyAnimeList", brand, true), w), ""}
+	out := pageHeadCol("MyAnimeList", "Kitaplığın MyAnimeList ile iki yönlü eşitlenmesi", "", cw, w, h)
 	st := a.msync.Status()
 	if a.mal.Connected() {
 		line := stOK.Render("● bağlı") + stMuted.Render("  ·  ") + stBold.Render(a.mal.User())

@@ -4,7 +4,10 @@ A developer and agent guide. Read it before changing code. It explains how
 the pieces fit, the invariants that keep the app correct, and the traps that
 already cost time once.
 
-User-facing docs live in `README.md`. The backlog is in `TODO.md`.
+User-facing docs live in `README.md`. Planned work is in `ROADMAP.md`,
+released changes in `CHANGELOG.md`. The layout rules (page anatomy, the
+kit, işlemler) are in `docs/DESIGN.md`; read it before changing anything on
+screen.
 
 ---
 
@@ -153,13 +156,14 @@ type typer    interface{ typing() bool }          // printable keys belong to a 
 
 | Screen | File | Notes |
 |---|---|---|
-| `home` | home.go | hero logo, search box (+ `suggest.go`), shelf, feed, spotlight, calendar, stats |
+| `home` | home.go, homemenu.go | hero logo, search box (+ `suggest.go`), one menu (devam et items + destinations) with a preview column |
+| `feedScreen` | feedview.go | "Yeni bölümler": the live feed (data stays on home) |
 | `results` | results.go | merged search results, detail pane |
 | `animeScreen` | anime.go | seasons, episodes, notes, dwell prefetch (`speed.go`) |
 | `picker` | picker.go | fansub/host/quality; play or download |
 | `playing` | playing.go, subsui.go | idle card; external subtitles |
 | `library` | library.go | shelves, list/wall, MAL status line |
-| `discover` | discover.go, tonight.go | 6 tabs: `tCal tTonight tSeason tGenre tRecs tRandom` |
+| `discover` | discmenu.go, discover.go, tonight.go | section menu first (`d.menu`, cursor = `d.tab`), then one section page: `tCal tTonight tSeason tGenre tRecs tRandom` |
 | `downloads` | downloads.go, dlib.go | offline shelf (default) / queue (`v`) |
 | `offlineScreen` | offline.go | root when there is no internet |
 | `settings` | settings.go | grouped (`settingGroup`), scrolls |
@@ -172,7 +176,8 @@ type typer    interface{ typing() bool }          // printable keys belong to a 
 - `palette` (palette.go, `ctrl+k`, fuzzy matching, live theme preview);
 - `libPopup` (popup.go, status/score/lists);
 - `dropdown` (dropdown.go, bell `◆` / burger `≡` / generic `openList`);
-- help (help.go).
+- `actions` (actions.go, `?`/`F1`): the screen's `hints()` plus global keys; choosing one replays its key (`replayKey`);
+- help (help.go, the static key sheet; "bütün kısayollar" in işlemler).
 
 While any overlay is open, sixel images are suppressed (see §5).
 
@@ -181,10 +186,11 @@ While any overlay is open, sixel images are suppressed (see §5).
 `App.compose()` returns the frame as styled lines: header, rule, body,
 footer. Then:
 
-1. The screen draws the body as strings, using the helpers in `layout.go` and
-   `theme.go`:
+1. The screen draws the body as strings, using the kit (`kit.go`:
+   `pageHead`, `split`/`columns`, `menuRows`, `label`, `emptyState`; see
+   DESIGN.md) and the helpers in `layout.go` and `theme.go`:
    - `row(w, bg, leftSpans, rightSpans)` — the standard list row;
-   - `panel()` — a btop-style box with the title set into the border;
+   - `panel()` — a rounded box, the title set into the border (`panes` pairs two);
    - `block`, `hjoin`, `fit`, `truncate`, `wrap`, `center`,
      `progressBar`, `sectionTitle`, `scrollbar`, `pill`.
 2. The selection is drawn the same way everywhere: `bg = cBand`,
@@ -195,8 +201,10 @@ footer. Then:
    - the `anchor()` marker on the selected row, which tells effects where to
      spawn.
 4. Overlays are composited with `overlay`, `overlayAt` and `dim`.
-5. The footer comes from `hintLine()`, which fits hints by priority and ends
-   with "? hepsi". So **list hints most important first**.
+5. The footer comes from `footerHints()` + `hintLine()`: the first three
+   screen hints, then "? işlemler" and "esc geri". Every hint is also an
+   entry in işlemler. So **list hints most important first, and give every
+   action a hint**.
 
 ### 4.3 Theme
 
@@ -302,7 +310,7 @@ fix, built so drift cannot persist:
 - `ui/e2e_test.go`, `TestEndToEndNoDrift`: a whole session through the real
   renderer into the emulator, checked cell by cell.
 
-**Poster memory (v0.10.1, see OPTIMIZATION.md).**
+**Poster memory (v0.10.1, see docs/OPTIMIZATION.md).**
 
 - A poster keeps only a ≤96 px master (`posterState.img`, ~56 KB) in RAM.
 - The sixel path builds its 480 px source **on demand** in the encode worker (`fullImage`): it reads the cover back from the disk cache (`kapaklar/`) and caches the encoded sixel. `posterState.raw` (the file bytes) is kept only when the cover is not on disk.

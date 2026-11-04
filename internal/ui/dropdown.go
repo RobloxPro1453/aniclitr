@@ -19,6 +19,7 @@ import (
 
 type dropItem struct {
 	icon, label, note string
+	group             string // non-empty: a section label, not selectable
 	color             string
 	dim               bool // already read
 	run               func(a *App) tea.Cmd
@@ -161,10 +162,19 @@ func (d *dropdown) update(a *App, k tea.KeyMsg) tea.Cmd {
 	case "alt+m", "f10", "alt+n", "f9":
 		a.closeDropdown()
 		return nil
-	case "up", "k":
-		d.cur = max(0, d.cur-1)
+	case "?", "f1":
+		if d.kind == "actions" {
+			a.closeDropdown()
+			return nil
+		}
+	case "up", "k", "shift+tab":
+		d.cur = dropNext(items, d.cur, -1)
 	case "down", "j", "tab":
-		d.cur = clamp(d.cur+1, 0, len(items)-1)
+		d.cur = dropNext(items, d.cur, 1)
+	case "home", "g":
+		d.cur = dropNext(items, -1, 1)
+	case "end", "G":
+		d.cur = dropNext(items, len(items), -1)
 	case "x", "delete":
 		if d.cur < len(items) && items[d.cur].del != nil {
 			items[d.cur].del(a)
@@ -202,12 +212,15 @@ func (a *App) closeDropdown() {
 func (d *dropdown) draw(a *App, lines []string) []string {
 	items := d.items(a)
 	w := min(60, a.w-4)
-	if d.kind == "menu" {
+	switch d.kind {
+	case "menu":
 		w = min(40, a.w-4)
+	case "actions":
+		w = min(52, a.w-4)
 	}
 	inner := w - 2
 	bs := fg(mix(hex(cFaint), hex(cAccent), .7).hex())
-	maxRows := min(len(lines)-4, 14)
+	maxRows := min(len(lines)-4, 18)
 	var box []string
 	title := stText.Bold(true).Render(d.title)
 	if d.kind == "bell" && len(items) > 0 {
@@ -228,6 +241,10 @@ func (d *dropdown) draw(a *App, lines []string) []string {
 	band := d.gl.row(a, d.cur)
 	for i := off; i < len(items) && i < off+maxRows; i++ {
 		it := items[i]
+		if it.group != "" {
+			box = append(box, bs.Render("│")+fit("  "+label(it.group, false), inner)+bs.Render("│"))
+			continue
+		}
 		sel := i == band
 		bg, bar := "", sp("  ", cText)
 		tc := cText
@@ -263,6 +280,16 @@ func (d *dropdown) draw(a *App, lines []string) []string {
 		y = int(float64(-len(box)) * (1 - easeOutCubic(d.openT.p())))
 	}
 	return overlayAt(lines, box, a.w-w-1, y, a.w)
+}
+
+// dropNext is the next selectable item from cur in dir (cur if none).
+func dropNext(items []dropItem, cur, dir int) int {
+	for i := cur + dir; i >= 0 && i < len(items); i += dir {
+		if items[i].group == "" {
+			return i
+		}
+	}
+	return clamp(cur, 0, len(items)-1)
 }
 
 // headerButtons renders "◆ 2  ≡" for the header's right edge.

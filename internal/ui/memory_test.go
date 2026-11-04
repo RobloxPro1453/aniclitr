@@ -116,7 +116,7 @@ func TestPosterTrimReloads(t *testing.T) {
 	}
 }
 
-// The heavy session from OPTIMIZATION.md: 150 covers, sixel on, the library
+// The heavy session from docs/OPTIMIZATION.md: 150 covers, sixel on, the library
 // wall scrolled end to end. ANICLITR_MEM=1 (slow: encodes 150 sixels).
 func TestMemHeavySession(t *testing.T) {
 	if os.Getenv("ANICLITR_MEM") == "" {

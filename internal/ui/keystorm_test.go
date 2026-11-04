@@ -49,7 +49,10 @@ func TestKeyStorm(t *testing.T) {
 		"home":      func(a *App) screen { return nil },
 		"library":   func(a *App) screen { return newLibrary() },
 		"discover":  func(a *App) screen { d := newDiscover(); d.schedOK = true; return d },
+		"discsec":   func(a *App) screen { d := newDiscover(); d.schedOK = true; d.menu = false; return d },
+		"genrepick": func(a *App) screen { d := newDiscover(); d.tab, d.menu, d.gpick = tGenre, false, true; return d },
 		"downloads": func(a *App) screen { return newDownloads() },
+		"feed":      func(a *App) screen { return newFeedScreen() },
 		"settings":  func(a *App) screen { return newSettings() },
 		"sources":   func(a *App) screen { return &sourcesScreen{} },
 		"anime": func(a *App) screen {

@@ -551,15 +551,27 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-func (s *animeScreen) view(a *App, w, h int) string {
+func (s *animeScreen) view(a *App, w, ht int) string {
 	pad := 2
 	inner := w - pad*2
+	var meta []string
+	if s.an.Kind != "" {
+		meta = append(meta, s.an.Kind)
+	}
+	if s.an.Year > 0 {
+		meta = append(meta, fmt.Sprint(s.an.Year))
+	}
+	if p := source.Get(s.an.Source); p != nil {
+		meta = append(meta, p.Info().Name)
+	}
+	head := pageHeadIn(truncate(s.an.Title, inner*2/3), "Bir bölüm seçin: enter çeviri grubunu sorar, p doğrudan oynatır", strings.Join(meta, " · "), inner, ht)
+	h := ht - len(head)
 	showDetail := inner >= 92
 	lw := inner
 	rw := 0
 	if showDetail {
 		lw = inner * 55 / 100
-		rw = inner - lw - 3
+		rw = inner - lw - kitGap
 	}
 	var left []string
 	switch {
@@ -572,13 +584,14 @@ func (s *animeScreen) view(a *App, w, h int) string {
 	case !s.ready:
 		left = append(s.sourceBar(a, lw), "", fg(s.accent(a)).Render(spinner(a.frame/2))+stMuted.Render(" yükleniyor…"))
 	default:
-		left = s.episodePane(a, lw, h)
+		left = s.episodePane(a, lw-4, h-2)
 	}
-	cols := [][]string{block(left, lw, h)}
+	acc := s.accent(a)
+	cols := [][]string{panel("bölümler", left, lw, h, true, acc)}
 	if showDetail {
-		cols = append(cols, vrule(h), detailPane(a, s.an, nil, rw, h, s.descOff, "", 1))
+		cols = append(cols, panel("ayrıntı", detailPane(a, s.an, nil, rw-4, h-2, s.descOff, "", 1), rw, h, false, acc))
 	}
-	lines := hjoin(1, cols...)
+	lines := append(head, hjoin(kitGap, cols...)...)
 	for i := range lines {
 		lines[i] = strings.Repeat(" ", pad) + lines[i]
 	}
