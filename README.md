@@ -274,6 +274,8 @@ Gereksinim: TTY, UTF-8, en az 60×18. `NO_COLOR` ya da `TERM=dumb` ile kapaklar 
 
 Mimari, akışlar, kurallar ve tuzaklar için **[ARCHITECTURE.md](ARCHITECTURE.md)**. Yapılacaklar **[TODO.md](TODO.md)** dosyasında.
 
+Güncelleme sisteminin ayrıntıları ve adım adım sürüm çıkarma: **[UPDATE.md](UPDATE.md)**.
+
 **Sürüm çıkarmak:** `internal/ui/onboard.go` içine `whatsNew["X.Y.Z"]` satırlarını yaz, her şeyi commit et, sonra çalıştır:
 
 ```

@@ -7,6 +7,7 @@ func init() { newPathOps = func() pathOps { return &fakePath{} } }
 type fakePath struct {
 	on, legacy, installed bool
 	adds                  int
+	target                string // installed copy path (tests that install set it)
 }
 
 func (f *fakePath) Has() bool              { return f.on }
@@ -15,3 +16,4 @@ func (f *fakePath) Remove() error          { f.on = false; return nil }
 func (f *fakePath) Dir() (string, error)   { return `C:\Users\x\AppData\Local\Programs\aniclitr`, nil }
 func (f *fakePath) NeedsMigration() bool   { return f.legacy }
 func (f *fakePath) RunningInstalled() bool { return f.installed }
+func (f *fakePath) Installed() string      { return f.target }

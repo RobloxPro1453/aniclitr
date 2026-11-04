@@ -20,6 +20,7 @@ type pathOps interface {
 	Dir() (string, error)
 	NeedsMigration() bool
 	RunningInstalled() bool
+	Installed() string // path of the installed copy
 }
 
 type realPath struct{}
@@ -30,6 +31,7 @@ func (realPath) Remove() error          { return pathx.Remove() }
 func (realPath) Dir() (string, error)   { return pathx.Dir() }
 func (realPath) NeedsMigration() bool   { return pathx.NeedsMigration() }
 func (realPath) RunningInstalled() bool { return pathx.RunningInstalled() }
+func (realPath) Installed() string      { return pathx.Installed() }
 
 var newPathOps = func() pathOps { return realPath{} }
 
@@ -49,10 +51,35 @@ func (a *App) togglePath(on bool) tea.Cmd {
 	case on:
 		a.notify("kuruldu — yeni bir terminal açıp aniclitr yazman yeter", "ok")
 		a.flash()
+		return tea.Batch(a.tick(), a.officialInstall())
 	default:
 		a.notify("PATH'ten çıkarıldı", "ok")
 	}
 	return a.tick()
+}
+
+// officialInstall puts the published release over the copy that was just
+// installed. Installing copies whatever build is running, and a local build
+// may not know where updates come from; the release always does, so the
+// installed copy can keep itself current from then on. Offline, or with no
+// release yet, the copied build simply stays.
+func (a *App) officialInstall() tea.Cmd {
+	if update.Repo == "" || a.path.RunningInstalled() {
+		return nil
+	}
+	target, cur := a.path.Installed(), Version
+	return guard("resmi sürüm", func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+		defer cancel()
+		rel, err := update.Latest(ctx)
+		if err != nil || !rel.Ready() || update.Newer(cur, rel.Version) {
+			return nil // nothing published, or this build is newer than the release
+		}
+		if err := update.Install(ctx, rel, target); err != nil {
+			return toastMsg{"kurulu kopya resmi sürüme geçirilemedi: " + err.Error(), "warn"}
+		}
+		return toastMsg{"kurulu kopya resmi sürümde (" + rel.Version + ") · güncellemeleri kendisi alır", "ok"}
+	})
 }
 
 // migratePath: an earlier version put a build folder (clipro\bin) on PATH;
@@ -61,6 +88,11 @@ func (a *App) migratePath() tea.Cmd {
 	if !a.path.NeedsMigration() {
 		return nil
 	}
+	return tea.Sequence(a.movePath(), a.officialInstall())
+}
+
+// movePath installs the running build and switches PATH to it.
+func (a *App) movePath() tea.Cmd {
 	p := a.path
 	return guard("PATH taşıma", func() tea.Msg {
 		if err := p.Add(); err != nil {

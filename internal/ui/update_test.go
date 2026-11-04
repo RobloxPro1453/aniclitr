@@ -74,20 +74,35 @@ func TestUpdateDevCopyOnlyTells(t *testing.T) {
 	}
 }
 
-// The old PATH entry (the build folder) moves to the installed copy.
+// The old PATH entry (the build folder) moves to an installed copy, and
+// that copy becomes the published release (a local build may not know where
+// updates come from; the release always does).
 func TestPathMigratesToInstalledCopy(t *testing.T) {
+	fakeReleases(t, []byte("aniclitr release"))
+	Version = "9.9.9" // same as the release: still take the official build
 	a := testApp(t, Graphics{})
 	fp := a.path.(*fakePath)
 	fp.legacy = true
-	cmd := a.migratePath()
-	if cmd == nil {
+	fp.target = filepath.Join(t.TempDir(), "aniclitr.exe")
+	os.WriteFile(fp.target, []byte("local build"), 0o755)
+	if a.migratePath() == nil {
 		t.Fatal("a build folder on PATH should be migrated")
 	}
-	a.Update(cmd())
+	a.Update(a.movePath()())
 	if !fp.on || fp.legacy || fp.adds != 1 {
 		t.Fatalf("migration should install and switch PATH: %+v", fp)
 	}
+	a.Update(a.officialInstall()())
+	if b, _ := os.ReadFile(fp.target); string(b) != "aniclitr release" {
+		t.Fatalf("the installed copy should be the release, has %q", b)
+	}
 	if a.migratePath() != nil {
 		t.Fatal("nothing to do the second time")
+	}
+	// a build newer than the release is left alone
+	Version = "10.0.0"
+	os.WriteFile(fp.target, []byte("newer local build"), 0o755)
+	if msg := a.officialInstall()(); msg != nil {
+		t.Fatalf("a newer build must not be replaced by an older release: %v", msg)
 	}
 }
