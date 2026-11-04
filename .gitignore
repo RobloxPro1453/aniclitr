@@ -1,0 +1,17 @@
+# build output
+/bin/
+/dist/
+*.exe
+*.exe.old
+
+# third-party reference code and local tooling (not part of aniclitr)
+/refs/
+/.agents/
+/.taste-skill/
+/.claude/
+skills-lock.json
+
+# stray files (mpv's own screenshot key writes into the working folder)
+mpv-shot*.jpg
+*.ans
+*.log

@@ -1,0 +1,59 @@
+# Pushing a vX.Y.Z tag (scripts/release.ps1 does it) tests aniclitr on
+# Windows, builds it for every platform and publishes a GitHub release with
+# a SHA-256 checksums.txt. Installed copies update themselves from it.
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./cmd/... ./internal/...
+      - run: go test ./internal/...
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          ver="${tag#v}"
+          mkdir -p dist
+          for target in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            out="dist/aniclitr_${os}_${arch}"
+            [ "$os" = windows ] && out="$out.exe"
+            GOOS="$os" GOARCH="$arch" go build -trimpath \
+              -ldflags "-s -w -X main.version=${ver} -X aniclitr/internal/update.Repo=${GITHUB_REPOSITORY}" \
+              -o "$out" ./cmd/aniclitr
+          done
+          (cd dist && sha256sum aniclitr_* > checksums.txt)
+      - name: Notes
+        run: |
+          git fetch --force --tags
+          git for-each-ref "refs/tags/${GITHUB_REF_NAME}" --format='%(contents)' > notes.md
+          [ -s notes.md ] || echo "aniclitr ${GITHUB_REF_NAME}" > notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --title "aniclitr ${GITHUB_REF_NAME#v}" --notes-file notes.md
