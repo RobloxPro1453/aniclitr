@@ -1,14 +1,14 @@
-# aniclitr — bellek ve kaynak raporu (2026-11-04, v0.10.0)
+# aniclitr — bellek ve kaynak raporu (v0.10 → v0.11)
 
-**Durum:** Ö1, Ö2, Ö3 ve Ö5 **uygulandı (v0.10.1)**; sonuçlar §7'de. Ö4 bekliyor.
+**Durum:** Ö1–Ö5 uygulandı (v0.10.1 ve v0.11.0). Sonuçlar §7'de.
 
-**Kural:** her adım *kayıpsız* olmalı. Ekranda aynı görüntü, aynı akıcılık, aynı tepki süresi.
+**İlke:** her adım kullanıcı deneyimi açısından *kayıpsız* olmalı. Ekranda aynı görüntü, aynı akıcılık, aynı tepki süresi.
 
 ---
 
 ## 1. Özet
 
-- Görev Yöneticisi'nde **253,7 MB** görünüyor. Bunun neredeyse tamamı **kapak görselleri**.
+- v0.10.0'da ağır bir oturumda Görev Yöneticisi **~250 MB** gösteriyordu. Bunun neredeyse tamamı **kapak görselleri**.
 - Bir kapak diskte ortalama **103 KB** yer tutuyor, bellekte **1,47 MB**. Yani yaklaşık **14 kat**.
 - Kapak önbelleği hiç boşalmıyor. Ana sayfa, kitaplık duvarı, keşfet ve arama gezildikçe büyüyor.
 - Go'nun çöp toplayıcısı (GC) varsayılan ayarla, canlı belleğin yaklaşık **2 katını** işletim sisteminden ayırıyor.

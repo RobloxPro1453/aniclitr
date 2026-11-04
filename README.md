@@ -38,7 +38,7 @@ mpv dışındakiler isteğe bağlıdır. Eksik olanı ilk açılış rehberi gö
 
 **Kurulum ve güncelleme**
 
-- GitHub'daki **Releases** sayfasından `aniclitr_windows_amd64.exe` dosyasını indirip çalıştır (ya da kaynaktan derle).
+- [Releases](https://github.com/RobloxPro1453/aniclitr/releases/latest) sayfasından sistemine uygun dosyayı indirip çalıştır (Windows: `aniclitr_windows_amd64.exe`). Ayrıntılar: [UPDATE.md](UPDATE.md).
 - İlk açılıştaki turda **terminal kısayolu** adımı aniclitr'i `%LOCALAPPDATA%\Programs\aniclitr\` altına kurar ve PATH'e ekler. Sonradan da yapılabilir: Ayarlar → Terminalden aç.
 - O andan sonra her terminalde `aniclitr` yazman yeter.
 - **Kurulu kopya kendini günceller.** Açılışta GitHub'daki son sürüme bakar; varsa indirir, SHA-256 ile doğrular ve bir sonraki açılışta yeni sürüm açılır.

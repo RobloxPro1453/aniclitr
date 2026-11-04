@@ -23,7 +23,7 @@ viewers. It is a Go program with these parts:
 - **Metadata:** AniList for discovery (schedule, seasons, recommendations,
   trailers).
 
-**Hard product rules (from the owner):**
+**Product rules:**
 
 1. **Keyboard only.** No mouse-driven features. A little legacy mouse
    support on home exists, but do not build on it.
@@ -394,8 +394,8 @@ NUL characters.
   - Some titles are dub-only.
 - **AnimeDepo (legacy):** the GitLab `dizin.json` index plus per-anime JSON.
   Players with a `DEAD_` prefix are skipped. Resolved via yt-dlp.
-- **Down:** TürkAnime closed 2026-09-19. Sibnet returns 403 from the
-  owner's IP.
+- **Down:** TürkAnime closed 2026-09-19. Sibnet often returns 403 from
+  Turkish ISPs.
 - **Not usable by design (checked 2026-11-04; do not work around):**
   - OpenAnime: `api.openani.me` answers non-browser clients with 401 "OpenAnime
     Vanguard".
@@ -404,7 +404,7 @@ NUL characters.
   - Deokwave: search is open, but video sits behind a CSRF-bound
     `POST /api/v1/video/token`.
   - tranimaci.com: own "Güvenlik Doğrulaması" wall.
-  - Unreachable from the owner's network: animex.club, animeprax.com.
+  - Unreachable from some Turkish networks: animex.club, animeprax.com.
 
 ### 6.4 Health
 
@@ -476,7 +476,7 @@ details are on `sourcesScreen`.
 | MyAnimeList API v2 | `mal` | OAuth2 PKCE (plain) with the **user's own** client id | redirect `http://localhost:47615/callback`; local one-shot HTTP server; refresh 5 min before expiry |
 | MAL sync | `malsync` | — | pull at start and every 15 min; push dirty items 2 s after a burst; a local unsent edit wins; deletions queued; titles without a MAL id are matched via AniList search |
 | AniList GraphQL | `anilist` | none | ~350 ms polite gap; memory and disk cache with TTL; `FuzzyDateInt` for date filters |
-| Jikan | — | — | **unreachable from the owner's network. Do not use it.** |
+| Jikan | — | — | **often unreachable from Turkish networks. Do not use it.** |
 | AniSkip v2 | `aniskip` | none | `types[]=op&ed&mixed-op&mixed-ed&recap&episodeLength=0` |
 | OpenSubtitles REST v1 | `subs` | user API key (`opensubtitles_api_key`) | search, then download link, then file in cache; added to mpv with `sub-add` |
 
