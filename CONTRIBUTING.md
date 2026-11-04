@@ -69,3 +69,7 @@ Arayüzde değişiklik gerekmez. Ayrıntılar: [docs/ARCHITECTURE.md §6](docs/A
 2. Değişikliklerinizi küçük ve odaklı commit'ler halinde yapın. Commit mesajları kısa ve açıklayıcı olmalıdır (örnek: `ui: keşfet türler adımına sıralama ekle`).
 3. Testlerin geçtiğini doğrulayın.
 4. Bir çekme isteği (pull request) açın; değişikliğin amacını ve nasıl test edildiğini açıklayın. Arayüz değişikliklerinde ekran görüntüsü ekleyin.
+
+## Lisans
+
+Bu projeye gönderilen katkılar, projenin lisansı olan [GNU Genel Kamu Lisansı sürüm 3](LICENSE) (GPL-3.0) altında lisanslanmış kabul edilir. Başka projelerden kod uyarlanıyorsa kaynağın lisansının GPL-3.0 ile uyumlu olduğundan emin olun ve kaynağı commit mesajında belirtin.

@@ -7,6 +7,7 @@
 [![Sürüm](https://img.shields.io/github/v/release/RobloxPro1453/aniclitr?label=s%C3%BCr%C3%BCm)](https://github.com/RobloxPro1453/aniclitr/releases/latest)
 [![Go](https://img.shields.io/badge/Go-1.27%2B-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Platformlar](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-informational)](#kurulum)
+[![Lisans: GPL-3.0](https://img.shields.io/badge/lisans-GPL--3.0-blue)](LICENSE)
 
 </div>
 
@@ -30,6 +31,7 @@ aniclitr; anime arama, çeviri grubu (fansub) seçimi, oynatma, indirme ve izlem
 - [Yapılandırma](#yapılandırma)
 - [Sorun giderme](#sorun-giderme)
 - [Geliştirme](#geliştirme)
+- [Lisans](#lisans)
 - [Sorumluluk reddi](#sorumluluk-reddi)
 
 ---
@@ -330,6 +332,16 @@ go vet ./...
 go test ./internal/...                    # çevrimdışı testler
 ANICLITR_LIVE=1 go test ./internal/...    # gerçek kaynaklara karşı testler
 ```
+
+---
+
+## Lisans
+
+Copyright © 2026 RobloxPro1453 ve katkıda bulunanlar.
+
+aniclitr özgür bir yazılımdır: Free Software Foundation tarafından yayımlanan [GNU Genel Kamu Lisansı sürüm 3](LICENSE) (GPL-3.0) koşulları altında yeniden dağıtabilir ve/veya değiştirebilirsiniz. Değiştirilmiş sürümlerin dağıtımı da aynı lisansla ve kaynak koduyla birlikte yapılmalıdır.
+
+Bu program yararlı olması umuduyla dağıtılmaktadır, ancak **hiçbir garanti verilmez**; satılabilirlik ya da belirli bir amaca uygunluk garantisi dahil. Ayrıntılar için [LICENSE](LICENSE) dosyasına bakın.
 
 ---
 
