@@ -6,6 +6,7 @@ Bu belge planlanan ve değerlendirilen çalışmaları listeler. Öncelikler de�
 
 ## Öncelikli
 
+- **Depolama alanı göstergesi:** İndirilenler ekranında toplam kullanılan alanı ve diskteki boş alanı gösteren depolama çubuğu.
 - **Torrent desteği:** nyaa.si üzerinden arama; aria2 ya da WebTorrent ile akış ve indirme.
 - **Ek çevrimiçi altyazı sağlayıcıları:** Günlük kota sınırı olmayan ücretsiz Türkçe/İngilizce/Japonca altyazı kaynakları (ör. Subdl, Jimaku) ve yerel `.srt`/`.ass` dosyası seçici.
 - **AniList hesap eşitlemesi:** MyAnimeList'e alternatif olarak AniList OAuth entegrasyonu (özel listeleri ve çok sezonlu yapıyı doğrudan destekler).

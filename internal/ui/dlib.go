@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -105,6 +106,10 @@ func (d *downloads) libKey(a *App, k tea.KeyMsg) (tea.Cmd, bool) {
 				a.dl.Remove(j.ID, true)
 				a.notify(fmt.Sprintf("%s S%d·B%d diskten silindi", j.Title, j.Season, j.Episode), "ok")
 			}
+		case "X":
+			n := a.dl.RemoveAnime(show.key)
+			d.openShow = ""
+			a.notify(fmt.Sprintf("%s (%d bölüm) tümüyle diskten silindi", show.title, n), "ok")
 		default:
 			return nil, false
 		}
@@ -124,6 +129,18 @@ func (d *downloads) libKey(a *App, k tea.KeyMsg) (tea.Cmd, bool) {
 		if d.libCur < len(shows) {
 			d.openShow, d.epCur = shows[d.libCur].key, 0
 			a.flash()
+		}
+	case "x", "X", "delete":
+		if d.libCur < len(shows) {
+			sh := shows[d.libCur]
+			if d.confirmShow == sh.key && time.Since(d.confirmAt) < 4*time.Second {
+				n := a.dl.RemoveAnime(sh.key)
+				d.confirmShow = ""
+				a.notify(fmt.Sprintf("%s (%d bölüm) diskten silindi", sh.title, n), "ok")
+			} else {
+				d.confirmShow, d.confirmAt = sh.key, time.Now()
+				a.notify(fmt.Sprintf("%s (%d bölüm) diskten silinsin mi? onay için tekrar x", sh.title, len(sh.eps)), "warn")
+			}
 		}
 	default:
 		return nil, false

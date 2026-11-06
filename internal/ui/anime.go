@@ -68,7 +68,7 @@ func (s *animeScreen) hints() []hint {
 	if len(s.selEps) > 0 {
 		return []hint{{"v", "seç/bırak"}, {"d/D", fmt.Sprintf("seçilileri indir (%d)", len(s.selEps))}, {"V", "seçimi temizle"}, {"esc", "geri"}}
 	}
-	return append(h, hint{"w", "izlendi"}, hint{"v", "seç"}, hint{"d", "indir"}, hint{"D", "toplu indir"}, hint{"N", "not"}, hint{"t", "fragman"}, hint{"y", "benzerleri"}, hint{"a", "kitaplık"}, hint{"esc", "geri"})
+	return append(h, hint{"w", "izlendi"}, hint{"v", "seç"}, hint{"d", "indir"}, hint{"D", "toplu indir"}, hint{"x", "indirilen bölümü sil"}, hint{"N", "not"}, hint{"t", "fragman"}, hint{"y", "benzerleri"}, hint{"a", "kitaplık"}, hint{"esc", "geri"})
 }
 
 func (s *animeScreen) animating(a *App) bool {
@@ -653,10 +653,26 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 		if len(eps) > 0 {
 			return s.openBatchDownloadMenu(a, eps)
 		}
+	case "x", "delete":
+		if s.cur < len(eps) {
+			ep := eps[s.cur]
+			if j, ok := a.dl.LocalFor(s.an, ep.Season, ep.Number); ok {
+				a.dl.Remove(j.ID, true)
+				a.notify(fmt.Sprintf("%s S%d·B%d diskten silindi", s.an.Title, ep.Season, ep.Number), "ok")
+				return a.tick()
+			}
+			if j, ok := a.dl.ForAnime(s.an, ep.Season, ep.Number); ok && (j.State == download.Queued || j.State == download.Resolving || j.State == download.Running) {
+				a.dl.Cancel(j.ID)
+				a.notify(fmt.Sprintf("S%d·B%d indirmesi iptal edildi", ep.Season, ep.Number), "ok")
+				return a.tick()
+			}
+			a.notify("bu bölüm henüz indirilmemiş", "warn")
+			return a.tick()
+		}
 	case "enter", "p", " ":
 		if s.cur < len(eps) && k.String() != "enter" {
 			// a downloaded copy plays offline, instantly
-			if j, ok := a.dl.Local(s.an.Key(), eps[s.cur].Season, eps[s.cur].Number); ok {
+			if j, ok := a.dl.LocalFor(s.an, eps[s.cur].Season, eps[s.cur].Number); ok {
 				a.flash()
 				return a.playLocal(j, eps)
 			}
@@ -892,7 +908,7 @@ func (s *animeScreen) episodePane(a *App, w, h int) []string {
 		if ent.Notes[key] != "" {
 			right = append(right, sp("✎ ", cAccent2))
 		}
-		if j, ok := a.dl.For(s.an.Key(), ep.Season, ep.Number); ok {
+		if j, ok := a.dl.ForAnime(s.an, ep.Season, ep.Number); ok {
 			ic, c := dlIcon(j.State)
 			switch j.State {
 			case download.Done:

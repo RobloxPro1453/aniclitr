@@ -185,6 +185,7 @@ Tüm kısayollar `?` (İşlemler) menüsünde de listelenir.
 | `w` | İzlendi olarak işaretle |
 | `v` · `V` | Bölümü toplu indirme için seç (`[✓]`) · seçimi temizle |
 | `d` · `D` | Bölümü indir · toplu / aralıklı indirme menüsü (`30-100`, seçili bölümden sona, izlenmeyenler, tüm sezon) |
+| `x` | İndirilmiş bölümü (`↓`) diskten sil veya aktif indirmeyi iptal et |
 | `N` | Bölüme not ekle |
 | `a` | Kitaplık: durum, puan, listeler |
 | `t` | Fragman |
@@ -263,7 +264,7 @@ Parolanız aniclitr'e hiçbir zaman iletilmez (OAuth PKCE). Oturum otomatik olar
 - **İndirme araçları:** Doğrudan dosyalar için aria2c (çok bağlantılı, devam ettirilebilir), HLS akışları için yt-dlp; ikisi de yoksa dahili HTTP indirici kullanılır.
 - **Bağlantı süresi:** Kaynak bağlantıları süreli olduğundan her iş, sırası geldiğinde güncel bağlantıyla başlar.
 - **Dosya düzeni:** `~/Videos/aniclitr/<Anime>/S01E05 [çeviri grubu] [1080p].mp4`. Varsa altyazı aynı adla, kapak `kapak.jpg` olarak aynı klasöre kaydedilir.
-- **Çevrimdışı izleme:** İndirilen bölümler listede `↓` ile işaretlenir ve `p` ile internet bağlantısı olmadan oynatılır.
+- **Çevrimdışı izleme ve yönetim:** İndirilen bölümler listede `↓` ile işaretlenir ve `p` ile internet bağlantısı olmadan oynatılır. Hem bölüm listesinde hem de İndirilenler (`ctrl+d`) rafında `x` tuşuyla tek bir bölümü ya da tüm seriyi diskten silebilirsiniz. Kuyruk geçmişini `c` ile temizlemek çevrimdışı kitaplığı etkilemez; ayrıca klasördeki mevcut videolar otomatik taranarak kitaplığa eklenir.
 - Açılışta internet bağlantısı yoksa yalnızca çevrimdışı kitaplık gösterilir; bağlantı geldiğinde ana sayfa otomatik olarak açılır.
 
 ---

@@ -2,6 +2,18 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [0.15.1]
+
+### Eklenenler
+- **Otomatik çevrimdışı klasör taraması (`internal/download`)**: Uygulama açılışında ve İndirilenler ekranında `download_dir` (`~/Videos/aniclitr`) klasörü otomatik taranır; kuyruk geçmişi temizlenmiş olsa bile diskteki mevcut `.mp4` bölümleri ve kapakları otomatik olarak **Çevrimdışı Kitaplık** rafına geri kazandırılır.
+- **Hızlı diskten silme (`x` / `X`)**:
+  - **İndirilenler ana rafında (`ctrl+d`)**: Bir serinin kapağı üzerindeyken `x` veya `delete` tuşuna iki kez basarak tüm seriyi bütün bölümleriyle birlikte diskten silebilirsiniz.
+  - **Normal anime bölüm listesinde (`animeScreen`)**: İndirilmiş (`↓`) bir bölümün üzerindeyken `x` tuşuyla o bölümü doğrudan diskten silebilir veya devam eden indirmeyi iptal edebilirsiniz.
+  - Bir serinin son bölümü silindiğinde boş kalan klasörü ve `kapak.jpg` dosyası otomatik temizlenir.
+
+### Düzeltilenler
+- **İndirme kuyruğunu temizleyince (`c`) çevrimdışı kitaplığın boşalması (`internal/download`, `internal/ui/downloads.go`)**: Kuyruk ekranında `c` (*bitenleri temizle*) veya `x` (*sıradan gizle*) tuşuna basıldığında tamamlanmış indirmelerin `downloads.json` indeksinden silinip Çevrimdışı Kitaplık'tan kaybolmasına yol açan hata giderildi (`Job.Cleared` ayrımı).
+
 ## [0.15.0]
 
 ### Eklenenler
@@ -135,6 +147,7 @@ Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları 
 - Benzer animeler (`y`), kapaklı çevrimdışı kitaplık, `ctrl+z` ile geri alma.
 - Bozuk kaynakta sıradaki kaynağa otomatik geçiş ve bölüm bağlantılarının önceden hazırlanması.
 
+[0.15.1]: https://github.com/RobloxPro1453/aniclitr/releases/tag/v0.15.1
 [0.15.0]: https://github.com/RobloxPro1453/aniclitr/releases/tag/v0.15.0
 [0.14.0]: https://github.com/RobloxPro1453/aniclitr/releases/tag/v0.14.0
 [0.13.0]: https://github.com/RobloxPro1453/aniclitr/releases/tag/v0.13.0

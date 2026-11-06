@@ -15,6 +15,10 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"0.15.1": {
+		"Çevrimdışı Kitaplık koruması ve otomatik disk tarama: indirme kuyruğunda c ile 'bitenleri temizle' yapıldığında çevrimdışı kitaplığın boşalması düzeltildi; indirilenler klasöründeki mevcut videolar otomatik taranıp kitaplığa geri yüklenir",
+		"Hızlı diskten silme (x / X): İndirilenler rafında bir serinin üstündeyken x tuşuyla tüm seriyi, içine girince veya normal bölüm listesindeyken x ile tek bölümü diskten silebilirsiniz",
+	},
 	"0.15.0": {
 		"Karakterler ve Kadro ekranı (c): seri sayfasındaki rozetten açılır; karakter portreleri, biyografiler (spoiler gizleme/açma), ana/yardımcı roller ve Japonca seslendirme sanatçıları (Seiyuu) fotoğraflarıyla görüntülenir",
 		"Çoklu bölüm ve aralık indirme (v / D): bölümleri v ile tek tek seçebilir veya D menüsünden 'buradan sona kadar', 'sadece izlenmeyenler' ya da 'özel aralık (örn. 30-100)' seçerek tek seferde indirebilirsiniz",

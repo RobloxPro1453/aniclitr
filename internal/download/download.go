@@ -71,6 +71,7 @@ type Job struct {
 	Total    int64     `json:"total"`
 	Added    time.Time `json:"added"`
 	Finished time.Time `json:"finished,omitempty"`
+	Cleared  bool      `json:"cleared,omitempty"` // hidden from queue view, kept in offline shelf
 
 	Speed float64       `json:"-"` // bytes/s
 	ETA   time.Duration `json:"-"`
@@ -150,21 +151,124 @@ func Open(dir string) *Manager {
 			m.jobs = append(m.jobs, j)
 		}
 	}
+	m.ScanDisk()
 	return m
+}
+
+var reDiskFile = regexp.MustCompile(`(?i)^(?:S(\d+)E(\d+)|(Film))(?:\s*\[([^\]]+)\])?(?:\s*\[([^\]]+)\])?\.mp4$`)
+
+// ScanDisk discovers downloaded .mp4 files in m.dir that were orphaned when
+// the queue was cleared, restoring them into the offline shelf.
+func (m *Manager) ScanDisk() {
+	m.mu.Lock()
+	dir := m.dir
+	known := make(map[string]bool, len(m.jobs))
+	byFolder := make(map[string]*Job)
+	for _, j := range m.jobs {
+		if j.Path != "" {
+			known[strings.ToLower(filepath.Clean(j.Path))] = true
+			byFolder[strings.ToLower(filepath.Base(filepath.Dir(j.Path)))] = j
+		}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		m.mu.Unlock()
+		return
+	}
+	added := false
+	for _, sub := range entries {
+		if !sub.IsDir() {
+			continue
+		}
+		subPath := filepath.Join(dir, sub.Name())
+		files, err := os.ReadDir(subPath)
+		if err != nil {
+			continue
+		}
+		ref := byFolder[strings.ToLower(sub.Name())]
+		for _, f := range files {
+			if f.IsDir() {
+				continue
+			}
+			mm := reDiskFile.FindStringSubmatch(f.Name())
+			if mm == nil {
+				continue
+			}
+			full := filepath.Join(subPath, f.Name())
+			if known[strings.ToLower(filepath.Clean(full))] {
+				continue
+			}
+			fi, err := f.Info()
+			if err != nil || fi.Size() <= 0 {
+				continue
+			}
+			season, ep := 1, 1
+			kind := ""
+			if mm[3] != "" {
+				kind = "Film"
+			} else {
+				season, _ = strconv.Atoi(mm[1])
+				ep, _ = strconv.Atoi(mm[2])
+			}
+			fansub, qual := strings.TrimSpace(mm[4]), strings.TrimSpace(mm[5])
+			if fansub != "" && qual == "" && strings.HasSuffix(strings.ToLower(fansub), "p") {
+				if _, err := strconv.Atoi(strings.TrimSuffix(strings.ToLower(fansub), "p")); err == nil {
+					qual, fansub = fansub, ""
+				}
+			}
+			src, aid, title, poster, malID := "local", safeName(sub.Name()), sub.Name(), "", 0
+			if ref != nil {
+				src, aid, title, poster, malID = ref.Source, ref.AnimeID, ref.Title, ref.Poster, ref.MalID
+			}
+			if cover := filepath.Join(subPath, "kapak.jpg"); poster == "" && fileExists(cover) {
+				poster = "file://" + cover
+			}
+			j := &Job{
+				ID: m.nextID, Source: src, AnimeID: aid, Title: title, Poster: poster, Kind: kind, MalID: malID,
+				Season: season, Episode: ep, Fansub: fansub, Quality: qual, Path: full,
+				State: Done, Done: fi.Size(), Total: fi.Size(), Added: fi.ModTime(), Finished: fi.ModTime(), Cleared: true,
+			}
+			m.nextID++
+			m.jobs = append(m.jobs, j)
+			known[strings.ToLower(filepath.Clean(full))] = true
+			added = true
+		}
+	}
+	m.mu.Unlock()
+	if added {
+		m.save()
+	}
 }
 
 // Dir is the download folder.
 func (m *Manager) Dir() string { return m.dir }
 
 // SetDir changes the folder for new downloads.
-func (m *Manager) SetDir(d string) { m.mu.Lock(); m.dir = d; m.mu.Unlock() }
+func (m *Manager) SetDir(d string) { m.mu.Lock(); m.dir = d; m.mu.Unlock(); m.ScanDisk() }
 
-// Jobs returns copies, newest first.
+// Jobs returns copies of all jobs (including queue-cleared offline items), newest first.
 func (m *Manager) Jobs() []Job {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]Job, 0, len(m.jobs))
 	for _, j := range m.jobs {
+		c := *j
+		c.cancel = nil
+		out = append(out, c)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	return out
+}
+
+// QueueJobs returns jobs visible in the active/recent download queue (!Cleared).
+func (m *Manager) QueueJobs() []Job {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]Job, 0, len(m.jobs))
+	for _, j := range m.jobs {
+		if j.Cleared {
+			continue
+		}
 		c := *j
 		c.cancel = nil
 		out = append(out, c)
@@ -200,6 +304,23 @@ func (m *Manager) Local(animeKey string, season, ep int) (Job, bool) {
 	return Job{}, false
 }
 
+// LocalFor matches a finished episode by key or by anime folder title (including disk-recovered files).
+func (m *Manager) LocalFor(an source.Anime, season, ep int) (Job, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	folder := safeName(an.Title)
+	for _, j := range m.jobs {
+		if j.Season == season && j.Episode == ep && j.State == Done {
+			if j.Key() == an.Key() || (folder != "" && strings.EqualFold(safeName(j.Title), folder)) {
+				if _, err := os.Stat(j.Path); err == nil {
+					return *j, true
+				}
+			}
+		}
+	}
+	return Job{}, false
+}
+
 // For returns the latest job for an episode (any state).
 func (m *Manager) For(animeKey string, season, ep int) (Job, bool) {
 	m.mu.Lock()
@@ -213,17 +334,52 @@ func (m *Manager) For(animeKey string, season, ep int) (Job, bool) {
 	if best == nil {
 		return Job{}, false
 	}
+	if best.State == Done && !fileExists(best.Path) {
+		return Job{}, false
+	}
+	return *best, true
+}
+
+// ForAnime returns the latest job for an episode matching by key or anime title.
+func (m *Manager) ForAnime(an source.Anime, season, ep int) (Job, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	folder := safeName(an.Title)
+	var best *Job
+	for _, j := range m.jobs {
+		if j.Season == season && j.Episode == ep && (j.Key() == an.Key() || (folder != "" && strings.EqualFold(safeName(j.Title), folder))) {
+			if best == nil || j.ID > best.ID {
+				best = j
+			}
+		}
+	}
+	if best == nil {
+		return Job{}, false
+	}
+	if best.State == Done && !fileExists(best.Path) {
+		return Job{}, false
+	}
 	return *best, true
 }
 
 // Add queues a download (no-op if that episode is already queued/done).
 func (m *Manager) Add(r Request) (Job, bool) {
 	m.mu.Lock()
+	folder := safeName(r.Anime.Title)
 	for _, j := range m.jobs {
-		if j.Key() == r.Anime.Key() && j.Season == r.Ep.Season && j.Episode == r.Ep.Number &&
+		sameShow := j.Key() == r.Anime.Key() || (j.Source == "local" && folder != "" && strings.EqualFold(safeName(j.Title), folder))
+		if sameShow && j.Season == r.Ep.Season && j.Episode == r.Ep.Number &&
 			(j.State == Queued || j.State == Resolving || j.State == Running || (j.State == Done && fileExists(j.Path))) {
+			if j.Source == "local" && r.Anime.Source != "" {
+				j.Source, j.AnimeID, j.Title, j.MalID = r.Anime.Source, r.Anime.ID, r.Anime.Title, r.Anime.MalID
+				if r.Anime.Poster != "" {
+					j.Poster = r.Anime.Poster
+				}
+			}
+			j.Cleared = false
 			c := *j
 			m.mu.Unlock()
+			m.changed(true)
 			return c, false
 		}
 	}
@@ -282,19 +438,22 @@ func (m *Manager) Cancel(id int) {
 func (m *Manager) Remove(id int, deleteFile bool) {
 	m.mu.Lock()
 	var keep []*Job
+	var cleanDirs []string
 	for _, j := range m.jobs {
 		if j.ID == id {
 			if j.cancel != nil {
 				j.cancel()
 			}
+			// If clearing from the queue without deleting the file, keep finished
+			// downloads in the index so the offline shelf never loses them.
+			if !deleteFile && j.State == Done && fileExists(j.Path) {
+				j.Cleared = true
+				keep = append(keep, j)
+				continue
+			}
 			if deleteFile && j.Path != "" {
-				_ = os.Remove(j.Path)
-				base := strings.TrimSuffix(j.Path, filepath.Ext(j.Path))
-				if subs, _ := filepath.Glob(base + "*.vtt"); len(subs) > 0 {
-					for _, s := range subs {
-						_ = os.Remove(s)
-					}
-				}
+				deleteJobFiles(j.Path)
+				cleanDirs = append(cleanDirs, filepath.Dir(j.Path))
 			}
 			continue
 		}
@@ -302,7 +461,73 @@ func (m *Manager) Remove(id int, deleteFile bool) {
 	}
 	m.jobs = keep
 	m.mu.Unlock()
+	for _, d := range cleanDirs {
+		cleanupAnimeDir(d)
+	}
 	m.changed(true)
+}
+
+// RemoveAnime deletes all downloaded episodes of an anime from disk and removes its folder if empty.
+func (m *Manager) RemoveAnime(animeKey string) int {
+	m.mu.Lock()
+	var keep []*Job
+	var cleanDirs []string
+	removed := 0
+	for _, j := range m.jobs {
+		if j.Key() == animeKey {
+			if j.cancel != nil {
+				j.cancel()
+			}
+			if j.Path != "" {
+				deleteJobFiles(j.Path)
+				cleanDirs = append(cleanDirs, filepath.Dir(j.Path))
+			}
+			removed++
+			continue
+		}
+		keep = append(keep, j)
+	}
+	m.jobs = keep
+	m.mu.Unlock()
+	for _, d := range cleanDirs {
+		cleanupAnimeDir(d)
+	}
+	if removed > 0 {
+		m.changed(true)
+	}
+	return removed
+}
+
+func deleteJobFiles(videoPath string) {
+	_ = os.Remove(videoPath)
+	_ = os.Remove(videoPath + ".part")
+	_ = os.Remove(videoPath + ".aria2")
+	base := strings.TrimSuffix(videoPath, filepath.Ext(videoPath))
+	for _, ext := range []string{"*.vtt", "*.srt", "*.ass"} {
+		if subs, _ := filepath.Glob(base + ext); len(subs) > 0 {
+			for _, s := range subs {
+				_ = os.Remove(s)
+			}
+		}
+	}
+}
+
+func cleanupAnimeDir(dir string) {
+	if dir == "" {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := strings.ToLower(e.Name())
+		if strings.HasSuffix(name, ".mp4") || strings.HasSuffix(name, ".part") || strings.HasSuffix(name, ".mkv") {
+			return // still has video files
+		}
+	}
+	_ = os.Remove(filepath.Join(dir, "kapak.jpg"))
+	_ = os.Remove(dir)
 }
 
 // changed persists (when asked) and signals the UI, at most ~3×/s for

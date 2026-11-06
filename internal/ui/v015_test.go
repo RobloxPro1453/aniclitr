@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -8,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"aniclitr/internal/config"
+	"aniclitr/internal/download"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
@@ -105,5 +108,44 @@ func TestSparklineRender(t *testing.T) {
 	out := ansi.Strip(sparkline(samples, 8, cAccent, cSky))
 	if len([]rune(out)) != 8 {
 		t.Fatalf("sparkline rune width = %d (%q), want 8", len([]rune(out)), out)
+	}
+}
+
+func TestOfflineShelfSurvivesQueueClearAndScanDisk(t *testing.T) {
+	t.Setenv("ANICLITR_HOME", t.TempDir())
+	dlDir := t.TempDir()
+	showDir := filepath.Join(dlDir, "Re Zero")
+	if err := os.MkdirAll(showDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	epFile := filepath.Join(showDir, "S01E01 [HakaiRyuu] [1080p].mp4")
+	if err := os.WriteFile(epFile, []byte("fake-mp4-data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. ScanDisk recovers orphaned .mp4 on startup even when downloads.json is empty
+	mgr := download.Open(dlDir)
+	jobs := mgr.Jobs()
+	if len(jobs) != 1 || jobs[0].Season != 1 || jobs[0].Episode != 1 {
+		t.Fatalf("ScanDisk jobs = %+v, want 1 recovered S01E01 job", jobs)
+	}
+
+	// 2. Removing without deleteFile (like pressing 'c' to clear finished from queue)
+	// hides the job from QueueJobs() but keeps it in Jobs() for the offline shelf!
+	mgr.Remove(jobs[0].ID, false)
+	if len(mgr.QueueJobs()) != 0 {
+		t.Fatalf("QueueJobs after clear = %d, want 0", len(mgr.QueueJobs()))
+	}
+	if len(mgr.Jobs()) != 1 {
+		t.Fatalf("Jobs (offline shelf) after clear = %d, want 1", len(mgr.Jobs()))
+	}
+
+	// 3. RemoveAnime deletes the file from disk and cleans up the empty anime folder
+	removed := mgr.RemoveAnime(jobs[0].Key())
+	if removed != 1 || len(mgr.Jobs()) != 0 {
+		t.Fatalf("after RemoveAnime: removed=%d, remaining=%d", removed, len(mgr.Jobs()))
+	}
+	if _, err := os.Stat(epFile); !os.IsNotExist(err) {
+		t.Fatal("expected episode file to be deleted from disk")
 	}
 }

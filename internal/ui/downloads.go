@@ -104,10 +104,11 @@ func fmtSpeed(bps float64) string {
 // ---- screen ----
 
 type downloads struct {
-	cur, off  int
-	gl        glide
-	confirm   int
-	confirmAt time.Time
+	cur, off    int
+	gl          glide
+	confirm     int
+	confirmShow string
+	confirmAt   time.Time
 
 	queue      bool // false: offline library (covers), true: the download queue
 	libCur     int
@@ -132,6 +133,9 @@ func newDownloadsFor(a *App) *downloads {
 
 // openDownloads brings the downloads screen forward.
 func (a *App) openDownloads() tea.Cmd {
+	if a.dl != nil {
+		a.dl.ScanDisk()
+	}
 	for i, s := range a.stack {
 		if _, ok := s.(*downloads); ok {
 			a.stack = a.stack[:i+1]
@@ -147,11 +151,11 @@ func (d *downloads) crumb() string { return "indirilenler" }
 func (d *downloads) hints() []hint {
 	if !d.queue {
 		if d.openShow != "" {
-			return []hint{{"enter", "oynat (internetsiz)"}, {"x", "diskten sil"}, {"esc", "raflara dön"}}
+			return []hint{{"enter", "oynat (internetsiz)"}, {"x", "bölümü diskten sil"}, {"X", "tüm seriyi sil"}, {"esc", "raflara dön"}}
 		}
-		return []hint{{"←→↑↓", "gez"}, {"enter", "aç"}, {"v", "indirme sırası"}, {"o", "klasörü aç"}, {"esc", "geri"}}
+		return []hint{{"←→↑↓", "gez"}, {"enter", "aç"}, {"x", "seriyi diskten sil"}, {"v", "indirme sırası"}, {"o", "klasörü aç"}, {"esc", "geri"}}
 	}
-	return []hint{{"v", "kitaplık"}, {"enter", "oynat"}, {"r", "tekrar dene"}, {"x", "iptal / kaldır"}, {"X", "dosyayla sil"}, {"o", "klasörü aç"}, {"c", "bitenleri temizle"}, {"esc", "geri"}}
+	return []hint{{"v", "kitaplık"}, {"enter", "oynat"}, {"r", "tekrar dene"}, {"x", "iptal / sıradan gizle"}, {"X", "dosyayla sil"}, {"o", "klasörü aç"}, {"c", "bitenleri temizle"}, {"esc", "geri"}}
 }
 
 func (d *downloads) animating(a *App) bool {
@@ -174,7 +178,7 @@ func (d *downloads) update(a *App, msg tea.Msg) tea.Cmd {
 			return cmd
 		}
 	}
-	jobs := a.dl.Jobs()
+	jobs := a.dl.QueueJobs()
 	d.cur = clamp(d.cur, 0, len(jobs)-1)
 	switch k.String() {
 	case "esc", "q", "backspace":
@@ -196,7 +200,7 @@ func (d *downloads) update(a *App, msg tea.Msg) tea.Cmd {
 				a.dl.Remove(j.ID, false)
 			}
 		}
-		a.notify("biten indirmeler listeden kaldırıldı (dosyalar duruyor)", "ok")
+		a.notify("biten indirmeler kuyruktan temizlendi (çevrimdışı kitaplıkta duruyor)", "ok")
 	}
 	if d.cur >= len(jobs) {
 		return a.tick()
@@ -283,21 +287,22 @@ func (d *downloads) view(a *App, w, h int) string {
 	bodyH := h - len(out) - 1
 	var body []string
 	iw := inner - 4
-	if len(jobs) == 0 {
-		body = append(body, "", center(stSub.Render("Henüz indirme yok."), iw), "",
-			center(stMuted.Render("Bölüm listesinde d: o bölümü indir  ·  D: bütün sezonu indir"), iw),
-			center(stMuted.Render("Fansub seçerken d: o fansub / kaynak / kaliteyle indir"), iw))
+	qjobs := a.dl.QueueJobs()
+	if len(qjobs) == 0 {
+		body = append(body, "", center(stSub.Render("Kuyrukta bekleyen indirme yok."), iw), "",
+			center(stMuted.Render("Bölüm listesinde d: o bölümü indir  ·  D: toplu / aralıklı indir"), iw),
+			center(stMuted.Render("v: çevrimdışı kitaplığa geç"), iw))
 	} else {
 		rowsVisible := max(1, (bodyH-2)/3)
-		d.cur = clamp(d.cur, 0, len(jobs)-1)
-		d.off = scroll(d.cur, d.off, rowsVisible, len(jobs))
+		d.cur = clamp(d.cur, 0, len(qjobs)-1)
+		d.off = scroll(d.cur, d.off, rowsVisible, len(qjobs))
 		band := d.gl.row(a, d.cur)
-		for i := d.off; i < len(jobs) && i < d.off+rowsVisible; i++ {
-			body = append(body, d.item(a, jobs[i], iw, i == band)...)
+		for i := d.off; i < len(qjobs) && i < d.off+rowsVisible; i++ {
+			body = append(body, d.item(a, qjobs[i], iw, i == band)...)
 		}
 	}
 	if d.queue {
-		out = append(out, panel(ic("bolt")+" kuyruk", body, inner, bodyH, true, cAccent, fmt.Sprintf("%d iş · v: kitaplık", len(jobs)))...)
+		out = append(out, panel(ic("bolt")+" kuyruk", body, inner, bodyH, true, cAccent, fmt.Sprintf("%d iş · v: kitaplık", len(qjobs)))...)
 	} else {
 		title := ic("library") + " çevrimdışı kitaplık"
 		out = append(out, panel(title, d.libView(a, inner-4, bodyH-2), inner, bodyH, true, cAccent, fmt.Sprintf("%d anime · v: sıra", len(offlineShelf(a))))...)
