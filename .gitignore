@@ -18,3 +18,5 @@ mpv-shot*.jpg
 
 # isolated data dirs used while developing (ANICLITR_HOME)
 /.yerel/
+/.gocache/
+/docs/REFERANS_RAPORU.md

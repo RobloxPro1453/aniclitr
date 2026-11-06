@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -11,8 +10,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"aniclitr/internal/diag"
+	"aniclitr/internal/match"
 	"aniclitr/internal/source"
-	"aniclitr/internal/source/animedepo"
 )
 
 type srcState struct {
@@ -43,19 +43,10 @@ func (e entry) has(src string) bool {
 	return false
 }
 
-var reNonAlnum = regexp.MustCompile(`[^a-z0-9]+`)
-
 // titleKeys normalises every title variant so "Box of Goblins" (HiAnime,
 // jname "Mouryou no Hako") meets AnimeciX's "Mouryou no Hako".
 func titleKeys(a source.Anime) []string {
-	var out []string
-	for _, t := range []string{a.Title, a.AltTitle} {
-		k := strings.TrimSpace(reNonAlnum.ReplaceAllString(animedepo.Fold(t), " "))
-		if len(k) >= 3 {
-			out = append(out, k)
-		}
-	}
-	return out
+	return match.TitleKeys(a)
 }
 
 type results struct {
@@ -113,7 +104,9 @@ func (r *results) start(a *App) tea.Cmd {
 		r.states[in.ID] = &srcState{info: in, loading: true}
 		p, gen, q := p, r.gen, r.query
 		cmds = append(cmds, run(45*time.Second, func(ctx context.Context) tea.Msg {
+			t0 := time.Now()
 			res, err := p.Search(ctx, q)
+			diag.Record(p.Info().ID, "search", time.Since(t0), diagOutcome(err, len(res) == 0))
 			return searchMsg{gen: gen, src: p.Info().ID, results: res, err: err}
 		}))
 	}
@@ -134,6 +127,9 @@ func (r *results) rebuild() {
 			for i := range r.items {
 				e := &r.items[i]
 				if e.has(an.Source) {
+					continue
+				}
+				if e.main.Kind != "" && an.Kind != "" && e.main.IsMovie() != an.IsMovie() {
 					continue
 				}
 				for _, k := range ks {
@@ -435,6 +431,9 @@ func merge(base, d source.Anime) source.Anime {
 	if d.Kind != "" {
 		base.Kind = d.Kind
 	}
+	if len(d.Titles) > 0 {
+		base.Titles = d.Titles
+	}
 	return base
 }
 
@@ -481,6 +480,15 @@ func detailPane(a *App, it source.Anime, alts []source.Anime, w, h, descOff int,
 	}
 	if it.NextEpisode != "" {
 		text = append(text, fg(cWarn).Render("◷ ")+stSub.Render("sıradaki: "+it.NextEpisode))
+	}
+	if _, onAnime := a.top().(*animeScreen); onAnime {
+		text = append(text, "")
+		btns := []string{
+			pill("❖ KARAKTERLER & KADRO · c", acc.hex()),
+			fg(cSub).Background(colorOf(cSurface)).Render(" ▷ Fragman · t "),
+			fg(cSub).Background(colorOf(cSurface)).Render(" ◇ Benzerleri · y "),
+		}
+		text = append(text, wrapChips(btns, tw)...)
 	}
 	if len(alts) > 0 {
 		var srcs []string

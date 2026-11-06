@@ -17,6 +17,8 @@ import (
 	"aniclitr/internal/anilist"
 	"aniclitr/internal/logx"
 	"aniclitr/internal/mal"
+	"aniclitr/internal/match"
+	"aniclitr/internal/seasons"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
@@ -190,9 +192,10 @@ func apply(it store.Item, e mal.Entry) store.Item {
 	if it.Poster == "" {
 		it.Poster = e.Picture
 	}
-	if it.EpCount == 0 {
+	if e.NumEpisodes > 0 {
 		it.EpCount = e.NumEpisodes
 	}
+	it.Reconcile()
 	it.MalSeen = e.Updated
 	it.UpdatedAt = time.Now()
 	return it
@@ -231,7 +234,7 @@ func (s *Syncer) Push(ctx context.Context) (int, error) {
 			if it.NoMal {
 				continue
 			}
-			id := matchMal(ctx, it.Title)
+			id := matchItemMal(ctx, it)
 			if id == 0 {
 				s.Lib.Mutate(it.Key(), func(x *store.Item) { x.NoMal = true })
 				continue
@@ -241,6 +244,9 @@ func (s *Syncer) Push(ctx context.Context) (int, error) {
 		}
 		st := toMal[it.Status]
 		score, watched := it.Score, it.Watched
+		if it.Status == store.Completed && it.EpCount > 0 && watched < it.EpCount {
+			watched = it.EpCount
+		}
 		tags := append([]string(nil), it.Lists...)
 		if err := s.C.Set(ctx, it.MalID, mal.Update{Status: st, Score: &score, Watched: &watched, Tags: &tags}); err != nil {
 			return pushed, err
@@ -257,31 +263,68 @@ func (s *Syncer) Push(ctx context.Context) (int, error) {
 	return pushed, nil
 }
 
-// matchMal finds a MAL id for a title (AniList search, exact-ish match first).
-func matchMal(ctx context.Context, title string) int {
-	res, err := anilist.Search(ctx, title)
-	if err != nil || len(res) == 0 {
-		return 0
+// matchItemMal finds a MAL id for a library item using persistent mappings.json
+// first, then scored fuzzy matching against AniList.
+func matchItemMal(ctx context.Context, it store.Item) int {
+	if e, ok := match.Default().Get(it.Key()); ok && e.MalID > 0 {
+		return e.MalID
 	}
-	want := fold(title)
-	for _, m := range res {
-		for _, t := range m.AllTitles() {
-			if fold(t) == want && m.IDMal != 0 {
-				return m.IDMal
+	titles := it.Anime().AllTitles()
+	want := match.Want{
+		Titles: titles,
+		Season: source.ParseSeasonNumber(it.Title),
+		Year:   it.Year,
+		Kind:   it.Kind,
+		Eps:    it.EpCount,
+	}
+	var cands []anilist.Media
+	seen := map[int]bool{}
+	for _, q := range match.BuildQueries(titles) {
+		res, err := anilist.Search(ctx, q)
+		if err != nil {
+			continue
+		}
+		for _, m := range res {
+			if m.IDMal != 0 && !seen[m.IDMal] {
+				seen[m.IDMal] = true
+				cands = append(cands, m)
 			}
 		}
-	}
-	return res[0].IDMal
-}
-
-func fold(s string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(s) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
+		if len(cands) >= 10 {
+			break
 		}
 	}
-	return b.String()
+	if len(cands) == 0 {
+		return 0
+	}
+	scores := make([]match.Scored, len(cands))
+	for i, m := range cands {
+		sc := match.ScoreCandidate(match.Candidate{
+			Titles:    m.AllTitles(),
+			Year:      m.SeasonYear,
+			Kind:      kind(strings.ToLower(m.Format)),
+			Eps:       m.Episodes,
+			MalID:     m.IDMal,
+			AniListID: m.ID,
+		}, want)
+		scores[i] = match.Scored{Index: i, Score: sc, Eps: m.Episodes, Year: m.SeasonYear}
+	}
+	idx, ok, amb := match.Pick(scores)
+	if !ok || amb || idx < 0 {
+		return 0
+	}
+	win := cands[idx]
+	match.Default().SetAuto(it.Key(), win.IDMal, win.ID, win.Name(), scores[idx].Score)
+	return win.IDMal
+}
+
+// TranslateEpisode maps a watched provider episode (season, ep) through a
+// canonical season Alignment into the target MAL entry ID and episode number.
+func TranslateEpisode(al seasons.Alignment, fallbackMalID, season, ep int) (malID, canonEp int) {
+	if c, ok := al.ToCanonical(season, ep); ok && c.MalID > 0 {
+		return c.MalID, c.Episode
+	}
+	return fallbackMalID, ep
 }
 
 // Anime makes a source.Anime for an item that only exists on MAL.

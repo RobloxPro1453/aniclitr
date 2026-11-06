@@ -50,12 +50,17 @@ internal/
   config/                 Config (JSON), Dir()/CacheDir(), WriteAtomic
   logx/                   rotating log at %APPDATA%\aniclitr\aniclitr.log, Panic() with stack
   netx/                   shared HTTP client (Chrome UA, cookie jar, retries)
-  source/                 provider contract, registry, health probe
+  source/                 provider contract, registry, health probe, URLOpener
     animecix/             primary: JSON API + tau-video
-    animetr/              Turkish: search JSON + per-episode player JSON (OK.ru, Drive)
+    animetr/              Turkish: search JSON + per-episode player JSON (OK.ru, Drive, Vidmoly, Voe)
+    anihub/               Turkish: REST API + token-signed HLS streams
     hianime/              English: HTML + embed decoder (HLS)
     animedepo/            legacy archive (GitLab index, mostly dead links)
-  extract/                host resolvers: tau, sibnet, Google Drive (page), yt-dlp fallback
+  extract/                self-registering host resolvers: tau, sibnet, Google Drive, OK.ru, Vidmoly, Voe, HLS/MP4 prober, typed errors, yt-dlp fallback
+  match/                  unified title folding, Sorensen-Dice fuzzy scoring, persistent mappings.json cache
+  seasons/                AniList PREQUEL/SEQUEL chain resolver and absolute-to-seasonal episode mapper
+  choose/                 rule-based host & quality selector (preferred host, permanent error skip)
+  diag/                   persistent source & host reliability telemetry (diag.json, doctor --blame)
   aniskip/                OP/ED timestamps (AniSkip v2)
   player/                 mpv launcher + JSON IPC (named pipe on Windows)
   store/                  history.json (progress, notes, activity), library.json (shelf, MAL mirror)
@@ -159,12 +164,13 @@ type typer    interface{ typing() bool }          // printable keys belong to a 
 | `home` | home.go, homemenu.go | hero logo, search box (+ `suggest.go`), one menu (devam et items + destinations) with a preview column |
 | `feedScreen` | feedview.go | "Yeni bölümler": the live feed (data stays on home) |
 | `results` | results.go | merged search results, detail pane |
-| `animeScreen` | anime.go | seasons, episodes, notes, dwell prefetch (`speed.go`) |
-| `picker` | picker.go | fansub/host/quality; play or download |
+| `animeScreen` | anime.go | seasons, episodes, multi-select (`v`), notes, dwell prefetch (`speed.go`), recovery (`r`) |
+| `charactersScreen` | characters.go | AniList character & Japanese voice actor (`Seiyuu`) list, Sixel/halfblock portraits, spoiler toggle (`x`) |
+| `picker` | picker.go | fansub/host/quality; play, single download, or batch/range download (`30-100`); stream URL inspector (`u`) |
 | `playing` | playing.go, subsui.go | idle card; external subtitles |
-| `library` | library.go | shelves, list/wall, MAL status line |
+| `library` | library.go | shelves, list/wall, MAL status line, graphical statistics view (`i`) |
 | `discover` | discmenu.go, discover.go, tonight.go | section menu first (`d.menu`, cursor = `d.tab`), then one section page: `tCal tTonight tSeason tGenre tRecs tRandom` |
-| `downloads` | downloads.go, dlib.go | offline shelf (default) / queue (`v`) |
+| `downloads` | downloads.go, dlib.go | offline shelf (default) / queue (`v`) with live ASCII speed sparkline |
 | `offlineScreen` | offline.go | root when there is no internet |
 | `settings` | settings.go | grouped (`settingGroup`), scrolls |
 | `malScreen` | malui.go | MAL connect / sync |

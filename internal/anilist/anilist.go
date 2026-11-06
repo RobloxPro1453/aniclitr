@@ -129,6 +129,95 @@ type Airing struct {
 	Media   Media
 }
 
+// RelationEdge represents a directed relation in AniList's media graph (e.g. PREQUEL, SEQUEL).
+type RelationEdge struct {
+	RelationType string `json:"relationType"`
+	Media        Media  `json:"node"`
+}
+
+// VoiceActor is a character's seiyuu.
+type VoiceActor struct {
+	ID   int `json:"id"`
+	Name struct {
+		Full   string `json:"full"`
+		Native string `json:"native"`
+	} `json:"name"`
+	Image struct {
+		Large string `json:"large"`
+	} `json:"image"`
+	Age      int    `json:"age"`
+	HomeTown string `json:"homeTown"`
+}
+
+// Character is one anime character and their Japanese voice actor(s).
+type Character struct {
+	ID          int    `json:"id"`
+	Role        string `json:"role"` // "MAIN" | "SUPPORTING" | "BACKGROUND"
+	Name        struct {
+		Full        string   `json:"full"`
+		Native      string   `json:"native"`
+		Alternative []string `json:"alternative"`
+	} `json:"name"`
+	Image struct {
+		Large string `json:"large"`
+	} `json:"image"`
+	Description string `json:"description"`
+	Gender      string `json:"gender"`
+	Age         string `json:"age"`
+	BloodType   string `json:"bloodType"`
+	DateOfBirth struct {
+		Month int `json:"month"`
+		Day   int `json:"day"`
+	} `json:"dateOfBirth"`
+	Favourites  int          `json:"favourites"`
+	VoiceActors []VoiceActor `json:"voiceActors"`
+}
+
+const characterFields = `characters(sort:[ROLE,RELEVANCE,ID],perPage:30){edges{role node{id name{full native alternative} image{large} description(asHtml:false) gender age bloodType dateOfBirth{month day} favourites} voiceActors(language:JAPANESE,sort:[RELEVANCE,ID]){id name{full native} image{large} age homeTown}}}`
+
+// Characters fetches the cast and voice actors of an anime by MAL ID, falling back to title search.
+func Characters(ctx context.Context, idMal int, title string) ([]Character, error) {
+	if idMal > 0 {
+		q := `query($id:Int){Media(idMal:$id,type:ANIME){` + characterFields + `}}`
+		if chars, err := queryCharacters(ctx, q, map[string]any{"id": idMal}); err == nil && len(chars) > 0 {
+			return chars, nil
+		}
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil, errors.New("anilist: karakter araması için başlık yok")
+	}
+	q := `query($q:String){Media(search:$q,type:ANIME,isAdult:false){` + characterFields + `}}`
+	return queryCharacters(ctx, q, map[string]any{"q": title})
+}
+
+func queryCharacters(ctx context.Context, q string, vars map[string]any) ([]Character, error) {
+	var res struct {
+		Media struct {
+			Characters struct {
+				Edges []struct {
+					Role        string       `json:"role"`
+					Node        Character    `json:"node"`
+					VoiceActors []VoiceActor `json:"voiceActors"`
+				} `json:"edges"`
+			} `json:"characters"`
+		} `json:"Media"`
+	}
+	if err := query(ctx, q, vars, 24*time.Hour, &res); err != nil {
+		return nil, err
+	}
+	var out []Character
+	for _, e := range res.Media.Characters.Edges {
+		c := e.Node
+		c.Role = e.Role
+		c.VoiceActors = e.VoiceActors
+		if c.Name.Full != "" {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
 const mediaFields = `id idMal title{romaji english native} synonyms coverImage{extraLarge large color} bannerImage
 format episodes status averageScore popularity genres season seasonYear isAdult countryOfOrigin
 studios(isMain:true){nodes{name}} nextAiringEpisode{episode airingAt}`
@@ -136,9 +225,8 @@ studios(isMain:true){nodes{name}} nextAiringEpisode{episode airingAt}`
 // ---- client (rate limited, cached) ----
 
 var (
-	mu       sync.Mutex
-	lastCall time.Time
-	mem      = map[string]memEntry{}
+	mu  sync.Mutex
+	mem = map[string]memEntry{}
 )
 
 type memEntry struct {
@@ -165,19 +253,10 @@ func query(ctx context.Context, q string, vars map[string]any, ttl time.Duration
 			return json.Unmarshal(b, out)
 		}
 	}
-	// AniList allows ~30-90 requests a minute: keep a polite gap
-	mu.Lock()
-	if wait := 350*time.Millisecond - time.Since(lastCall); wait > 0 {
-		mu.Unlock()
-		select {
-		case <-time.After(wait):
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-		mu.Lock()
+	// Rate limiting is enforced by netx's per-host token bucket for graphql.anilist.co.
+	if err := netx.WaitHost(ctx, endpoint); err != nil {
+		return err
 	}
-	lastCall = time.Now()
-	mu.Unlock()
 
 	body, _ := json.Marshal(map[string]any{"query": q, "variables": vars})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
@@ -337,6 +416,55 @@ recommendations(sort:RATING_DESC,perPage:12){nodes{mediaRecommendation{` + media
 		}
 	}
 	return res.Media.Media, recs, nil
+}
+
+const relationNodeFields = `id idMal title{romaji english native} synonyms format episodes seasonYear isAdult`
+
+// ByIDWithRelations fetches an AniList Media node and its anime relations by AniList ID.
+func ByIDWithRelations(ctx context.Context, id int) (Media, []RelationEdge, error) {
+	q := `query($id:Int){Media(id:$id,type:ANIME){` + relationNodeFields + `
+relations{edges{relationType node{` + relationNodeFields + ` type}}}}}`
+	return queryWithRelations(ctx, q, map[string]any{"id": id})
+}
+
+// ByMalWithRelations fetches an AniList Media node and its anime relations by MAL ID.
+func ByMalWithRelations(ctx context.Context, idMal int) (Media, []RelationEdge, error) {
+	q := `query($id:Int){Media(idMal:$id,type:ANIME){` + relationNodeFields + `
+relations{edges{relationType node{` + relationNodeFields + ` type}}}}}`
+	return queryWithRelations(ctx, q, map[string]any{"id": idMal})
+}
+
+func queryWithRelations(ctx context.Context, q string, vars map[string]any) (Media, []RelationEdge, error) {
+	var res struct {
+		Media struct {
+			Media
+			Relations struct {
+				Edges []struct {
+					RelationType string `json:"relationType"`
+					Node         struct {
+						Media
+						Type string `json:"type"`
+					} `json:"node"`
+				} `json:"edges"`
+			} `json:"relations"`
+		} `json:"Media"`
+	}
+	if err := query(ctx, q, vars, 6*time.Hour, &res); err != nil {
+		return Media{}, nil, err
+	}
+	var edges []RelationEdge
+	for _, e := range res.Media.Relations.Edges {
+		if e.Node.Type != "" && !strings.EqualFold(e.Node.Type, "ANIME") {
+			continue
+		}
+		if keep(e.Node.Media) {
+			edges = append(edges, RelationEdge{
+				RelationType: e.RelationType,
+				Media:        e.Node.Media,
+			})
+		}
+	}
+	return res.Media.Media, edges, nil
 }
 
 // Search finds titles by name (used to map a name to a MAL id).

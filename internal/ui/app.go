@@ -18,8 +18,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"aniclitr/internal/anilist"
+	"aniclitr/internal/choose"
 	"aniclitr/internal/config"
+	"aniclitr/internal/diag"
 	"aniclitr/internal/download"
+	"aniclitr/internal/extract"
 	"aniclitr/internal/logx"
 	"aniclitr/internal/mal"
 	"aniclitr/internal/malsync"
@@ -77,6 +80,7 @@ type variantsMsg struct {
 }
 
 type resolveMsg struct {
+	src string
 	url string
 	st  *source.Stream
 	err error
@@ -87,23 +91,37 @@ type toastMsg struct {
 	kind string
 }
 
+type urlOpenMsg struct {
+	raw     string
+	an      source.Anime
+	ep      *source.Episode
+	handled bool
+	err     error
+}
+
 // ---- app ----
 
 type resolveState struct {
 	st      *source.Stream
 	err     error
+	kind    extract.Kind
 	loading bool
 	at      time.Time
 }
 
 // pruneResolved forgets stream links that have likely expired (CDN links are
-// signed/temporary) and failures that may have been transient.
+// signed/temporary) and failures that may have been transient. Permanent
+// upstream errors (deleted, copyright, 404, private) stay cached.
 func (a *App) pruneResolved() {
 	for k, v := range a.resolved {
 		if v.loading {
 			continue
 		}
-		if (v.st != nil && time.Since(v.at) > 20*time.Minute) || (v.err != nil && time.Since(v.at) > 2*time.Minute) {
+		if v.st != nil && time.Since(v.at) > 20*time.Minute {
+			delete(a.resolved, k)
+			continue
+		}
+		if v.err != nil && !v.kind.Permanent() && time.Since(v.at) > 2*time.Minute {
 			delete(a.resolved, k)
 		}
 	}
@@ -154,13 +172,15 @@ type App struct {
 	coverAt  string           // poster the cover theme currently follows
 	health   map[string]source.Health
 
-	drop    *dropdown // header menu / notification panel
-	undos   []undoOp
-	offline bool                 // no internet: only the offline shelf is shown
-	failed  map[string]time.Time // variant URLs that failed to play recently
-	notices []notice
-	bellT   tween
-	dlSeen  map[int]string
+	drop       *dropdown // header menu / notification panel
+	undos      []undoOp
+	offline    bool                 // no internet: only the offline shelf is shown
+	failed     map[string]time.Time // variant URLs that failed to play recently
+	permFailed map[string]bool      // variant URLs that failed permanently (deleted, copyright, 404…)
+	playSpeed  float64              // mpv playback speed preserved across episodes
+	notices    []notice
+	bellT      tween
+	dlSeen     map[int]string
 
 	out        io.Writer // self-paint target (nil: Bubble Tea renders View)
 	pt         *painter
@@ -184,8 +204,9 @@ type App struct {
 	anchorOK bool
 
 	// overlays
-	pal   *palette
-	popup *libPopup
+	pal     *palette
+	popup   *libPopup
+	initURL string
 
 	// screensaver
 	lastInput time.Time
@@ -207,10 +228,11 @@ func New(cfg config.Config, g Graphics) *App {
 		graphics:  g,
 		hist:      store.Open(),
 		lib:       store.OpenLibrary(),
-		dlSeen:    map[int]string{},
-		health:    map[string]source.Health{},
-		failed:    map[string]time.Time{},
-		start:     time.Now(),
+		dlSeen:     map[int]string{},
+		health:     map[string]source.Health{},
+		failed:     map[string]time.Time{},
+		permFailed: map[string]bool{},
+		start:      time.Now(),
 		lastInput: time.Now(),
 		details:   map[string]source.Anime{},
 		episodes:  map[string][]source.Episode{},
@@ -261,8 +283,50 @@ func (a *App) applyGraphics() {
 }
 
 func (a *App) Init() tea.Cmd {
-	return tea.Batch(a.tick(), a.loadFeed(), a.loadSchedule(), a.checkHealth(), probeNet(), a.waitDL(), a.waitMal(), tea.SetWindowTitle("aniclitr"),
-		a.migratePath(), a.checkUpdate(false))
+	cmds := []tea.Cmd{
+		a.tick(), a.loadFeed(), a.loadSchedule(), a.checkHealth(),
+		probeNet(), a.waitDL(), a.waitMal(), tea.SetWindowTitle("aniclitr"),
+		a.migratePath(), a.checkUpdate(false),
+	}
+	if a.initURL != "" {
+		cmds = append(cmds, a.openURL(a.initURL))
+	}
+	return tea.Batch(cmds...)
+}
+
+// SetInitialURL schedules a direct anime/episode URL to be opened on startup.
+func (a *App) SetInitialURL(raw string) {
+	a.initURL = strings.TrimSpace(raw)
+}
+
+func (a *App) openURL(raw string) tea.Cmd {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	a.notify("bağlantı açılıyor…", "")
+	return tea.Batch(a.tick(), run(30*time.Second, func(ctx context.Context) tea.Msg {
+		an, ep, handled, err := source.OpenURL(ctx, raw)
+		return urlOpenMsg{raw: raw, an: an, ep: ep, handled: handled, err: err}
+	}))
+}
+
+func (a *App) onURLOpen(m urlOpenMsg) tea.Cmd {
+	if !m.handled {
+		a.notify("bu sitenin bağlantısı tanınmadı", "warn")
+		return a.tick()
+	}
+	if m.err != nil {
+		a.notifyErr("bağlantı açılamadı", m.err)
+		return a.tick()
+	}
+	a.details[m.an.Key()] = m.an
+	season, epNum := 0, 0
+	if m.ep != nil {
+		season, epNum = max(1, m.ep.Season), m.ep.Number
+	}
+	sc := newAnime(m.an, a.siblings(m.an), season, epNum)
+	return tea.Batch(a.push(sc), sc.start(a))
 }
 
 func (a *App) top() screen { return a.stack[len(a.stack)-1] }
@@ -279,7 +343,7 @@ func (a *App) pop() {
 		a.stack = a.stack[:len(a.stack)-1]
 		a.slide(-1)
 		switch left.(type) {
-		case *library, *discover, *results, *downloads:
+		case *library, *discover, *results, *downloads, *charactersScreen:
 			trimMemory() // poster-heavy screens leave garbage behind
 		}
 	}
@@ -307,8 +371,22 @@ func (a *App) notifyErr(prefix string, err error) {
 		msg = "bulunamadı"
 	} else if errors.Is(err, context.DeadlineExceeded) {
 		msg = "zaman aşımı"
+	} else if k := extract.KindOf(err); k != extract.KindUnknown && k.Message() != "" {
+		msg = k.Message()
 	}
 	a.notify(prefix+": "+msg, "err")
+}
+
+func (a *App) markSourceBlocked(src string) {
+	if src == "" {
+		return
+	}
+	a.health[src] = source.Health{
+		ID:  src,
+		OK:  false,
+		Err: extract.KindBlocked.Message(),
+		At:  time.Now(),
+	}
 }
 
 // ---- animation clock ----
@@ -379,6 +457,19 @@ func (a *App) loadFeed() tea.Cmd {
 	}, live)
 }
 
+func diagOutcome(err error, empty bool) diag.Outcome {
+	if err == nil {
+		if empty {
+			return diag.Empty
+		}
+		return diag.OK
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return diag.Timeout
+	}
+	return diag.Error
+}
+
 func (a *App) fetchDetails(an source.Anime) tea.Cmd {
 	key := an.Key()
 	if _, ok := a.details[key]; ok {
@@ -390,7 +481,9 @@ func (a *App) fetchDetails(an source.Anime) tea.Cmd {
 	}
 	a.details[key] = source.Anime{} // mark in-flight
 	return run(30*time.Second, func(ctx context.Context) tea.Msg {
+		t0 := time.Now()
 		d, err := p.Details(ctx, an)
+		diag.Record(an.Source, "details", time.Since(t0), diagOutcome(err, false))
 		return detailsMsg{key: key, anime: d, err: err}
 	})
 }
@@ -409,7 +502,11 @@ func (a *App) fetchEpisodes(an source.Anime, season int) tea.Cmd {
 	p := source.Get(an.Source)
 	a.episodes[key] = nil
 	return run(40*time.Second, func(ctx context.Context) tea.Msg {
+		t0 := time.Now()
 		eps, err := p.Episodes(ctx, an, season)
+		if !errors.Is(err, source.ErrNotFound) {
+			diag.Record(an.Source, "episodes", time.Since(t0), diagOutcome(err, len(eps) == 0))
+		}
 		return episodesMsg{key: key, season: season, eps: eps, err: err}
 	})
 }
@@ -422,24 +519,40 @@ func (a *App) fetchVariants(an source.Anime, ep source.Episode) tea.Cmd {
 	p := source.Get(an.Source)
 	a.variants[key] = nil
 	return run(30*time.Second, func(ctx context.Context) tea.Msg {
+		t0 := time.Now()
 		vs, err := p.Variants(ctx, an, ep)
+		diag.Record(an.Source, "variants", time.Since(t0), diagOutcome(err, len(vs) == 0))
 		return variantsMsg{key: key, vs: vs, err: err}
 	})
 }
 
 func (a *App) resolve(src string, v source.Variant) tea.Cmd {
+	if a.permFailed[v.URL] {
+		return nil
+	}
 	if st, ok := a.resolved[v.URL]; ok && (st.loading || st.st != nil || st.err != nil) {
 		return nil
 	}
 	p := source.Get(src)
 	a.resolved[v.URL] = &resolveState{loading: true}
 	return tea.Batch(a.tick(), run(60*time.Second, func(ctx context.Context) tea.Msg {
+		t0 := time.Now()
 		st, err := p.Resolve(ctx, v)
 		if err == nil && (st == nil || len(st.Qualities) == 0) {
-			err = errors.New("oynatılabilir kaynak yok")
+			err = extract.NewError(extract.KindDeleted, "oynatılabilir kaynak yok")
 		}
-		return resolveMsg{url: v.URL, st: st, err: err}
+		diag.Record(src, "resolve", time.Since(t0), diagOutcome(err, st == nil || len(st.Qualities) == 0))
+		diag.Flush()
+		return resolveMsg{src: src, url: v.URL, st: st, err: err}
 	}))
+}
+
+func (a *App) selectionRules() choose.Rules {
+	return choose.Rules{
+		HostOrder:        a.cfg.HostOrder,
+		NeverHosts:       a.cfg.NeverHosts,
+		WaitAfterFirstMs: a.cfg.WaitAfterFirstMs,
+	}.Effective(a.cfg.Quality)
 }
 
 // pickQuality applies the configured preference.
@@ -575,6 +688,10 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			a.gfx.invalidate()
 			return a, nil
 		}
+	case searchMsg:
+		if m.err != nil && extract.KindOf(m.err) == extract.KindBlocked {
+			a.markSourceBlocked(m.src)
+		}
 	case posterMsg:
 		a.posters.set(m)
 		return a, a.tick()
@@ -597,7 +714,14 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			a.variants[m.key] = m.vs
 		}
 	case resolveMsg:
-		a.resolved[m.url] = &resolveState{st: m.st, err: m.err, at: time.Now()}
+		k := extract.KindOf(m.err)
+		a.resolved[m.url] = &resolveState{st: m.st, err: m.err, kind: k, at: time.Now()}
+		if k.Permanent() {
+			a.permFailed[m.url] = true
+		}
+		if k == extract.KindBlocked {
+			a.markSourceBlocked(m.src)
+		}
 	case toastMsg:
 		a.notify(m.text, m.kind)
 		cmds = append(cmds, a.tick())
@@ -609,6 +733,8 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		cmds = append(cmds, a.waitMal())
 	case malOpenMsg:
 		cmds = append(cmds, a.onMalOpen(m))
+	case urlOpenMsg:
+		cmds = append(cmds, a.onURLOpen(m))
 	case similarMsg:
 		a.onSimilar(m)
 	case netMsg:

@@ -126,14 +126,17 @@ func (l *library) hints() []hint {
 	if l.filtering || l.naming {
 		return []hint{{"enter", "tamam"}, {"esc", "vazgeç"}}
 	}
+	if l.sideID == "stats" {
+		return []hint{{"↑↓", "raf"}, {"i", "listeye dön"}, {"m", "MAL"}, {"esc", "geri"}}
+	}
 	if l.focus == 0 {
-		h := []hint{{"↑↓", "raf"}, {"→ enter", "aç"}, {"n", "yeni liste"}}
+		h := []hint{{"↑↓", "raf"}, {"→ enter", "aç"}, {"i", "istatistikler"}, {"n", "yeni liste"}}
 		if strings.HasPrefix(l.sideID, "list:") {
 			h = append(h, hint{"r", "yeniden adlandır"}, hint{"d", "sil"})
 		}
 		return append(h, hint{"esc", "geri"})
 	}
-	return []hint{{"enter", "aç"}, {"a", "düzenle"}, {"s", "durum"}, {"1-0", "puan"}, {"f", "favori"}, {"v", "görünüm"}, {"o", "sırala"}, {"/", "ara"}, {"d", "çıkar"}}
+	return []hint{{"enter", "aç"}, {"a", "düzenle"}, {"s", "durum"}, {"1-0", "puan"}, {"f", "favori"}, {"i", "istatistik"}, {"v", "görünüm"}, {"o", "sırala"}, {"/", "ara"}, {"d", "çıkar"}}
 }
 
 func (l *library) shelves(a *App) []shelf {
@@ -152,6 +155,7 @@ func (l *library) shelves(a *App) []shelf {
 		s := s
 		out = append(out, shelf{id: s, label: s, icon: statusIcon(s), color: statusColor(s), count: count(func(it store.Item) bool { return it.Status == s })})
 	}
+	out = append(out, shelf{id: "stats", label: "istatistikler", icon: "◈", color: cAccent})
 	for _, n := range a.lib.ListNames() {
 		n := n
 		c := cAccent2
@@ -326,6 +330,15 @@ func (l *library) key(a *App, k tea.KeyMsg) tea.Cmd {
 		return l.prefetch(a)
 	case "m":
 		return a.push(newMalScreen(a))
+	case "i", "I":
+		if sh.id == "stats" {
+			l.selectShelf(a, "all")
+			l.focus = 0
+		} else {
+			l.selectShelf(a, "stats")
+			l.focus = 0
+		}
+		return a.tick()
 	case "o":
 		l.sortBy = (l.sortBy + 1) % len(sortNames)
 		l.at = time.Now()
@@ -543,20 +556,25 @@ func (l *library) view(a *App, w, h int) string {
 	cols := [][]string{panel(ic("library")+" raflar", l.sidebar(a, sideW-4, bodyH-2), sideW, bodyH, l.focus == 0, cAccent)}
 	sh := l.curShelf(a)
 	l.sideID = sh.id
-	mt := sh.label + fmt.Sprintf(" · %d", len(items))
-	if l.filter.Value() != "" || l.filtering {
-		mt += " · “" + l.filter.Value() + "”"
-	}
-	mainBody := l.mainPane(a, items, mainW-4, bodyH-2, acc)
-	cols = append(cols, panel(mt, mainBody, mainW, bodyH, l.focus == 1, acc, sortNames[l.sortBy]))
-	if detailW > 0 {
-		var body []string
-		if sel != nil {
-			body = l.card(a, *sel, detailW-4, bodyH-2)
-		} else {
-			body = []string{stMuted.Render("seçili bir şey yok")}
+	if sh.id == "stats" {
+		statsW := inner - sideW - kitGap
+		cols = append(cols, panel("◈ anime özeti ve istatistikler", l.statsView(a, statsW-4, bodyH-2), statsW, bodyH, l.focus == 1, cAccent))
+	} else {
+		mt := sh.label + fmt.Sprintf(" · %d", len(items))
+		if l.filter.Value() != "" || l.filtering {
+			mt += " · “" + l.filter.Value() + "”"
 		}
-		cols = append(cols, panel("ayrıntı", body, detailW, bodyH, false, acc))
+		mainBody := l.mainPane(a, items, mainW-4, bodyH-2, acc)
+		cols = append(cols, panel(mt, mainBody, mainW, bodyH, l.focus == 1, acc, sortNames[l.sortBy]))
+		if detailW > 0 {
+			var body []string
+			if sel != nil {
+				body = l.card(a, *sel, detailW-4, bodyH-2)
+			} else {
+				body = []string{stMuted.Render("seçili bir şey yok")}
+			}
+			cols = append(cols, panel("ayrıntı", body, detailW, bodyH, false, acc))
+		}
 	}
 	lines := hjoin(kitGap, cols...)
 	for _, ln := range lines {
@@ -570,7 +588,7 @@ func (l *library) sidebar(a *App, w, h int) []string {
 	sel := l.sideGl.row(a, l.side)
 	var out []string
 	for i, s := range ss {
-		if i == 1+len(store.Statuses) {
+		if i == 2+len(store.Statuses) {
 			out = append(out, "", stFaint.Render("LİSTELER"))
 		}
 		if s.id == "new" && l.naming && l.renaming == "" {
@@ -596,7 +614,9 @@ func (l *library) sidebar(a *App, w, h int) []string {
 			}
 		}
 		right := []span{}
-		if s.id != "new" {
+		if s.id == "stats" {
+			right = append(right, sp("i ", cFaint))
+		} else if s.id != "new" {
 			right = append(right, sp(fmt.Sprint(s.count)+" ", cMuted))
 		}
 		out = append(out, row(w, bg, []span{bar, sp(s.icon+" ", s.color), span{t: s.label, c: tc, bold: i == l.side}}, right))
@@ -634,15 +654,14 @@ func (l *library) mainPane(a *App, items []store.Item, w, h int, acc string) []s
 		}
 		left := []span{bar, sp(statusIcon(it.Status)+" ", statusColor(it.Status)), span{t: it.Title, c: tc, bold: isSel}}
 		var right []span
-		if e, ok := a.hist.Get(it.Key()); ok && e.Season > 0 && w > 60 {
-			n := 0
-			for _, d := range e.Watched {
-				if d {
-					n++
+		if w > 60 {
+			watched, total := watchedCount(a, it)
+			if watched > 0 {
+				if total > 0 {
+					right = append(right, sp(fmt.Sprintf("%d/%d bl  ", watched, total), cMuted))
+				} else {
+					right = append(right, sp(fmt.Sprintf("%d bölüm  ", watched), cMuted))
 				}
-			}
-			if n > 0 {
-				right = append(right, sp(fmt.Sprintf("%d bölüm  ", n), cMuted))
 			}
 		}
 		if it.InList("favoriler") {
@@ -801,16 +820,23 @@ func (l *library) card(a *App, it store.Item, w, h int) []string {
 		sc = stBold.Render(fmt.Sprintf("%d", it.Score)) + stMuted.Render("/10")
 	}
 	out = append(out, scoreBar(it.Score, acc, pop)+"  "+sc)
-	if e, ok := a.hist.Get(it.Key()); ok && e.Season > 0 {
-		n := 0
-		for _, d := range e.Watched {
-			if d {
-				n++
-			}
+	watched, total := watchedCount(a, it)
+	e, hasHist := a.hist.Get(it.Key())
+	if watched > 0 || (hasHist && e.Season > 0) {
+		var progParts []string
+		if hasHist && e.Season > 0 && e.Episode > 0 && it.Status != store.Completed {
+			progParts = append(progParts, stSub.Render(fmt.Sprintf("son: S%d · B%d", e.Season, e.Episode)))
 		}
-		out = append(out, "", stSub.Render(fmt.Sprintf("son: S%d · B%d", e.Season, e.Episode))+stMuted.Render(fmt.Sprintf("  ·  %d bölüm izlendi", n)))
-		if it.EpCount > 0 {
-			out = append(out, progressBar(w, float64(n)/float64(it.EpCount), []string{acc, cAccent2}))
+		if total > 0 {
+			progParts = append(progParts, stMuted.Render(fmt.Sprintf("%d/%d bölüm izlendi", watched, total)))
+		} else if watched > 0 {
+			progParts = append(progParts, stMuted.Render(fmt.Sprintf("%d bölüm izlendi", watched)))
+		}
+		if len(progParts) > 0 {
+			out = append(out, "", strings.Join(progParts, stMuted.Render("  ·  ")))
+		}
+		if total > 0 {
+			out = append(out, progressBar(w, float64(watched)/float64(total), []string{acc, cAccent2}))
 		}
 	}
 	if len(it.Lists) > 0 {
@@ -838,6 +864,205 @@ func agoLong(t time.Time) string {
 		return s
 	}
 	return s + " önce"
+}
+
+// watchedCount reconciles history.json watched map, library/MAL Watched count,
+// and Completed status so the UI never displays contradictory numbers like
+// "Tamamlandı · 15/16".
+func watchedCount(a *App, it store.Item) (watched, total int) {
+	histN := 0
+	if e, ok := a.hist.Get(it.Key()); ok {
+		for _, d := range e.Watched {
+			if d {
+				histN++
+			}
+		}
+	}
+	watched = max(it.Watched, histN)
+	total = it.EpCount
+	if d, ok := a.details[it.Key()]; ok && d.EpCount > total {
+		total = d.EpCount
+	}
+	if it.Status == store.Completed {
+		if total > 0 && watched < total {
+			watched = total
+		} else if total == 0 && watched > 0 {
+			total = watched
+		}
+	}
+	if total > 0 && watched > total {
+		total = watched
+	}
+	return watched, total
+}
+
+func (l *library) statsView(a *App, w, h int) []string {
+	all := a.lib.All()
+	if len(all) == 0 {
+		return l.empty(a, w)
+	}
+	statusCounts := map[string]int{}
+	scoreBuckets := make([]int, 11) // 1..10
+	scored, scoreSum := 0, 0
+	genreCounts := map[string]int{}
+	totalEps := 0
+	seenKeys := map[string]bool{}
+
+	for _, it := range all {
+		statusCounts[it.Status]++
+		if it.Score >= 1 && it.Score <= 10 {
+			scoreBuckets[it.Score]++
+			scored++
+			scoreSum += it.Score
+		}
+		watched, _ := watchedCount(a, it)
+		totalEps += watched
+		seenKeys[it.Key()] = true
+
+		gs := it.Genres
+		if len(gs) == 0 {
+			if d, ok := a.details[it.Key()]; ok && len(d.Genres) > 0 {
+				gs = d.Genres
+			}
+		}
+		for _, g := range gs {
+			g = strings.TrimSpace(g)
+			if g != "" {
+				genreCounts[g]++
+			}
+		}
+	}
+	// Include any episodes watched in history that aren't in the library yet.
+	for k, e := range a.hist.Entries {
+		if seenKeys[k] || e == nil {
+			continue
+		}
+		for _, d := range e.Watched {
+			if d {
+				totalEps++
+			}
+		}
+	}
+	_, histSecs := a.hist.Totals()
+	estHours := float64(totalEps) * 24.0 / 60.0
+	if histHours := histSecs / 3600.0; histHours > estHours {
+		estHours = histHours
+	}
+	estDays := estHours / 24.0
+
+	var out []string
+	// 1. Summary headline pills
+	meanStr := "—"
+	if scored > 0 {
+		meanStr = fmt.Sprintf("%.2f", float64(scoreSum)/float64(scored))
+	}
+	summary := []string{
+		pill(fmt.Sprintf("TOPLAM %d ANİME", len(all)), cAccent),
+		pill(fmt.Sprintf("✓ %d TAMAMLANDI", statusCounts[store.Completed]), cOK),
+		pill(fmt.Sprintf("▶ %d BÖLÜM", totalEps), cSky),
+		pill(fmt.Sprintf("◷ %.1f SAAT (%.1f GÜN)", estHours, estDays), cAccent2),
+		pill(fmt.Sprintf("★ %s ORT. PUAN", meanStr), cWarn),
+	}
+	out = append(out, wrapChips(summary, w)...)
+	out = append(out, "")
+
+	// 2. Status Distribution Bar & Breakdown
+	out = append(out, sectionTitle("durum dağılımı", w, false))
+	var stackBar strings.Builder
+	usedW := 0
+	for i, s := range store.Statuses {
+		cnt := statusCounts[s]
+		if cnt == 0 {
+			continue
+		}
+		segW := cnt * w / max(1, len(all))
+		if i == len(store.Statuses)-1 || usedW+segW > w {
+			segW = max(1, w-usedW)
+		}
+		if segW > 0 && usedW < w {
+			stackBar.WriteString(fg(statusColor(s)).Render(strings.Repeat("█", min(segW, w-usedW))))
+			usedW += segW
+		}
+	}
+	if usedW < w {
+		stackBar.WriteString(stFaint.Render(strings.Repeat("─", w-usedW)))
+	}
+	out = append(out, stackBar.String())
+
+	barW := clamp(w/3, 12, 32)
+	for _, s := range store.Statuses {
+		cnt := statusCounts[s]
+		pct := float64(cnt) * 100 / float64(max(1, len(all)))
+		left := fg(statusColor(s)).Render(statusIcon(s)+" ") + fit(stText.Render(s), 14)
+		mb := progressBar(barW, float64(cnt)/float64(max(1, len(all))), []string{statusColor(s), statusColor(s)})
+		right := stBold.Render(fmt.Sprintf("%3d", cnt)) + stMuted.Render(fmt.Sprintf(" (%4.1f%%)", pct))
+		out = append(out, left+"  "+mb+"  "+right)
+	}
+	out = append(out, "")
+
+	// 3. Score Histogram & Top Genres (side by side on wide terminals)
+	colW := w
+	twoCols := w >= 68
+	if twoCols {
+		colW = (w - 4) / 2
+	}
+
+	var scoreCol []string
+	scoreCol = append(scoreCol, sectionTitle("puan dağılımı", colW, false))
+	maxBucket := 1
+	for sc := 10; sc >= 1; sc-- {
+		if scoreBuckets[sc] > maxBucket {
+			maxBucket = scoreBuckets[sc]
+		}
+	}
+	sBarW := max(8, colW-18)
+	for sc := 10; sc >= 1; sc-- {
+		cnt := scoreBuckets[sc]
+		lbl := fg(cWarn).Render("★") + stSub.Render(fmt.Sprintf(" %2d ", sc))
+		b := progressBar(sBarW, float64(cnt)/float64(maxBucket), []string{cWarn, cAccent})
+		scoreCol = append(scoreCol, lbl+b+stMuted.Render(fmt.Sprintf(" %3d", cnt)))
+	}
+
+	var genreCol []string
+	genreCol = append(genreCol, sectionTitle("en çok izlenen türler", colW, false))
+	type gPair struct {
+		name  string
+		count int
+	}
+	var gps []gPair
+	for g, c := range genreCounts {
+		gps = append(gps, gPair{g, c})
+	}
+	sort.Slice(gps, func(i, j int) bool {
+		if gps[i].count != gps[j].count {
+			return gps[i].count > gps[j].count
+		}
+		return gps[i].name < gps[j].name
+	})
+	if len(gps) == 0 {
+		genreCol = append(genreCol, stMuted.Render("Tür verisi için kitaplıktaki animeleri bir kez açın."))
+	} else {
+		maxG := max(1, gps[0].count)
+		gBarW := max(8, colW-22)
+		for i, gp := range gps {
+			if i >= 10 {
+				break
+			}
+			lbl := fit(stText.Render(truncate(gp.name, 14)), 15)
+			b := progressBar(gBarW, float64(gp.count)/float64(maxG), []string{cAccent, cAccent2})
+			genreCol = append(genreCol, lbl+" "+b+stMuted.Render(fmt.Sprintf(" %3d", gp.count)))
+		}
+	}
+
+	if twoCols {
+		bh := max(len(scoreCol), len(genreCol))
+		out = append(out, hjoin(4, block(scoreCol, colW, bh), block(genreCol, colW, bh))...)
+	} else {
+		out = append(out, scoreCol...)
+		out = append(out, "")
+		out = append(out, genreCol...)
+	}
+	return block(out, w, h)
 }
 
 func wrapChips(chips []string, w int) []string {

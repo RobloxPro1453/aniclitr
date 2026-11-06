@@ -292,6 +292,12 @@ func (h *home) key(a *App, k tea.KeyMsg) tea.Cmd {
 			// empty box + enter: carry on with the last thing you watched
 			return continueEntry(a, recent[0])
 		}
+		if source.IsURL(q) {
+			a.flash()
+			h.sug.close()
+			h.in.Set("")
+			return a.openURL(q)
+		}
 		if len([]rune(q)) < 2 {
 			a.notify("en az 2 harf yaz", "warn")
 			return a.tick()

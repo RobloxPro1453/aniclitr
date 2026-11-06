@@ -13,30 +13,132 @@ import (
 	"strings"
 	"time"
 
-	"aniclitr/internal/netx"
+	"aniclitr/internal/diag"
+	"aniclitr/internal/logx"
 	"aniclitr/internal/source"
 )
 
-// Resolve picks a host-specific extractor, falling back to yt-dlp.
+// Resolve tries every registered extractor that matches embed, falling back
+// to yt-dlp as the last resort unless an extractor reports a permanent error.
 func Resolve(ctx context.Context, embed string) (*source.Stream, error) {
+	st, fails := ResolveDetailed(ctx, embed, nil)
+	if st != nil && len(st.Qualities) > 0 {
+		return st, nil
+	}
+	return nil, summarizeFailures(fails)
+}
+
+// ResolveDetailed runs all matching extractors in registration order and
+// returns either the resolved stream or the deduplicated list of typed failures.
+func ResolveDetailed(ctx context.Context, embed string, hdr map[string]string) (*source.Stream, []Failure) {
 	embed = NormalizeURL(embed)
 	u, err := url.Parse(embed)
-	if err != nil {
-		return nil, err
-	}
-	host := strings.ToLower(u.Host)
-	switch {
-	case strings.Contains(host, "tau-video"):
-		return Tau(ctx, u)
-	case strings.Contains(host, "drive.google.com"):
-		return Drive(ctx, embed)
-	case strings.Contains(host, "sibnet"):
-		if s, err := Sibnet(ctx, embed); err == nil {
-			return s, nil
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		if err == nil {
+			err = errors.New("geçersiz embed adresi")
 		}
-		return YtDlp(ctx, embed)
-	default:
-		return YtDlp(ctx, embed)
+		return nil, []Failure{{Extractor: "url", Kind: KindUnknown, Detail: err.Error(), Err: err}}
+	}
+
+	var fails []Failure
+	usedYtDlp := false
+	for _, e := range Match(u) {
+		if e.Name() == "Google Drive" {
+			usedYtDlp = true
+		}
+		t0 := time.Now()
+		st, err := e.Resolve(ctx, u, hdr)
+		elapsed := time.Since(t0)
+		if err == nil && st != nil && len(st.Qualities) > 0 {
+			diag.Record("extract", e.Name(), elapsed, diag.OK)
+			ProbeHLS(ctx, st)
+			st.SortQualities()
+			return st, DedupeFailures(fails)
+		}
+		diag.Record("extract", e.Name(), elapsed, diagOutcome(err, st))
+		f := failureOf(e.Name(), err)
+		if f.Kind == KindChanged {
+			logx.Errorf("çözümleyici [%s] site yapısı değişmiş (%s): %s", e.Name(), embed, f.Detail)
+		}
+		fails = append(fails, f)
+		// Permanent upstream failures (deleted, private, copyright, 404, embed blocked)
+		// or bot walls will not succeed in yt-dlp either.
+		if f.Kind.Permanent() || f.Kind == KindBlocked {
+			return nil, DedupeFailures(fails)
+		}
+	}
+
+	if !usedYtDlp {
+		t0 := time.Now()
+		st, err := YtDlp(ctx, embed)
+		elapsed := time.Since(t0)
+		if err == nil && st != nil && len(st.Qualities) > 0 {
+			diag.Record("extract", "yt-dlp", elapsed, diag.OK)
+			return st, DedupeFailures(fails)
+		}
+		diag.Record("extract", "yt-dlp", elapsed, diagOutcome(err, st))
+		fails = append(fails, failureOf("yt-dlp", err))
+	}
+	return nil, DedupeFailures(fails)
+}
+
+func diagOutcome(err error, st *source.Stream) diag.Outcome {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return diag.Timeout
+	}
+	if err == nil && (st == nil || len(st.Qualities) == 0) {
+		return diag.Empty
+	}
+	return diag.Error
+}
+
+func failureOf(extractor string, err error) Failure {
+	if err == nil {
+		return Failure{Extractor: extractor, Kind: KindDeleted, Detail: "oynatılabilir kaynak yok"}
+	}
+	var ee *Error
+	if errors.As(err, &ee) {
+		name := extractor
+		if ee.Extractor != "" {
+			name = ee.Extractor
+		}
+		return Failure{
+			Extractor: name,
+			Kind:      ee.Kind,
+			Detail:    ee.Detail,
+			Err:       ee,
+		}
+	}
+	k := KindOf(err)
+	return Failure{
+		Extractor: extractor,
+		Kind:      k,
+		Detail:    Summarize(err.Error(), 200),
+		Err:       err,
+	}
+}
+
+func summarizeFailures(fails []Failure) error {
+	if len(fails) == 0 {
+		return &Error{Kind: KindUnknown, Detail: "oynatılabilir kaynak yok"}
+	}
+	// Prefer a permanent or specific failure over a generic yt-dlp fallback error.
+	chosen := fails[0]
+	for _, f := range fails {
+		if f.Kind.Permanent() {
+			chosen = f
+			break
+		}
+		if chosen.Kind == KindUnknown && f.Kind != KindUnknown {
+			chosen = f
+		}
+	}
+	return &Error{
+		Extractor: chosen.Extractor,
+		Kind:      chosen.Kind,
+		Detail:    chosen.Detail,
+		Err:       chosen.Err,
+		Failures:  fails,
 	}
 }
 
@@ -45,6 +147,8 @@ func NormalizeURL(s string) string {
 	s = strings.TrimSpace(s)
 	if i := strings.LastIndex(s, "https://"); i > 0 {
 		s = s[i:]
+	} else if i := strings.LastIndex(s, "http://"); i > 0 {
+		s = s[i:]
 	}
 	if strings.HasPrefix(s, "//") {
 		s = "https:" + s
@@ -52,83 +156,11 @@ func NormalizeURL(s string) string {
 	return s
 }
 
-// Tau resolves tau-video.xyz embeds through its public JSON API.
-func Tau(ctx context.Context, u *url.URL) (*source.Stream, error) {
-	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	id := parts[len(parts)-1]
-	if id == "" || id == "embed" {
-		return nil, errors.New("tau: embed id yok")
-	}
-	api := "https://tau-video.xyz/api/video/" + id
-	if vid := u.Query().Get("vid"); vid != "" {
-		api += "?vid=" + url.QueryEscape(vid)
-	}
-	var res struct {
-		URLs []struct {
-			Label string `json:"label"`
-			URL   string `json:"url"`
-			Size  int64  `json:"size"`
-		} `json:"urls"`
-	}
-	if err := netx.GetJSON(ctx, api, map[string]string{"Referer": u.String()}, &res); err != nil {
-		return nil, fmt.Errorf("tau: %w", err)
-	}
-	st := &source.Stream{Referer: "https://tau-video.xyz/"}
-	seen := map[string]bool{}
-	for _, x := range res.URLs {
-		if x.URL == "" || seen[x.Label] {
-			continue
-		}
-		seen[x.Label] = true
-		st.Qualities = append(st.Qualities, source.Quality{Label: x.Label, URL: x.URL, Height: Height(x.Label), Size: x.Size})
-	}
-	if len(st.Qualities) == 0 {
-		return nil, errors.New("tau: video yok")
-	}
-	st.SortQualities()
-	return st, nil
-}
-
-// Drive checks a Google Drive video with yt-dlp, then hands the page itself
-// on: its stream links only work with cookies set while resolving, which a
-// plain URL would lose.
-func Drive(ctx context.Context, embed string) (*source.Stream, error) {
-	st, err := YtDlp(ctx, embed)
-	if err != nil {
-		return nil, fmt.Errorf("drive: %w", err)
-	}
-	h := st.Qualities[0].Height
-	if u, err := url.Parse(embed); err == nil {
-		u.Path = strings.TrimSuffix(strings.TrimSuffix(u.Path, "/preview"), "/view") + "/view"
-		embed = u.String()
-	}
-	return &source.Stream{Qualities: []source.Quality{{Label: labelFor(h), URL: embed, Height: h, Page: true}}}, nil
-}
-
-var sibnetSrc = regexp.MustCompile(`player\.src\(\[\{src:\s*"([^"]+)"`)
-
-// Sibnet scrapes the mp4 path from the shell page.
-func Sibnet(ctx context.Context, embed string) (*source.Stream, error) {
-	body, err := netx.Get(ctx, embed, map[string]string{"Referer": "https://video.sibnet.ru/"})
-	if err != nil {
-		return nil, fmt.Errorf("sibnet: %w", err)
-	}
-	m := sibnetSrc.FindSubmatch(body)
-	if m == nil {
-		return nil, errors.New("sibnet: kaynak bulunamadı")
-	}
-	src := string(m[1])
-	if strings.HasPrefix(src, "/") {
-		src = "https://video.sibnet.ru" + src
-	}
-	return &source.Stream{Referer: embed, Qualities: []source.Quality{{Label: "auto", URL: src}}}, nil
-}
-
 // YtDlp asks yt-dlp to resolve any of the ~1800 hosts it supports.
 func YtDlp(ctx context.Context, embed string) (*source.Stream, error) {
 	bin, err := exec.LookPath("yt-dlp")
 	if err != nil {
-		return nil, errors.New("yt-dlp kurulu değil")
+		return nil, &Error{Extractor: "yt-dlp", Kind: KindUnknown, Detail: "yt-dlp kurulu değil", Err: err}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
@@ -138,16 +170,26 @@ func YtDlp(ctx context.Context, embed string) (*source.Stream, error) {
 	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			msg := strings.TrimSpace(string(ee.Stderr))
+			rawMsg := strings.TrimSpace(string(ee.Stderr))
+			kind := Classify(0, ee.Stderr)
+			msg := rawMsg
 			if i := strings.LastIndex(msg, "ERROR:"); i >= 0 {
 				msg = msg[i+6:]
 			}
-			if len(msg) > 140 {
-				msg = msg[:140]
+			msg = Summarize(msg, 140)
+			return nil, &Error{
+				Extractor: "yt-dlp",
+				Kind:      kind,
+				Detail:    "yt-dlp: " + msg,
+				Err:       err,
 			}
-			return nil, fmt.Errorf("yt-dlp: %s", strings.TrimSpace(msg))
 		}
-		return nil, fmt.Errorf("yt-dlp: %w", err)
+		return nil, &Error{
+			Extractor: "yt-dlp",
+			Kind:      KindOf(err),
+			Detail:    fmt.Sprintf("yt-dlp: %v", err),
+			Err:       err,
+		}
 	}
 	var info struct {
 		URL         string            `json:"url"`
@@ -164,7 +206,12 @@ func YtDlp(ctx context.Context, embed string) (*source.Stream, error) {
 		} `json:"formats"`
 	}
 	if err := json.Unmarshal(out, &info); err != nil {
-		return nil, fmt.Errorf("yt-dlp çıktısı okunamadı: %w", err)
+		return nil, &Error{
+			Extractor: "yt-dlp",
+			Kind:      KindChanged,
+			Detail:    fmt.Sprintf("yt-dlp çıktısı okunamadı: %v", err),
+			Err:       err,
+		}
 	}
 	st := &source.Stream{}
 	seen := map[int]bool{}
@@ -193,7 +240,7 @@ func YtDlp(ctx context.Context, embed string) (*source.Stream, error) {
 		st.UserAgent = info.HTTPHeaders["User-Agent"]
 	}
 	if len(st.Qualities) == 0 {
-		return nil, errors.New("yt-dlp: oynatılabilir format yok")
+		return nil, &Error{Extractor: "yt-dlp", Kind: KindDeleted, Detail: "yt-dlp: oynatılabilir format yok"}
 	}
 	st.SortQualities()
 	return st, nil

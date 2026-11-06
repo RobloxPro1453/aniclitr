@@ -109,15 +109,18 @@ type downloads struct {
 	confirm   int
 	confirmAt time.Time
 
-	queue    bool // false: offline library (covers), true: the download queue
-	libCur   int
-	libOff   int
-	lastW    int
-	openShow string // anime key whose episodes are open
-	epCur    int
+	queue      bool // false: offline library (covers), true: the download queue
+	libCur     int
+	libOff     int
+	lastW      int
+	openShow   string // anime key whose episodes are open
+	epCur      int
+	speedHist  []float64
+	jobSpeeds  map[int][]float64
+	lastSample time.Time
 }
 
-func newDownloads() *downloads { return &downloads{confirm: -1} }
+func newDownloads() *downloads { return &downloads{confirm: -1, jobSpeeds: map[int][]float64{}} }
 
 // newDownloadsFor opens on the queue when nothing finished yet but
 // something is downloading (the shelf would be empty).
@@ -251,8 +254,15 @@ func (d *downloads) view(a *App, w, h int) string {
 	if bytes > 0 {
 		stats = append(stats, stBold.Render(humanSize(bytes))+stMuted.Render(" diskte"))
 	}
+	if a.cfg.SpeedGraph {
+		d.sampleSpeeds(jobs, speed, active)
+	}
 	if speed > 0 {
-		stats = append(stats, fg(cAccent).Render("↓ ")+stBold.Render(fmtSpeed(speed)))
+		if a.cfg.SpeedGraph && len(d.speedHist) > 0 {
+			stats = append(stats, fg(cAccent).Render("↓ ")+sparkline(d.speedHist, 12, cAccent, cSky)+" "+stBold.Render(fmtSpeed(speed)))
+		} else {
+			stats = append(stats, fg(cAccent).Render("↓ ")+stBold.Render(fmtSpeed(speed)))
+		}
 	}
 	sub := "Çevrimdışı izleme için indirilen bölümler"
 	if d.queue {
@@ -335,7 +345,11 @@ func (d *downloads) item(a *App, j download.Job, w int, sel bool) []string {
 			parts = append(parts, humanSize(j.Done))
 		}
 		if s := fmtSpeed(j.Speed); s != "" {
-			parts = append(parts, s)
+			if a.cfg.SpeedGraph && len(d.jobSpeeds[j.ID]) > 1 {
+				parts = append(parts, sparkline(d.jobSpeeds[j.ID], 8, acc, cSky)+" "+s)
+			} else {
+				parts = append(parts, s)
+			}
 		}
 		if j.Conns > 1 {
 			parts = append(parts, fmt.Sprintf("%d bağlantı", j.Conns))
@@ -396,4 +410,70 @@ func absInt(x int) int {
 		return -x
 	}
 	return x
+}
+
+func (d *downloads) sampleSpeeds(jobs []download.Job, totalSpeed float64, active int) {
+	if active == 0 {
+		d.speedHist = nil
+		if len(d.jobSpeeds) > 0 {
+			d.jobSpeeds = map[int][]float64{}
+		}
+		return
+	}
+	if time.Since(d.lastSample) < 550*time.Millisecond && len(d.speedHist) > 0 {
+		return
+	}
+	d.lastSample = time.Now()
+	const maxSamples = 20
+	d.speedHist = append(d.speedHist, totalSpeed)
+	if len(d.speedHist) > maxSamples {
+		d.speedHist = d.speedHist[len(d.speedHist)-maxSamples:]
+	}
+	if d.jobSpeeds == nil {
+		d.jobSpeeds = map[int][]float64{}
+	}
+	for _, j := range jobs {
+		if j.State == download.Running && j.Speed > 0 {
+			h := append(d.jobSpeeds[j.ID], j.Speed)
+			if len(h) > maxSamples {
+				h = h[len(h)-maxSamples:]
+			}
+			d.jobSpeeds[j.ID] = h
+		} else if j.State != download.Running {
+			delete(d.jobSpeeds, j.ID)
+		}
+	}
+}
+
+var sparkBars = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+
+func sparkline(samples []float64, width int, cLo, cHi string) string {
+	if width <= 0 || len(samples) == 0 {
+		return ""
+	}
+	if len(samples) > width {
+		samples = samples[len(samples)-width:]
+	}
+	peak := 256.0 * 1024.0 // minimum 256 KB/s floor so tiny Trickle doesn't peg at 100%
+	for _, v := range samples {
+		if v > peak {
+			peak = v
+		}
+	}
+	var b strings.Builder
+	for i := 0; i < width-len(samples); i++ {
+		b.WriteString(stFaint.Render("▁"))
+	}
+	for _, v := range samples {
+		t := v / peak
+		if t < 0 {
+			t = 0
+		} else if t > 1 {
+			t = 1
+		}
+		idx := int(t * float64(len(sparkBars)-1))
+		c := mix(hex(cLo), hex(cHi), t).hex()
+		b.WriteString(fg(c).Render(string(sparkBars[idx])))
+	}
+	return b.String()
 }

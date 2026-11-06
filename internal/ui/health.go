@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"aniclitr/internal/diag"
 	"aniclitr/internal/source"
 )
 
@@ -154,6 +155,11 @@ func (s *sourcesScreen) view(a *App, w, h int) string {
 				bc, lat = cErr, 1
 			}
 			out = append(out, center(fit("    "+renderSpans(miniBar(24, lat, bc))+stMuted.Render(detail), cw), w))
+		}
+		if on {
+			if bl := diag.SummaryLine(in.ID); bl != "" {
+				out = append(out, center(fit(stFaint.Render("    tanılama: ")+stMuted.Render(truncate(bl, cw-16)), cw), w))
+			}
 		}
 		out = append(out, "")
 	}

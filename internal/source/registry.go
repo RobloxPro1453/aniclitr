@@ -1,6 +1,11 @@
 package source
 
-import "sync"
+import (
+	"context"
+	"net/url"
+	"strings"
+	"sync"
+)
 
 var (
 	mu        sync.RWMutex
@@ -50,4 +55,29 @@ func Get(id string) Provider {
 		}
 	}
 	return nil
+}
+
+// IsURL reports whether s looks like an HTTP(S) URL.
+func IsURL(s string) bool {
+	s = strings.TrimSpace(s)
+	return strings.HasPrefix(strings.ToLower(s), "http://") || strings.HasPrefix(strings.ToLower(s), "https://")
+}
+
+// OpenURL tries every registered URLOpener to resolve a direct anime or episode URL.
+func OpenURL(ctx context.Context, raw string) (Anime, *Episode, bool, error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return Anime{}, nil, false, ErrNotFound
+	}
+	for _, p := range All() {
+		op, ok := p.(URLOpener)
+		if !ok {
+			continue
+		}
+		an, ep, handled, err := op.OpenURL(ctx, u)
+		if handled {
+			return an, ep, true, err
+		}
+	}
+	return Anime{}, nil, false, ErrNotFound
 }

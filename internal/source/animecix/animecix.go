@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -110,9 +111,17 @@ func (t apiTitle) toAnime() source.Anime {
 	}
 	if alt := string(t.NameEnglish); alt != "" && !strings.EqualFold(alt, a.Title) {
 		a.AltTitle = alt
-	} else if alt := string(t.NameRomanji); alt != "" && !strings.EqualFold(alt, a.Title) {
-		a.AltTitle = alt
+		a.Titles = append(a.Titles, alt)
 	}
+	if rom := string(t.NameRomanji); rom != "" && !strings.EqualFold(rom, a.Title) {
+		if a.AltTitle == "" {
+			a.AltTitle = rom
+		}
+		if !strings.EqualFold(rom, a.AltTitle) {
+			a.Titles = append(a.Titles, rom)
+		}
+	}
+	a.Normalize()
 	for _, g := range t.Genres {
 		name := string(g.DisplayName)
 		if name == "" {
@@ -182,7 +191,7 @@ func (Provider) title(ctx context.Context, id string) (apiTitle, error) {
 			continue
 		}
 		if int(res.Title.ID) != want {
-			lastErr = fmt.Errorf("animecix yanlış başlık döndürdü (%d ≠ %d): koruma değişmiş olabilir", res.Title.ID, want)
+			lastErr = extract.NewError(extract.KindChanged, fmt.Sprintf("animecix yanlış başlık döndürdü (%d ≠ %d): koruma değişmiş olabilir", res.Title.ID, want))
 			continue
 		}
 		return res.Title, nil
@@ -381,4 +390,34 @@ func (Provider) Latest(ctx context.Context) ([]source.FeedItem, error) {
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Released.After(items[j].Released) })
 	return items, nil
+}
+
+var (
+	reURLTitle = regexp.MustCompile(`(?i)/(?:titles|animes)/(\d+)`)
+	reURLEp    = regexp.MustCompile(`(?i)/season/(\d+)/episode/(\d+)`)
+)
+
+// OpenURL recognises animecix.tv / animecix.net title and episode URLs.
+func (p Provider) OpenURL(ctx context.Context, u *url.URL) (source.Anime, *source.Episode, bool, error) {
+	if u == nil || !strings.Contains(strings.ToLower(u.Host), "animecix") {
+		return source.Anime{}, nil, false, nil
+	}
+	m := reURLTitle.FindStringSubmatch(u.Path)
+	if m == nil {
+		return source.Anime{}, nil, false, nil
+	}
+	id := m[1]
+	an, err := p.Details(ctx, source.Anime{Source: "animecix", ID: id, Title: id})
+	if err != nil {
+		return source.Anime{}, nil, true, err
+	}
+	if em := reURLEp.FindStringSubmatch(u.Path); em != nil {
+		s, _ := strconv.Atoi(em[1])
+		e, _ := strconv.Atoi(em[2])
+		if s > 0 && e > 0 {
+			ep := source.Episode{ID: strconv.Itoa(e), Season: s, Number: e}
+			return an, &ep, true, nil
+		}
+	}
+	return an, nil, true, nil
 }

@@ -131,7 +131,40 @@ func OpenLibrary() *Library {
 	if l.Lists == nil {
 		l.Lists = []string{"favoriler"}
 	}
+	reconciled := false
+	for _, it := range l.Items {
+		if it != nil && it.Reconcile() {
+			reconciled = true
+		}
+	}
+	if reconciled {
+		l.saveLocked()
+	}
 	return l
+}
+
+// Reconcile ensures Status, Watched, and EpCount never contradict each other
+// (e.g. Status == Completed while Watched == 15 and EpCount == 16).
+func (it *Item) Reconcile() bool {
+	changed := false
+	if it.Status == Completed {
+		if it.FinishedAt.IsZero() {
+			it.FinishedAt = time.Now()
+			changed = true
+		}
+		if it.EpCount > 0 && it.Watched < it.EpCount {
+			it.Watched = it.EpCount
+			changed = true
+		} else if it.EpCount == 0 && it.Watched > 0 {
+			it.EpCount = it.Watched
+			changed = true
+		}
+	}
+	if it.EpCount > 0 && it.Watched > it.EpCount {
+		it.EpCount = it.Watched
+		changed = true
+	}
+	return changed
 }
 
 func (l *Library) saveLocked() {
@@ -225,10 +258,8 @@ func (l *Library) Set(a source.Anime, fn func(it *Item)) Item {
 	}
 	if it.Status == Completed && prev != Completed && it.FinishedAt.IsZero() {
 		it.FinishedAt = time.Now()
-		if it.EpCount > 0 && it.Watched < it.EpCount {
-			it.Watched = it.EpCount
-		}
 	}
+	it.Reconcile()
 	if it.syncSig() != sig {
 		it.MalDirty = true
 		defer l.signal()
@@ -267,6 +298,7 @@ func (l *Library) Upsert(it Item) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	c := it
+	c.Reconcile()
 	l.Items[it.Key()] = &c
 	for _, name := range it.Lists {
 		found := false

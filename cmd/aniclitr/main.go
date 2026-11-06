@@ -18,9 +18,11 @@ import (
 	"aniclitr/internal/doctor"
 	"aniclitr/internal/logx"
 	"aniclitr/internal/pathx"
+	"aniclitr/internal/source"
 	_ "aniclitr/internal/source/animecix"
 	_ "aniclitr/internal/source/animedepo"
 	_ "aniclitr/internal/source/animetr"
+	_ "aniclitr/internal/source/anihub"
 	_ "aniclitr/internal/source/hianime"
 	"aniclitr/internal/tty"
 	"aniclitr/internal/ui"
@@ -29,26 +31,29 @@ import (
 
 // version is bumped by scripts/release.ps1; release builds also stamp it
 // from the git tag (-ldflags "-X main.version=…").
-var version = "0.12.0"
+var version = "0.15.0"
 
 func main() {
+	var initialURL string
 	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "doctor":
+		switch {
+		case os.Args[1] == "doctor":
 			q := "frieren"
 			if len(os.Args) > 2 {
 				q = strings.Join(os.Args[2:], " ")
 			}
 			doctor.Run(q, true)
 			return
-		case "-v", "--version", "version":
+		case os.Args[1] == "-v" || os.Args[1] == "--version" || os.Args[1] == "version":
 			fmt.Println("aniclitr", version)
 			return
-		case "update", "güncelle":
+		case os.Args[1] == "update" || os.Args[1] == "güncelle":
 			os.Exit(runUpdate())
-		case "-h", "--help", "help":
-			fmt.Println("aniclitr             arayüzü başlat\naniclitr doctor [q]  kaynakları ve bağımlılıkları canlı test et\naniclitr update      son sürümü GitHub'dan kur\naniclitr --version   sürüm")
+		case os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "help":
+			fmt.Println("aniclitr                 arayüzü başlat\naniclitr <url>           anime veya bölüm adresini doğrudan aç\naniclitr doctor [q]      kaynakları ve bağımlılıkları canlı test et\naniclitr doctor --blame  kaynak ve sunucu hata dökümü\naniclitr update          son sürümü GitHub'dan kur\naniclitr --version       sürüm")
 			return
+		case source.IsURL(os.Args[1]):
+			initialURL = os.Args[1]
 		}
 	}
 	if !term.IsTerminal(os.Stdout.Fd()) {
@@ -78,6 +83,9 @@ func main() {
 	ui.Version = version
 	ui.TuneGC()
 	app := ui.New(cfg, g)
+	if initialURL != "" {
+		app.SetInitialURL(initialURL)
+	}
 	var err error
 	if cfg.Renderer == "klasik" {
 		// fallback: Bubble Tea's own line renderer (posters may blink)

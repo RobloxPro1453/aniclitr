@@ -8,9 +8,15 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"aniclitr/internal/choose"
+	"aniclitr/internal/diag"
 	"aniclitr/internal/download"
+	"aniclitr/internal/extract"
+	"aniclitr/internal/match"
 	"aniclitr/internal/source"
 )
+
+type pickerWaitMsg struct{ fCur int }
 
 // group is one fansub; uploads credited differently ("Metincix" vs
 // "Çevirmen: Metincix / Dizgi: Metincix") are merged under the short name.
@@ -43,13 +49,25 @@ type picker struct {
 	prefHost string
 	attempt  int // automatic recoveries (from a failed playback)
 	// dlMode: choosing what to download (1 = this episode, 2 = the season)
-	dlMode   int
-	dlSeason []source.Episode
-	tried    map[int]bool
+	dlMode          int
+	dlSeason        []source.Episode
+	tried           map[int]bool
+	firstResolvedAt time.Time
+	waitScheduled   bool
+	waitRecovery    bool
+	alts            []source.Anime
 }
 
-// recentlyFailed: this variant failed to play in the last few minutes.
+// recentlyFailed reports whether this variant should be skipped by automatic
+// selection: permanently if it failed with a permanent upstream error
+// (deleted, copyright, 404…), or for 10 minutes after a playback failure.
 func recentlyFailed(a *App, url string) bool {
+	if a.permFailed[url] {
+		return true
+	}
+	if st := a.resolved[url]; st != nil && st.err != nil && st.kind.Permanent() {
+		return true
+	}
 	t, ok := a.failed[url]
 	return ok && time.Since(t) < 10*time.Minute
 }
@@ -97,9 +115,9 @@ func (p *picker) hints() []hint {
 		return []hint{{"enter", "bu kaynak/kaliteyle indir"}, {"←", "fansublar"}, {"↑↓", "kaynak"}, {"esc", "vazgeç"}}
 	}
 	if p.focus == 0 {
-		return []hint{{"enter", "en iyi kaynakla izle"}, {"d", "bu fansubla indir"}, {"→", "kaynak/kalite seç"}, {"↑↓", "fansub"}, {"esc", "geri"}}
+		return []hint{{"enter", "en iyi kaynakla izle"}, {"d", "bu fansubla indir"}, {"→", "kaynak/kalite seç"}, {"u", "bağlantıları göster"}, {"r", "kurtarma"}, {"↑↓", "fansub"}, {"esc", "geri"}}
 	}
-	return []hint{{"enter", "bu kaliteyle izle"}, {"d", "bunu indir"}, {"←", "fansublar"}, {"↑↓", "kaynak"}, {"esc", "geri"}}
+	return []hint{{"enter", "bu kaliteyle izle"}, {"d", "bunu indir"}, {"u", "bağlantıları göster"}, {"r", "kurtarma"}, {"←", "fansublar"}, {"↑↓", "kaynak"}, {"esc", "geri"}}
 }
 
 func (p *picker) animating(a *App) bool {
@@ -154,24 +172,42 @@ func (p *picker) build(a *App, vs []source.Variant) tea.Cmd {
 	// subtitles before dubs (sites list the dub first); the remembered
 	// fansub still wins below
 	sort.SliceStable(p.groups, func(i, j int) bool { return !isDub(p.groups[i].name) && isDub(p.groups[j].name) })
-	// remembered fansub first, then prefer the remembered host inside each group
+	// remembered fansub first, then sort hosts by rule priority (with remembered host first)
+	rules := a.selectionRules()
 	p.fCur = 0
-	for i, g := range p.groups {
+	for i := range p.groups {
+		g := &p.groups[i]
 		if p.prefFan != "" && strings.EqualFold(g.name, shortFansub(p.prefFan)) {
 			p.fCur = i
 		}
-		if p.prefHost != "" {
-			for j, v := range g.vs {
-				if strings.EqualFold(v.Host, p.prefHost) && j > 0 {
-					g.vs[0], g.vs[j] = g.vs[j], g.vs[0]
+		sort.SliceStable(g.vs, func(x, y int) bool {
+			if p.prefHost != "" {
+				px := strings.EqualFold(g.vs[x].Host, p.prefHost)
+				py := strings.EqualFold(g.vs[y].Host, p.prefHost)
+				if px != py {
+					return px
 				}
 			}
-		}
+			return hostOrderRank(g.vs[x].Host, rules.HostOrder) < hostOrderRank(g.vs[y].Host, rules.HostOrder)
+		})
 	}
+	p.firstResolvedAt = time.Time{}
+	p.waitScheduled = false
 	if p.auto {
 		p.pending = true
 	}
 	return p.resolveCurrent(a)
+}
+
+func hostOrderRank(host string, order []string) int {
+	h := strings.ToLower(strings.TrimSpace(host))
+	for i, want := range order {
+		w := strings.ToLower(strings.TrimSpace(want))
+		if w != "" && (h == w || strings.Contains(h, w)) {
+			return i
+		}
+	}
+	return len(order) + 1
 }
 
 func (p *picker) group() *group {
@@ -181,7 +217,7 @@ func (p *picker) group() *group {
 	return &p.groups[p.fCur]
 }
 
-// resolveCurrent warms up to 3 hosts of the highlighted fansub at once.
+// resolveCurrent warms up to 6 hosts of the highlighted fansub at once.
 func (p *picker) resolveCurrent(a *App) tea.Cmd {
 	g := p.group()
 	if g == nil {
@@ -195,10 +231,10 @@ func (p *picker) resolveCurrent(a *App) tea.Cmd {
 		}
 	}
 	for _, v := range g.vs {
-		if inflight >= 3 {
+		if inflight >= 6 {
 			break
 		}
-		if a.resolved[v.URL] == nil {
+		if a.resolved[v.URL] == nil && !a.permFailed[v.URL] {
 			cmds = append(cmds, a.resolve(p.an.Source, v))
 			inflight++
 		}
@@ -233,9 +269,21 @@ func (p *picker) update(a *App, msg tea.Msg) tea.Cmd {
 		}
 		if m.err != nil {
 			p.err = m.err
+			if a.cfg.AutoFallback {
+				return p.offerRecovery(a)
+			}
 			return nil
 		}
 		return p.build(a, m.vs)
+	case altsMsg:
+		if m.key == p.an.Key() {
+			p.alts = m.alts
+			if p.waitRecovery {
+				p.waitRecovery = false
+				return p.showRecoveryMenu(a)
+			}
+		}
+		return nil
 	case resolveMsg:
 		g := p.group()
 		if g == nil {
@@ -251,16 +299,21 @@ func (p *picker) update(a *App, msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		if p.pending {
-			return p.tryPlay(a)
+			return tea.Batch(p.resolveCurrent(a), p.tryPlay(a))
 		}
 		return p.resolveCurrent(a)
+	case pickerWaitMsg:
+		if p.pending && m.fCur == p.fCur {
+			return p.tryPlay(a)
+		}
+		return nil
 	case tea.KeyMsg:
 		return p.key(a, m)
 	}
 	return nil
 }
 
-// tryPlay starts playback with the first working host (or the requested one).
+// tryPlay starts playback using rule-based selection (choose.Best / choose.Exact).
 func (p *picker) tryPlay(a *App) tea.Cmd {
 	g := p.group()
 	if g == nil {
@@ -280,25 +333,77 @@ func (p *picker) tryPlay(a *App) tea.Cmd {
 			return p.play(a, v, st.st, a.pickQuality(st.st))
 		default:
 			p.pending = false
-			a.notify(v.Host+" çalışmıyor: "+st.err.Error(), "err")
+			a.notify(v.Host+" çalışmıyor: "+shortErr(st.err), "err")
 			return nil
 		}
 	}
+
+	rules := a.selectionRules()
+	if p.prefHost != "" {
+		rules.HostOrder = append([]string{p.prefHost}, rules.HostOrder...)
+	}
+
+	var cands []choose.Candidate
 	waiting := false
-	for _, v := range g.vs {
+	for vi, v := range g.vs {
+		if recentlyFailed(a, v.URL) {
+			continue
+		}
 		st := a.resolved[v.URL]
-		if st == nil || recentlyFailed(a, v.URL) {
+		if st == nil {
 			continue
 		}
 		if st.loading {
 			waiting = true
-			break // keep host order: don't skip ahead of a slower, better host
+			continue
 		}
 		if st.st != nil {
-			p.pending = false
-			return p.play(a, v, st.st, a.pickQuality(st.st))
+			for qi, q := range st.st.Qualities {
+				if q.Broken {
+					continue
+				}
+				cands = append(cands, choose.Candidate{
+					Host:         v.Host,
+					Fansub:       v.Fansub,
+					QualityLabel: q.Label,
+					Height:       q.Height,
+					Bitrate:      q.Bitrate,
+					Broken:       q.Broken,
+					VariantIdx:   vi,
+					QualityIdx:   qi,
+				})
+			}
 		}
 	}
+
+	if len(cands) > 0 {
+		if p.firstResolvedAt.IsZero() {
+			p.firstResolvedAt = time.Now()
+		}
+		if best, ok := choose.Best(cands, rules); ok {
+			waitDur := time.Duration(rules.WaitAfterFirstMs) * time.Millisecond
+			if choose.Exact(best, rules) || !waiting || time.Since(p.firstResolvedAt) >= waitDur {
+				p.pending = false
+				bv := g.vs[best.VariantIdx]
+				bst := a.resolved[bv.URL].st
+				bq := bst.Qualities[best.QualityIdx]
+				return p.play(a, bv, bst, bq)
+			}
+			if !p.waitScheduled {
+				p.waitScheduled = true
+				rem := waitDur - time.Since(p.firstResolvedAt)
+				if rem < 20*time.Millisecond {
+					rem = 20 * time.Millisecond
+				}
+				fCur := p.fCur
+				return tea.Tick(rem, func(time.Time) tea.Msg {
+					return pickerWaitMsg{fCur: fCur}
+				})
+			}
+			return nil
+		}
+	}
+
 	if waiting {
 		return nil
 	}
@@ -317,10 +422,15 @@ func (p *picker) tryPlay(a *App) tea.Cmd {
 		if !p.tried[i] {
 			a.notify(g.name+" açılmadı — "+p.groups[i].name+" deneniyor…", "warn")
 			p.fCur, p.hCur = i, 0
+			p.firstResolvedAt = time.Time{}
+			p.waitScheduled = false
 			return tea.Batch(p.resolveCurrent(a), a.tick())
 		}
 	}
 	p.pending = false
+	if a.cfg.AutoFallback {
+		return p.offerRecovery(a)
+	}
 	a.notify("hiçbir fansubun kaynağı açılmadı — biraz sonra tekrar dene ya da s ile başka siteye geç", "err")
 	return nil
 }
@@ -337,6 +447,10 @@ func (p *picker) play(a *App, v source.Variant, st *source.Stream, q source.Qual
 
 func (p *picker) key(a *App, k tea.KeyMsg) tea.Cmd {
 	switch k.String() {
+	case "u":
+		return p.showLinks(a)
+	case "r":
+		return p.offerRecovery(a)
 	case "esc", "q", "backspace":
 		if p.focus == 1 {
 			p.focus = 0
@@ -416,7 +530,11 @@ func (p *picker) key(a *App, k tea.KeyMsg) tea.Cmd {
 			return p.play(a, v, st.st, st.st.Qualities[r.qi])
 		}
 		if st != nil && st.err != nil {
-			delete(a.resolved, v.URL) // retry
+			if st.kind.Permanent() || a.permFailed[v.URL] {
+				a.notify(v.Host+" çalışmıyor: "+shortErr(st.err), "err")
+				return nil
+			}
+			delete(a.resolved, v.URL) // transient error: allow retry
 		}
 		p.pending, p.pendHost = true, r.vi
 		return tea.Batch(p.tryPlay(a), a.tick())
@@ -434,17 +552,19 @@ func (p *picker) view(a *App, w, h int) string {
 	case 1:
 		meta = pill("↓ İNDİRME", cAccent)
 	case 2:
-		meta = pill(fmt.Sprintf("↓ SEZON · %d BÖLÜM", len(p.dlSeason)), cAccent)
+		meta = pill(fmt.Sprintf("↓ TOPLU İNDİRME · %d BÖLÜM", len(p.dlSeason)), cAccent)
 	}
 	epl := fmt.Sprintf("%d. Bölüm", p.ep.Number)
-	if p.ep.Season > 1 || (len(p.an.Seasons) > 1) {
+	if p.dlMode == 2 && len(p.dlSeason) > 1 {
+		epl = fmt.Sprintf("%d. – %d. Bölümler (%d bölüm)", p.dlSeason[0].Number, p.dlSeason[len(p.dlSeason)-1].Number, len(p.dlSeason))
+	} else if p.ep.Season > 1 || (len(p.an.Seasons) > 1) {
 		epl = fmt.Sprintf("Sezon %d · Bölüm %d", p.ep.Season, p.ep.Number)
 	}
 	if p.an.IsMovie() {
 		epl = "Film"
 	}
 	sub := stText.Render(epl)
-	if p.ep.Title != "" && !strings.HasSuffix(p.ep.Title, "Bölüm") && !p.an.IsMovie() {
+	if p.dlMode != 2 && p.ep.Title != "" && !strings.HasSuffix(p.ep.Title, "Bölüm") && !p.an.IsMovie() {
 		sub += stMuted.Render("  — " + p.ep.Title)
 	}
 	sub += stFaint.Render("  ·  ") + stMuted.Render("önce çeviri grubunu, ardından kaynağı seçin")
@@ -564,15 +684,15 @@ func (p *picker) hostPane(a *App, w, h int) []string {
 				if sel {
 					bg, bar, tc = cBand, sp("  ▌ ", cAccent), cAccent
 				}
-				label := q.Label
-				if label == "" {
-					label = "auto"
-				}
+				label := q.DisplayLabel()
 				right := []span{}
+				if q.Broken {
+					right = append(right, sp("bozuk  ", cErr))
+				}
 				if s := humanSize(q.Size); s != "" {
 					right = append(right, sp(s, cMuted))
 				}
-				if qi == 0 {
+				if qi == 0 && !q.Broken {
 					right = append(right, sp("  en iyi", cMuted))
 				}
 				if len(st.st.Subtitles) > 0 && qi == 0 {
@@ -626,6 +746,11 @@ func shortErr(err error) string {
 	if err == nil {
 		return ""
 	}
+	if k := extract.KindOf(err); k != extract.KindUnknown {
+		if msg := k.Message(); msg != "" {
+			return msg
+		}
+	}
 	s := err.Error()
 	switch {
 	case strings.Contains(s, "403"):
@@ -643,4 +768,136 @@ func shortErr(err error) string {
 func isDub(name string) bool {
 	n := strings.ToLower(name)
 	return strings.Contains(n, "dublaj") || strings.Contains(n, "dub")
+}
+
+// showLinks opens a dropdown inspecting resolved URLs (tokens masked).
+func (p *picker) showLinks(a *App) tea.Cmd {
+	g := p.group()
+	if g == nil {
+		return nil
+	}
+	var items []dropItem
+	for _, v := range g.vs {
+		st := a.resolved[v.URL]
+		host := v.Host
+		if host == "" {
+			host = "Oynatıcı"
+		}
+		items = append(items, dropItem{group: host + " · " + diag.RedactURL(v.URL)})
+		if st == nil {
+			items = append(items, dropItem{icon: "·", label: "henüz çözülmedi", dim: true})
+			continue
+		}
+		if st.loading {
+			items = append(items, dropItem{icon: "◌", label: "çözülüyor…", dim: true})
+			continue
+		}
+		if st.err != nil {
+			items = append(items, dropItem{icon: "✗", color: cErr, label: shortErr(st.err), note: st.kind.Message()})
+			continue
+		}
+		if st.st != nil {
+			for _, q := range st.st.Qualities {
+				v := v
+				st := st.st
+				q := q
+				ic, col := "✓", cOK
+				if q.Broken {
+					ic, col = "✗", cErr
+				}
+				items = append(items, dropItem{
+					icon:  ic,
+					color: col,
+					label: q.DisplayLabel() + "  " + truncate(diag.RedactURL(q.URL), 38),
+					note:  humanSize(q.Size),
+					run: func(a *App) tea.Cmd {
+						return p.play(a, v, st, q)
+					},
+				})
+			}
+		}
+	}
+	a.openList("çözülen bağlantılar · "+g.name, items)
+	return a.tick()
+}
+
+// offerRecovery finds alternative sources and presents the recovery menu
+// (switch to another source, reset mapping and re-search, or return to episodes).
+func (p *picker) offerRecovery(a *App) tea.Cmd {
+	if len(p.alts) == 0 {
+		for _, s := range a.stack {
+			if as, ok := s.(*animeScreen); ok {
+				for _, cand := range as.srcs {
+					if cand.Source != p.an.Source {
+						p.alts = append(p.alts, cand)
+					}
+				}
+			}
+		}
+	}
+	if len(p.alts) > 0 {
+		return p.showRecoveryMenu(a)
+	}
+	p.waitRecovery = true
+	a.notify("bu kaynakta açılmadı — diğer kaynaklar kontrol ediliyor…", "warn")
+	return tea.Batch(a.tick(), a.findAlts(p.an))
+}
+
+func (p *picker) showRecoveryMenu(a *App) tea.Cmd {
+	var items []dropItem
+	if len(p.alts) > 0 {
+		items = append(items, dropItem{group: "diğer kaynaklarda devam et"})
+		for _, alt := range p.alts {
+			if alt.Source == p.an.Source {
+				continue
+			}
+			alt := alt
+			srcName := alt.Source
+			if prov := source.Get(alt.Source); prov != nil {
+				srcName = prov.Info().Name
+			}
+			items = append(items, dropItem{
+				icon:  "▶",
+				color: cOK,
+				label: fmt.Sprintf("%s üzerinden aç (%s)", srcName, p.crumb()),
+				note:  alt.Title,
+				run: func(a *App) tea.Cmd {
+					a.pop() // close picker
+					if as, ok := a.top().(*animeScreen); ok {
+						*as = *newAnime(alt, p.alts, p.ep.Season, p.ep.Number)
+						a.notify("kaynak değiştirildi: "+srcName, "ok")
+						return as.start(a)
+					}
+					sc := newAnime(alt, nil, p.ep.Season, p.ep.Number)
+					return tea.Batch(a.push(sc), sc.start(a))
+				},
+			})
+		}
+	}
+	items = append(items,
+		dropItem{group: "kurtarma işlemleri"},
+		dropItem{
+			icon:  "↻",
+			color: cAccent,
+			label: "Eşlemeyi sıfırla ve yeniden ara",
+			note:  p.an.Title,
+			run: func(a *App) tea.Cmd {
+				match.Default().Delete(p.an.Key())
+				a.pop()
+				r := newResults(p.an.Title)
+				a.notify("eşleme sıfırlandı — yeniden aranıyor", "ok")
+				return tea.Batch(a.push(r), r.start(a))
+			},
+		},
+		dropItem{
+			icon:  "←",
+			label: "Bölüm listesine dön",
+			run: func(a *App) tea.Cmd {
+				a.pop()
+				return a.tick()
+			},
+		},
+	)
+	a.openList("kurtarma · "+p.crumb(), items)
+	return a.tick()
 }

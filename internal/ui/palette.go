@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
 
@@ -90,6 +91,7 @@ func (a *App) paletteItems() []palItem {
 		st := st
 		add(statusIcon(st), "Kitaplık › "+st, "raf", "", func(a *App) tea.Cmd { return a.openLibrary(st) })
 	}
+	add("◈", "Kitaplık › İstatistikler", "raf", "i", func(a *App) tea.Cmd { return a.openLibrary("stats") })
 	for _, l := range a.lib.ListNames() {
 		l := l
 		add(listIcon(l), "Liste › "+l, "liste", "", func(a *App) tea.Cmd { return a.openLibrary("list:" + l) })
@@ -179,6 +181,11 @@ func (a *App) paletteItems() []palItem {
 	})
 	add("▤", "Sıkı düzeni "+onOff(a.cfg.Compact), "ayar", "", func(a *App) tea.Cmd {
 		a.cfg.Compact = !a.cfg.Compact
+		_ = a.cfg.Save()
+		return nil
+	})
+	add("▅", "İndirme hız grafiğini "+onOff(a.cfg.SpeedGraph), "ayar", "", func(a *App) tea.Cmd {
+		a.cfg.SpeedGraph = !a.cfg.SpeedGraph
 		_ = a.cfg.Save()
 		return nil
 	})
@@ -300,10 +307,16 @@ func (p *palette) filter(a *App) {
 	var search []palHit
 	if q != "" && len([]rune(q)) >= 2 && !strings.HasPrefix(string(foldRunes(q)), "tema") {
 		qq := q
-		search = append(search, palHit{it: palItem{icon: ic("search"), label: "“" + qq + "” ara", group: "arama", run: func(a *App) tea.Cmd {
-			r := newResults(qq)
-			return tea.Batch(a.push(r), r.start(a))
-		}}, score: 1})
+		if source.IsURL(qq) {
+			search = append(search, palHit{it: palItem{icon: ic("play"), label: "Bağlantıyı aç: " + qq, group: "bağlantı", run: func(a *App) tea.Cmd {
+				return a.openURL(qq)
+			}}, score: 100})
+		} else {
+			search = append(search, palHit{it: palItem{icon: ic("search"), label: "“" + qq + "” ara", group: "arama", run: func(a *App) tea.Cmd {
+				r := newResults(qq)
+				return tea.Batch(a.push(r), r.start(a))
+			}}, score: 1})
+		}
 	}
 	var hs []palHit
 	for _, it := range p.items {

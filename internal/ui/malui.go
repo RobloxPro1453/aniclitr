@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"aniclitr/internal/mal"
+	"aniclitr/internal/match"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
@@ -78,16 +79,45 @@ type malOpenMsg struct {
 }
 
 // openByMal finds a title on the sources (matching the MAL id) and opens it.
+// If mappings.json already knows the provider key for malID, it opens directly
+// without searching the network again.
 func (a *App) openByMal(malID int, titles []string, poster string) tea.Cmd {
-	a.notify("kaynaklarda aranıyor: "+firstNonEmpty(titles...), "")
 	var provs []source.Provider
 	for _, p := range source.All() {
 		if a.cfg.Enabled(p.Info().ID, p.Info().Legacy) {
 			provs = append(provs, p)
 		}
 	}
+	if malID > 0 {
+		if cached := match.Default().ByMal(malID); len(cached) > 0 {
+			var found []source.Anime
+			for _, p := range provs {
+				if hit, ok := cached[p.Info().ID]; ok {
+					found = append(found, source.Anime{
+						Source: hit.Source,
+						ID:     hit.AnimeID,
+						Title:  firstNonEmpty(hit.Entry.Title, firstNonEmpty(titles...)),
+						Poster: poster,
+						MalID:  malID,
+					})
+				}
+			}
+			if len(found) > 0 {
+				return func() tea.Msg {
+					return malOpenMsg{an: found[0], alts: found[1:]}
+				}
+			}
+		}
+	}
+
+	a.notify("kaynaklarda aranıyor: "+firstNonEmpty(titles...), "")
 	return tea.Batch(a.tick(), run(45*time.Second, func(ctx context.Context) tea.Msg {
 		var found, fallback []source.Anime
+		want := match.Want{
+			Titles: titles,
+			Season: source.ParseSeasonNumber(firstNonEmpty(titles...)),
+			MalID:  malID,
+		}
 		for _, p := range provs {
 		titles:
 			for ti, t := range titles {
@@ -98,7 +128,25 @@ func (a *App) openByMal(malID int, titles []string, poster string) tea.Cmd {
 				if err != nil || len(res) == 0 {
 					continue
 				}
-				if len(fallback) == 0 && fold(res[0].Title) == fold(t) {
+				var scored []match.Scored
+				for i, r := range res {
+					sc := match.ScoreCandidate(match.Candidate{
+						Titles: r.AllTitles(),
+						Year:   r.Year,
+						Kind:   r.Kind,
+						Eps:    r.EpCount,
+						MalID:  r.MalID,
+						Poster: r.Poster,
+					}, want)
+					scored = append(scored, match.Scored{Index: i, Score: sc, Eps: r.EpCount, Year: r.Year})
+				}
+				if winIdx, ok, amb := match.Pick(scored); ok && !amb && len(fallback) == 0 {
+					w := res[winIdx]
+					fallback = append(fallback, w)
+					if malID > 0 {
+						match.Default().SetAuto(w.Key(), malID, 0, w.Title, scored[winIdx].Score)
+					}
+				} else if len(fallback) == 0 && fold(res[0].Title) == fold(t) {
 					fallback = append(fallback, res[0])
 				}
 				for i, r := range res {
@@ -106,10 +154,12 @@ func (a *App) openByMal(malID int, titles []string, poster string) tea.Cmd {
 						break
 					}
 					if malID != 0 && r.MalID == malID {
+						match.Default().SetAuto(r.Key(), malID, 0, r.Title, 1.0)
 						found = append(found, r)
 						break titles
 					}
 					if d, err := p.Details(ctx, r); err == nil && malID != 0 && d.MalID == malID {
+						match.Default().SetAuto(d.Key(), malID, 0, d.Title, 1.0)
 						found = append(found, d)
 						break titles
 					}
@@ -128,6 +178,7 @@ func (a *App) openByMal(malID int, titles []string, poster string) tea.Cmd {
 		}
 		if malID != 0 {
 			an.MalID = malID
+			match.Default().SetAuto(an.Key(), malID, 0, an.Title, 1.0)
 		}
 		return malOpenMsg{an: an, alts: found[1:]}
 	}))

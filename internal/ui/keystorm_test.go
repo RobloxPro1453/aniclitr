@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"aniclitr/internal/anilist"
 	"aniclitr/internal/source"
 )
 
@@ -48,6 +49,7 @@ func TestKeyStorm(t *testing.T) {
 	makers := map[string]func(a *App) screen{
 		"home":      func(a *App) screen { return nil },
 		"library":   func(a *App) screen { return newLibrary() },
+		"libstats":  func(a *App) screen { l := newLibrary(); l.selectShelf(a, "stats"); return l },
 		"discover":  func(a *App) screen { d := newDiscover(); d.schedOK = true; return d },
 		"discsec":   func(a *App) screen { d := newDiscover(); d.schedOK = true; d.menu = false; return d },
 		"genrepick": func(a *App) screen { d := newDiscover(); d.tab, d.menu, d.gpick = tGenre, false, true; return d },
@@ -55,6 +57,16 @@ func TestKeyStorm(t *testing.T) {
 		"feed":      func(a *App) screen { return newFeedScreen() },
 		"settings":  func(a *App) screen { return newSettings() },
 		"sources":   func(a *App) screen { return &sourcesScreen{} },
+		"characters": func(a *App) screen {
+			cs := newCharactersScreen(an)
+			cs.loading = false
+			c1 := anilist.Character{ID: 1, Role: "MAIN", Description: "Elf büyücü ~!gizli spoiler!~ metni."}
+			c1.Name.Full = "Frieren"
+			c2 := anilist.Character{ID: 2, Role: "SUPPORTING", Description: "Büyücü."}
+			c2.Name.Full = "Fern"
+			cs.chars = []anilist.Character{c1, c2}
+			return cs
+		},
 		"anime": func(a *App) screen {
 			a.details[an.Key()] = an
 			sc := newAnime(an, nil, 0, 0)

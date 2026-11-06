@@ -16,7 +16,7 @@ type setting struct {
 	desc  string
 	value func(a *App) string
 	on    func(a *App) bool
-	act   func(a *App)
+	act   func(a *App, dir int)
 	run   func(a *App) tea.Cmd // an action (opens something) instead of a value
 }
 
@@ -28,6 +28,7 @@ type settings struct {
 }
 
 var qualities = []string{"best", "1080p", "720p", "480p"}
+var primaryHosts = []string{"Tau Video", "AniHub HLS", "Google Drive", "OK.ru", "Sibnet", "Voe", "Vidmoly"}
 
 func newSettings() *settings {
 	s := &settings{}
@@ -35,7 +36,7 @@ func newSettings() *settings {
 		return setting{
 			label: label, desc: desc,
 			on:  func(a *App) bool { return *get(a) },
-			act: func(a *App) { v := get(a); *v = !*v },
+			act: func(a *App, _ int) { v := get(a); *v = !*v },
 		}
 	}
 	cycle := func(label, desc string, opts []string, get func(a *App) *string, after func(a *App)) setting {
@@ -47,9 +48,10 @@ func newSettings() *settings {
 				}
 				return "otomatik"
 			},
-			act: func(a *App) {
+			act: func(a *App, dir int) {
 				v := get(a)
-				*v = opts[(indexOf(opts, *v)+1)%len(opts)]
+				n := len(opts)
+				*v = opts[(indexOf(opts, *v)+dir+n)%n]
 				if after != nil {
 					after(a)
 				}
@@ -70,7 +72,7 @@ func newSettings() *settings {
 		setting{
 			label: "Otomatik güncelle", desc: "Kurulu kopya açılışta GitHub'daki son sürümü denetler. Yeni sürüm varsa indirilir, SHA-256 özetiyle doğrulanır ve bir sonraki açılışta etkinleşir.",
 			on:  func(a *App) bool { return a.cfg.AutoUpdate },
-			act: func(a *App) { a.cfg.AutoUpdate = !a.cfg.AutoUpdate },
+			act: func(a *App, _ int) { a.cfg.AutoUpdate = !a.cfg.AutoUpdate },
 		},
 		setting{
 			label: "Güncellemeleri denetle", desc: "Yeni sürüm olup olmadığını şimdi denetler.",
@@ -85,12 +87,12 @@ func newSettings() *settings {
 				}
 				return "bağlı değil"
 			},
-			act: func(a *App) { a.stack = append(a.stack, newMalScreen(a)) },
+			act: func(a *App, _ int) { a.stack = append(a.stack, newMalScreen(a)) },
 		},
 		setting{
 			label: "Kapaktan tema", desc: "Bir anime açıldığında arayüz kapak görselinin renklerini alır; çıkınca seçili temaya döner.",
 			on:  func(a *App) bool { return a.cfg.CoverTheme },
-			act: func(a *App) { a.cfg.CoverTheme = !a.cfg.CoverTheme },
+			act: func(a *App, _ int) { a.cfg.CoverTheme = !a.cfg.CoverTheme },
 		},
 		setting{
 			label: "Arayüz sesleri", desc: "Gezinme, seçim ve bildirimler için kısa arayüz sesleri. 0 kapalı demektir.",
@@ -100,34 +102,35 @@ func newSettings() *settings {
 				}
 				return fmt.Sprintf("%%%d", a.cfg.Sounds)
 			},
-			act: func(a *App) {
+			act: func(a *App, dir int) {
 				levels := []int{0, 20, 35, 60, 100}
-				next := levels[0]
+				idx := 0
 				for i, l := range levels {
 					if l == a.cfg.Sounds {
-						next = levels[(i+1)%len(levels)]
+						idx = i
+						break
 					}
 				}
-				a.cfg.Sounds = next
+				a.cfg.Sounds = levels[(idx+dir+len(levels))%len(levels)]
 				playSound(a, sndSelect)
 			},
 		},
 		setting{
 			label: "Tema", desc: "ctrl+t canlı önizlemeli tema seçiciyi açar. Özel temalar %APPDATA%\\aniclitr\\themes\\*.json dosyası olarak eklenebilir.",
 			value: func(a *App) string { return a.themeName },
-			act:   func(a *App) { a.openPalette("tema ") },
+			act:   func(a *App, _ int) { a.openPalette("tema ") },
 		},
 		cycle("Ambiyans", "Ana sayfadaki arka plan efekti. otomatik: mevsime ve saate göre seçilir (gece yıldızlar, kışın kar…).", ambientKinds, func(a *App) *string { return &a.cfg.Ambient }, nil),
 		cycle("Logo efekti", "Açılışta logonun beliriş efekti. Komut paletinden (ctrl+k) yeniden oynatılabilir.", introKinds, func(a *App) *string { return &a.cfg.Intro }, nil),
 		setting{
 			label: "Terminal zeminini boya", desc: "Terminal arka planını temanın rengine ayarlar (OSC 11); çıkışta eski rengi geri yükler.",
 			on:  func(a *App) bool { return a.cfg.ThemeBg },
-			act: func(a *App) { a.cfg.ThemeBg = !a.cfg.ThemeBg; a.oscUntil = time.Now().Add(300 * time.Millisecond) },
+			act: func(a *App, _ int) { a.cfg.ThemeBg = !a.cfg.ThemeBg; a.oscUntil = time.Now().Add(300 * time.Millisecond) },
 		},
 		setting{
 			label: "Nerd Font ikonları", desc: "Terminal yazı tipi bir Nerd Font ise ayrıntılı ikonlar kullanılır.",
 			on: func(a *App) bool { return nerd },
-			act: func(a *App) {
+			act: func(a *App, _ int) {
 				nerd = !nerd
 				a.cfg.Icons = map[bool]string{true: "nerd", false: "unicode"}[nerd]
 			},
@@ -140,7 +143,7 @@ func newSettings() *settings {
 				}
 				return "hücre"
 			},
-			act: func(a *App) {
+			act: func(a *App, _ int) {
 				if a.cfg.Renderer == "klasik" {
 					a.cfg.Renderer = "hücre"
 				} else {
@@ -150,6 +153,7 @@ func newSettings() *settings {
 			},
 		},
 		toggle("Sıkı düzen", "Küçük pencereler için kenar boşluklarını daraltır.", func(a *App) *bool { return &a.cfg.Compact }),
+		toggle("İndirme hız grafiği", "İndirilenler ekranında anlık indirme hızının canlı mini grafiğini (▁▂▃▅▇) gösterir.", func(a *App) *bool { return &a.cfg.SpeedGraph }),
 		toggle("Arşiv modu", legacyDesc(), func(a *App) *bool { return &a.cfg.Legacy }),
 	)
 	for _, p := range source.All() {
@@ -162,7 +166,7 @@ func newSettings() *settings {
 		s.items = append(s.items, setting{
 			label: "Kaynak: " + in.Name, desc: desc,
 			on: func(a *App) bool { return a.cfg.Enabled(id, false) },
-			act: func(a *App) {
+			act: func(a *App, _ int) {
 				a.cfg.Sources[id] = !a.cfg.Enabled(id, false)
 				warnSources(a)
 			},
@@ -171,11 +175,12 @@ func newSettings() *settings {
 	s.items = append(s.items,
 		toggle("OP/ED otomatik atla", "AniSkip verisini kullanarak açılış ve bitiş jeneriklerini atlar.", func(a *App) *bool { return &a.cfg.AutoSkip }),
 		toggle("Otomatik sonraki bölüm", "Bölüm bitince 6 saniyelik geri sayımın ardından aynı çeviri grubuyla sonraki bölüme geçer.", func(a *App) *bool { return &a.cfg.AutoNext }),
+		toggle("Kaynaklar arası yedek", "Bir bölümün tüm sunucuları çalışmazsa ya da bölüm o sitede yoksa diğer açık kaynaklardaki (AnimeciX, AnimeTR, AniHub) karşılığını bulup geçiş önerir.", func(a *App) *bool { return &a.cfg.AutoFallback }),
 		toggle("Tam ekran başlat", "Oynatıcı tam ekran açılır.", func(a *App) *bool { return &a.cfg.Fullscreen }),
 		setting{
 			label: "Kapak görselleri", desc: "Anime kapaklarını terminalde gösterir.",
 			on:  func(a *App) bool { return a.cfg.Posters },
-			act: func(a *App) { a.cfg.Posters = !a.cfg.Posters; a.applyGraphics() },
+			act: func(a *App, _ int) { a.cfg.Posters = !a.cfg.Posters; a.applyGraphics() },
 		},
 		setting{
 			label: "Görsel kalitesi",
@@ -190,9 +195,13 @@ func newSettings() *settings {
 				}
 				return label + " · blok"
 			},
-			act: func(a *App) {
-				next := map[string]string{"auto": "sixel", "sixel": "blocks", "blocks": "auto", "": "sixel"}
-				a.cfg.Graphics = next[a.cfg.Graphics]
+			act: func(a *App, dir int) {
+				opts := []string{"auto", "sixel", "blocks"}
+				cur := a.cfg.Graphics
+				if cur == "" {
+					cur = "auto"
+				}
+				a.cfg.Graphics = opts[(indexOf(opts, cur)+dir+len(opts))%len(opts)]
 				a.applyGraphics()
 			},
 		},
@@ -205,14 +214,37 @@ func newSettings() *settings {
 				}
 				return a.cfg.Quality
 			},
-			act: func(a *App) {
-				for i, q := range qualities {
-					if q == a.cfg.Quality {
-						a.cfg.Quality = qualities[(i+1)%len(qualities)]
-						return
+			act: func(a *App, dir int) {
+				cur := a.cfg.Quality
+				if cur == "" {
+					cur = "best"
+				}
+				n := len(qualities)
+				a.cfg.Quality = qualities[(indexOf(qualities, cur)+dir+n)%n]
+			},
+		},
+		setting{
+			label: "Tercih edilen sunucu", desc: "Otomatik oynatmada öncelik verilecek birinci oynatıcı sunucusu. Diğer sunucular yedek olarak sıradadır.",
+			value: func(a *App) string {
+				if len(a.cfg.HostOrder) > 0 && a.cfg.HostOrder[0] != "" {
+					return a.cfg.HostOrder[0]
+				}
+				return primaryHosts[0]
+			},
+			act: func(a *App, dir int) {
+				cur := primaryHosts[0]
+				if len(a.cfg.HostOrder) > 0 && a.cfg.HostOrder[0] != "" {
+					cur = a.cfg.HostOrder[0]
+				}
+				n := len(primaryHosts)
+				next := primaryHosts[(indexOf(primaryHosts, cur)+dir+n)%n]
+				order := []string{next}
+				for _, h := range a.cfg.HostOrder {
+					if !strings.EqualFold(h, next) {
+						order = append(order, h)
 					}
 				}
-				a.cfg.Quality = qualities[0]
+				a.cfg.HostOrder = order
 			},
 		},
 	)
@@ -224,7 +256,7 @@ func newSettings() *settings {
 func (s *settings) crumb() string { return "ayarlar" }
 
 func (s *settings) hints() []hint {
-	return []hint{{"enter/space", "değiştir"}, {"↑↓", "gez"}, {"esc", "kaydet ve dön"}}
+	return []hint{{"←→/enter", "değiştir"}, {"↑↓", "gez"}, {"esc", "kaydet ve dön"}}
 }
 
 func (s *settings) update(a *App, msg tea.Msg) tea.Cmd {
@@ -240,13 +272,20 @@ func (s *settings) update(a *App, msg tea.Msg) tea.Cmd {
 		s.cur = max(0, s.cur-1)
 	case "down", "j":
 		s.cur = clamp(s.cur+1, 0, len(s.items)-1)
-	case "enter", " ", "right", "left":
+	case "enter", " ", "right", "l", "left", "h":
+		dir := 1
+		if k.String() == "left" || k.String() == "h" {
+			dir = -1
+		}
 		if run := s.items[s.cur].run; run != nil {
+			if dir < 0 {
+				return nil
+			}
 			a.flash()
 			return run(a)
 		}
 		before := a.toastAt
-		s.items[s.cur].act(a)
+		s.items[s.cur].act(a, dir)
 		_ = a.cfg.Save()
 		a.flash()
 		if a.pal == nil && a.toastAt == before { // a setting's own warning wins
@@ -264,7 +303,7 @@ func settingGroup(label string) int {
 		return 0
 	case strings.HasPrefix(label, "Kaynak:") || label == "Arşiv modu":
 		return 3
-	case label == "OP/ED otomatik atla" || label == "Otomatik sonraki bölüm" || label == "Tam ekran başlat" || label == "Tercih edilen kalite":
+	case label == "OP/ED otomatik atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu":
 		return 2
 	}
 	return 1

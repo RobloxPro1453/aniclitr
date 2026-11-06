@@ -64,7 +64,7 @@ func (a *App) helpBox() []string {
 			{"n / b", "sonraki / önceki bölüm"}, {"space", "duraklat"}, {"← →", "10 sn sar"},
 		}},
 		{"kitaplık", [][2]string{
-			{"a", "durum · puan · listeler (her ekranda)"}, {"1-9 · 0", "puan (0 = 10)"}, {"v", "liste / poster duvarı"},
+			{"a", "durum · puan · listeler (her ekranda)"}, {"1-9 · 0", "puan (0 = 10)"}, {"v", "liste / poster duvarı"}, {"i", "izleme istatistikleri"},
 		}},
 	}
 	colW := 46

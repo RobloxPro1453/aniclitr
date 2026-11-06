@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"aniclitr/internal/mal"
+	"aniclitr/internal/seasons"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
@@ -122,5 +123,32 @@ func TestSyncRoundTrip(t *testing.T) {
 	}
 	if _, ok := lib.Get("animecix:777"); ok {
 		t.Fatal("item deleted on MAL should be dropped locally")
+	}
+}
+
+func TestMultiSeasonAlignmentSync(t *testing.T) {
+	// Bleach: Classic (366 eps, MAL 269) + TYBW Cour 1 (13 eps, MAL 41467) + TYBW Cour 2 (13 eps, MAL 53998)
+	ch := seasons.Chain{
+		Root: 269,
+		Entries: []seasons.Entry{
+			{Season: 1, MalID: 269, AniListID: 269, Episodes: 366, Format: "TV"},
+			{Season: 2, MalID: 41467, AniListID: 116674, Episodes: 13, Format: "TV"},
+			{Season: 3, MalID: 53998, AniListID: 159322, Episodes: 13, Format: "TV"},
+		},
+	}
+	// Provider lists all 392 episodes in a single absolute list:
+	al := seasons.Align(map[int]int{1: 392}, ch)
+	if al.Mode != seasons.Absolute {
+		t.Fatalf("expected Absolute mode for 392-ep Bleach list, got %v", al.Mode)
+	}
+	// Watching episode 370 (which is ep 4 of TYBW Cour 1) must map to MAL 41467 ep 4, NOT MAL 269 ep 370!
+	malID, epNo := TranslateEpisode(al, 269, 1, 370)
+	if malID != 41467 || epNo != 4 {
+		t.Fatalf("TranslateEpisode(1, 370) = (mal=%d, ep=%d), want (41467, 4)", malID, epNo)
+	}
+	// Watching episode 385 (which is ep 6 of TYBW Cour 2) must map to MAL 53998 ep 6!
+	malID2, epNo2 := TranslateEpisode(al, 269, 1, 385)
+	if malID2 != 53998 || epNo2 != 6 {
+		t.Fatalf("TranslateEpisode(1, 385) = (mal=%d, ep=%d), want (53998, 6)", malID2, epNo2)
 	}
 }

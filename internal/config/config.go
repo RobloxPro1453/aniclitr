@@ -32,19 +32,26 @@ type Config struct {
 	CoverTheme   bool            `json:"cover_theme"`   // tint the UI with the open anime's cover colours
 	Sounds       int             `json:"sounds"`        // UI sound volume 0-100 (0 = off)
 	OSKey        string          `json:"opensubtitles_api_key"`
-	DownloadDir  string          `json:"download_dir"` // offline copies (default ~/Videos/aniclitr)
-	MpvPath      string          `json:"mpv_path"`     // optional override
-	ExtraMpvArgs []string        `json:"extra_mpv_args"`
+	DownloadDir      string          `json:"download_dir"`        // offline copies (default ~/Videos/aniclitr)
+	MpvPath          string          `json:"mpv_path"`            // optional override
+	ExtraMpvArgs     []string        `json:"extra_mpv_args"`
+	HostOrder        []string        `json:"host_order,omitempty"`          // preferred host priority
+	NeverHosts       []string        `json:"never_hosts,omitempty"`         // hosts skipped by auto-select
+	WaitAfterFirstMs int             `json:"wait_after_first_ms,omitempty"` // grace period after first resolved host (ms)
+	AutoFallback     bool            `json:"auto_fallback"`                 // offer/switch to another source when all hosts fail
+	SpeedGraph       bool            `json:"speed_graph"`                   // show live ASCII speed sparkline on downloads screen
 }
 
 func defaults() Config {
 	return Config{
-		Sources:    map[string]bool{}, // a source missing here is on
-		Quality:    "best",
-		AutoUpdate: true,
-		AutoSkip:   true,
-		AutoNext:   true,
-		Fullscreen: true,
+		Sources:      map[string]bool{}, // a source missing here is on
+		Quality:      "best",
+		AutoUpdate:   true,
+		AutoSkip:     true,
+		AutoNext:     true,
+		AutoFallback: true,
+		SpeedGraph:   true,
+		Fullscreen:   true,
 		Posters:    true,
 		Motion:     true,
 		Graphics:   "auto",

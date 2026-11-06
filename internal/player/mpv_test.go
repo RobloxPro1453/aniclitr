@@ -3,6 +3,7 @@ package player
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,26 @@ import (
 	"aniclitr/internal/source"
 	"aniclitr/internal/source/animecix"
 )
+
+func TestBuildArgsPreservesSpeed(t *testing.T) {
+	st := &source.Stream{Referer: "https://example.com/"}
+	q := source.Quality{Label: "1080p", URL: "https://cdn.example.com/ep1.mp4", Height: 1080}
+
+	argsDefault := strings.Join(buildArgs(Options{Title: "Ep 1", Stream: st, Quality: q}, "sock1"), " ")
+	if strings.Contains(argsDefault, "--speed=") {
+		t.Fatalf("default speed should not pass --speed flag, got: %s", argsDefault)
+	}
+
+	argsOne := strings.Join(buildArgs(Options{Title: "Ep 1", Stream: st, Quality: q, Speed: 1.0}, "sock1"), " ")
+	if strings.Contains(argsOne, "--speed=") {
+		t.Fatalf("speed=1.0 should not pass --speed flag, got: %s", argsOne)
+	}
+
+	argsFast := strings.Join(buildArgs(Options{Title: "Ep 2", Stream: st, Quality: q, Speed: 1.5}, "sock2"), " ")
+	if !strings.Contains(argsFast, "--speed=1.50") {
+		t.Fatalf("expected --speed=1.50 in mpv args, got: %s", argsFast)
+	}
+}
 
 // TestLivePlayback streams a real episode headless and checks the IPC event flow.
 func TestLivePlayback(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"aniclitr/internal/aniskip"
+	"aniclitr/internal/extract"
 	"aniclitr/internal/player"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
@@ -145,6 +146,7 @@ func (p *playing) launch(a *App) tea.Cmd {
 		Stream:     p.st,
 		Quality:    p.q,
 		Start:      p.resumeAt(a),
+		Speed:      a.playSpeed,
 		Fullscreen: a.cfg.Fullscreen,
 		Segments:   p.segs,
 		ExtraArgs:  a.cfg.ExtraMpvArgs,
@@ -254,6 +256,9 @@ func (p *playing) update(a *App, msg tea.Msg) tea.Cmd {
 }
 
 func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
+	if ev.Speed > 0 {
+		a.playSpeed = ev.Speed
+	}
 	switch ev.Kind {
 	case player.EvStarted:
 		p.started = true
@@ -273,8 +278,12 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 		p.started = true
 		if ev.Err != nil {
 			p.err = ev.Err
-			delete(a.resolved, p.vurl) // that link is bad now; re-resolve next time
-			a.failed[p.vurl] = time.Now()
+			if k := extract.KindOf(ev.Err); k.Permanent() {
+				a.permFailed[p.vurl] = true
+			} else {
+				delete(a.resolved, p.vurl) // transient failure: allow re-resolving later
+				a.failed[p.vurl] = time.Now()
+			}
 			// smart recovery: don't make the user pick — try the next source
 			if p.attempt < 3 && p.pos < 5 {
 				a.notify(p.host+" açılmadı — sıradaki kaynak deneniyor…", "warn")
@@ -505,7 +514,7 @@ func (p *playing) view(a *App, w, h int) string {
 	}
 	info = append(info, p.subLines(a, tw)...)
 	if p.err != nil {
-		info = append(info, "", stErr.Render(truncate(p.err.Error(), tw)),
+		info = append(info, "", stErr.Render(truncate(shortErr(p.err), tw)),
 			stSub.Render("Link süresi dolmuş ya da sunucu yanıt vermiyor olabilir."),
 			stText.Bold(true).Render("enter")+stMuted.Render(" başka kaynak seç  ·  ")+stText.Bold(true).Render("esc")+stMuted.Render(" geri"))
 	}
@@ -558,7 +567,10 @@ func (p *playing) view(a *App, w, h int) string {
 func (p *playing) libraryProgress(a *App) {
 	last := false
 	if len(p.eps) > 0 && p.eps[len(p.eps)-1].Number == p.ep.Number && p.an.NextEpisode == "" {
-		last = len(p.an.Seasons) <= 1 || p.an.Seasons[len(p.an.Seasons)-1].Number == p.ep.Season
+		lastSeason := len(p.an.Seasons) <= 1 || p.an.Seasons[len(p.an.Seasons)-1].Number == p.ep.Season
+		if lastSeason && (p.an.EpCount <= 0 || len(p.an.Seasons) > 1 || p.ep.Number >= p.an.EpCount) {
+			last = true
+		}
 	}
 	if p.an.IsMovie() {
 		last = true
@@ -567,7 +579,15 @@ func (p *playing) libraryProgress(a *App) {
 	it, inLib := a.libItem(p.an)
 	switch {
 	case last && it.Status != store.Completed:
-		a.libSet(p.an, func(x *store.Item) { x.Status = store.Completed })
+		a.libSet(p.an, func(x *store.Item) {
+			x.Status = store.Completed
+			if len(p.an.Seasons) <= 1 && p.ep.Number > x.EpCount {
+				x.EpCount = p.ep.Number
+			}
+			if x.EpCount > 0 && x.Watched < x.EpCount {
+				x.Watched = x.EpCount
+			}
+		})
 		a.anchorOK = false
 		a.celebrate(80)
 		a.notify("◆ "+p.an.Title+" bitti! kitaplıkta puan ver (ctrl+b)", "ok")

@@ -38,6 +38,7 @@ type Event struct {
 	Kind   EventKind
 	Pos    float64
 	Dur    float64
+	Speed  float64
 	Paused bool
 	Text   string // skipped segment label
 	Action string // on EvEnded: "next", "prev" or "" (user quit / eof)
@@ -51,6 +52,7 @@ type Options struct {
 	Stream     *source.Stream
 	Quality    source.Quality
 	Start      float64
+	Speed      float64
 	Fullscreen bool
 	Segments   []aniskip.Segment
 	ExtraArgs  []string
@@ -68,6 +70,7 @@ type Session struct {
 	Events <-chan Event
 	events chan Event
 
+	initSpeed float64
 	nextLabel string
 	thumb     string
 	cmd       *exec.Cmd
@@ -103,6 +106,22 @@ func Start(o Options) (*Session, error) {
 		return nil, err
 	}
 	sock := socketPath()
+	args := buildArgs(o, sock)
+
+	cmd := exec.Command(bin, args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("mpv başlatılamadı: %w", err)
+	}
+	ch := make(chan Event, 64)
+	s := &Session{Events: ch, events: ch, cmd: cmd, initSpeed: o.Speed}
+	s.action.Store("")
+	s.nextLabel, s.thumb = o.NextLabel, o.Thumb
+	go s.run(sock, o.Segments)
+	return s, nil
+}
+
+func buildArgs(o Options, sock string) []string {
 	args := []string{
 		"--force-media-title=" + o.Title,
 		"--title=" + o.Title + " — aniclitr",
@@ -117,22 +136,30 @@ func Start(o Options) (*Session, error) {
 		"--network-timeout=30",
 		"--osd-font-size=36",
 	}
-	ua := o.Stream.UserAgent
+	ua := ""
+	if o.Stream != nil {
+		ua = o.Stream.UserAgent
+	}
 	if ua == "" {
 		ua = netx.UserAgent
 	}
 	args = append(args, "--user-agent="+ua)
-	if o.Stream.Referer != "" {
+	if o.Stream != nil && o.Stream.Referer != "" {
 		args = append(args, "--referrer="+o.Stream.Referer)
 	}
-	for i, s := range o.Stream.Subtitles {
-		args = append(args, "--sub-file="+s.URL)
-		if i == 0 {
-			args = append(args, "--sid=1")
+	if o.Stream != nil {
+		for i, s := range o.Stream.Subtitles {
+			args = append(args, "--sub-file="+s.URL)
+			if i == 0 {
+				args = append(args, "--sid=1")
+			}
 		}
 	}
 	if o.Start > 5 {
 		args = append(args, fmt.Sprintf("--start=%.0f", o.Start))
+	}
+	if o.Speed > 0 && o.Speed != 1 {
+		args = append(args, fmt.Sprintf("--speed=%.2f", o.Speed))
 	}
 	if o.Fullscreen {
 		args = append(args, "--fs")
@@ -147,18 +174,7 @@ func Start(o Options) (*Session, error) {
 	}
 	args = append(args, o.ExtraArgs...)
 	args = append(args, "--", o.Quality.URL)
-
-	cmd := exec.Command(bin, args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("mpv başlatılamadı: %w", err)
-	}
-	ch := make(chan Event, 64)
-	s := &Session{Events: ch, events: ch, cmd: cmd}
-	s.action.Store("")
-	s.nextLabel, s.thumb = o.NextLabel, o.Thumb
-	go s.run(sock, o.Segments)
-	return s, nil
+	return args
 }
 
 func socketPath() string {
@@ -248,11 +264,16 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 		time.Sleep(120 * time.Millisecond)
 	}
 	var pos, dur float64
+	speed := s.initSpeed
+	if speed <= 0 {
+		speed = 1.0
+	}
 	var paused, eof bool
 	if s.conn != nil {
 		s.send("observe_property", 1, "time-pos")
 		s.send("observe_property", 2, "duration")
 		s.send("observe_property", 3, "pause")
+		s.send("observe_property", 4, "speed")
 		s.send("keybind", "n", "script-message aniclitr-next")
 		s.send("keybind", "N", "script-message aniclitr-next")
 		s.send("keybind", "b", "script-message aniclitr-prev")
@@ -261,7 +282,7 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 			// quitting first grabs the frame you stopped at (resume preview)
 			s.send("keybind", "q", "script-message aniclitr-quit")
 		}
-		s.events <- Event{Kind: EvStarted}
+		s.events <- Event{Kind: EvStarted, Speed: speed}
 
 		all := segs
 		segs = nil // armed once the real duration is known
@@ -302,7 +323,7 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 							skipped[sg.Label()] = true
 							s.send("seek", sg.End, "absolute")
 							s.send("show-text", "» "+sg.Label()+" atlandı", 1800)
-							s.events <- Event{Kind: EvSkipped, Text: sg.Label(), Pos: pos, Dur: dur}
+							s.events <- Event{Kind: EvSkipped, Text: sg.Label(), Pos: pos, Dur: dur, Speed: speed}
 						}
 					}
 				case "duration":
@@ -320,11 +341,16 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 					}
 				case "pause":
 					_ = json.Unmarshal(m.Data, &paused)
+				case "speed":
+					var sp float64
+					if json.Unmarshal(m.Data, &sp) == nil && sp > 0 {
+						speed = sp
+					}
 				}
 				if time.Since(lastEmit) > 400*time.Millisecond {
 					lastEmit = time.Now()
 					select {
-					case s.events <- Event{Kind: EvProgress, Pos: pos, Dur: dur, Paused: paused}:
+					case s.events <- Event{Kind: EvProgress, Pos: pos, Dur: dur, Speed: speed, Paused: paused}:
 					default: // UI busy; drop a frame rather than block mpv
 					}
 				}
@@ -358,9 +384,9 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 	}
 	act, _ := s.action.Load().(string)
 	if err != nil && act == "" && pos == 0 {
-		s.events <- Event{Kind: EvEnded, Pos: pos, Dur: dur, Err: fmt.Errorf("mpv: %v", err)}
+		s.events <- Event{Kind: EvEnded, Pos: pos, Dur: dur, Speed: speed, Err: fmt.Errorf("mpv: %v", err)}
 	} else {
-		s.events <- Event{Kind: EvEnded, Pos: pos, Dur: dur, Action: act, EOF: eof}
+		s.events <- Event{Kind: EvEnded, Pos: pos, Dur: dur, Speed: speed, Action: act, EOF: eof}
 	}
 	close(s.events)
 }

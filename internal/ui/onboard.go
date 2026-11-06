@@ -15,6 +15,27 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"0.15.0": {
+		"Karakterler ve Kadro ekranı (c): seri sayfasındaki rozetten açılır; karakter portreleri, biyografiler (spoiler gizleme/açma), ana/yardımcı roller ve Japonca seslendirme sanatçıları (Seiyuu) fotoğraflarıyla görüntülenir",
+		"Çoklu bölüm ve aralık indirme (v / D): bölümleri v ile tek tek seçebilir veya D menüsünden 'buradan sona kadar', 'sadece izlenmeyenler' ya da 'özel aralık (örn. 30-100)' seçerek tek seferde indirebilirsiniz",
+		"Kitaplık İstatistikleri (i) ve MAL/yerel ilerleme tutarlılığı: kitaplıkta durum, puan ve tür grafiklerini içeren özet ekranı eklendi; 'Tamamlandı' ile '15/16 izlendi' gibi çelişkili ilerleme durumları tamamen giderildi",
+		"Canlı indirme hız grafiği: İndirilenler ekranında anlık hız akışı (▁▂▃▅▇) gösterilir; Ayarlar → Görünüm → İndirme hız grafiği ile açılıp kapatılabilir",
+		"Ayarlar ekranında sol/sağ ok (← / →) tuşlarının her zaman tek yöne ilerlemesi düzeltildi",
+	},
+	"0.14.0": {
+		"Yeni Türkçe kaynak: AniHub (anihub.com.tr) eklendi — AnimeciX ve AnimeTR ile birlikte aramalarda otomatik birleşir ve doğrudan HLS akışı sunar",
+		"Yerel video çözücüler: OK.ru, Vidmoly ve Voe oynatıcıları harici yt-dlp sürecine gerek kalmadan doğrudan çözülür; açılış süresi ciddi biçimde kısaldı",
+		"Kaynaklar arası otomatik yedek ve kurtarma (r): bir bölümün sunucuları çalışmazsa ya da o sitede yoksa diğer açık kaynaklardaki karşılığı otomatik bulunur ve tek tuşla geçiş sunulur",
+		"Adresten doğrudan açma: arama kutusuna, komut paletine veya terminale (aniclitr https://…) bir anime/bölüm adresi yapıştırıldığında doğrudan ilgili seri ve bölüm açılır",
+		"Ayarlar → Oynatma altına Kaynaklar arası yedek seçeneği ve yeni sunucu öncelikleri (AniHub HLS, OK.ru, Voe, Vidmoly) eklendi",
+	},
+	"0.13.0": {
+		"Kusursuz kimlik ve eşleme: Türkçe/Japonca/İngilizce alternatif başlıklar birleştirilir; aynı seri farklı kaynaklarda çoklanmaz, TV serisi ile film birbirine karışmaz",
+		"Kalıcı kimlik eşlemesi ve sezon zinciri: MAL/AniList kimlikleri mappings.json altında saklanır; çok sezonlu serilerde (Bleach, One Piece vb.) bölüm hizalaması otomatik yapılır",
+		"Akıllı kaynak ve kalite seçimi: 6 sunucu paralel çözülür, gerçek çözünürlük/codec/bitrate (HLS ve MP4) okunur, bozuk akışlar elenir ve en iyi sunucu otomatik seçilir",
+		"Sunucu önceliği ve bağlantı inceleme: Ayarlar → Tercih edilen sunucu ile birinci oynatıcıyı seçebilir, kaynak ekranında u tuşuyla çözülen bağlantıları görebilirsiniz",
+		"Hata sınıflandırma ve tanılama: silinmiş/telifli videolar tekrar denenmez; Kaynaklar ekranında ve aniclitr doctor --blame komutunda kaynak/sunucu sağlık karnesi gösterilir",
+	},
 	"0.12.0": {
 		"Yenilenen arayüz: her ekran tek bir işe odaklanır, bölgeler çerçeveli panellerde durur ve her sayfanın başında amacı yazar",
 		"Ana sayfa menü tabanlı: Devam et, Yeni bölümler, Kitaplık, Keşfet, İndirilenler ve Ayarlar; seçilen öğenin önizlemesi yanda gösterilir",

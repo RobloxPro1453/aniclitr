@@ -2,6 +2,45 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [0.15.0]
+
+### Eklenenler
+- **Karakterler ve Seslendirenler ekranı (`internal/ui/characters.go`, `internal/anilist`)**: Anime detay sayfasında `❖ Karakterler & Kadro · c` rozeti ve `c` kısayoluyla açılan yeni ekran eklendi. Karakterlerin Sixel/halfblock portreleri, ana/yardımcı rol etiketleri, biyografileri (`x` ile spoiler açma/kapatma), Japonca seslendirme sanatçıları (Seiyuu) ve `v` ile karakter ↔ seiyuu portre geçişi desteklenir.
+- **Çoklu seçim ve aralıkla toplu bölüm indirme (`internal/ui/anime.go`, `internal/ui/picker.go`)**: Bölüm listesinde `v` ile tekil bölümleri `[✓]` olarak işaretleme ve `D` tuşuyla açılan toplu indirme menüsü (*Seçili bölümden sona kadar*, *Özel bölüm aralığı `30-100`*, *Sadece izlenmeyen bölümler*, *Tüm sezon*) eklendi.
+- **Kitaplık İstatistikleri (`internal/ui/library.go`)**: Kitaplık sol menüsüne ve `i` kısayoluna `◈ istatistikler` görünümü eklendi; toplam bölüm/saat/gün özeti, renkli durum dağılım çubuğu, 1–10 puan histogramı ve en çok izlenen türler grafiği gösterilir.
+- **Canlı indirme hız grafiği (`internal/ui/downloads.go`)**: İndirilenler ekranı üst bilgisinde ve aktif indirme satırlarında anlık hız geçmişi mini kıvılcım grafiği (`▁▂▃▅▆▇`) olarak çizilir; **Ayarlar → Görünüm → İndirme hız grafiği** ile kapatılabilir.
+
+### Düzeltilenler
+- **MAL ve yerel kitaplık bölüm/tamamlanma tutarsızlığı (`internal/store/library.go`, `internal/malsync`, `internal/ui/same.go`, `internal/ui/playing.go`)**: `Tamamlandı` durumundaki bir seride `15/16 izlendi` görünmesi veya eksik yüklenmiş sezonda son mevcut bölüm izlendiğinde serinin erken `Tamamlandı` olması düzeltildi (`Item.Reconcile`, `watchedCount` ve `watchView` senkronizasyonu).
+- **Ayarlar sol/sağ ok yönü (`internal/ui/settings.go`)**: Çok seçenekli ayarlarda sol okun (`←` / `h`) geri gitmek yerine ileri (`+1`) gitmesine yol açan yön hatası giderildi.
+
+## [0.14.0]
+
+### Eklenenler
+- **Yeni kaynak: AniHub (`internal/source/anihub`)**: `anihub.com.tr` REST API'si ve belirteç imzalı doğrudan HLS akış desteği eklendi.
+- **Yerel OK.ru, Vidmoly ve Voe çözücüleri (`internal/extract`)**: `OK.ru` (`data-options` metadata), `Vidmoly` (HLS manifest) ve `Voe` (6 adımlı şifre çözme hattı + JS yönlendirme takibi) artık `yt-dlp`'ye düşmeden yerel Go koduyla anında çözülür.
+- **Adresten doğrudan açma (`source.URLOpener`)**: Arama kutusuna, komut paletine (`ctrl+k`) veya komut satırına (`aniclitr https://…`) yapıştırılan AnimeciX, AnimeTR, AniHub ve HiAnime bağlantıları doğrudan ilgili anime/bölüm ekranında açılır.
+- **Kaynaklar arası otomatik yedek ve kurtarma menüsü (`r`)**: Bir bölümün tüm sunucuları başarısız olduğunda veya bölüm birincil kaynakta henüz olmadığında, diğer açık kaynaklardaki karşılığı otomatik aranır; tek tuşla diğer kaynağa geçme veya eşlemeyi sıfırlama menüsü sunulur.
+- **Ayarlar → Oynatma → Kaynaklar arası yedek** seçeneği eklendi.
+
+## [0.13.0]
+
+### Eklenenler
+- **Birleşik kimlik ve başlık eşleme (`internal/match`)**: Türkçe harf katlama, sezon/film ayrıştırma, Sorensen-Dice benzerliği ve `%APPDATA%\aniclitr\mappings.json` kalıcı eşleme deposu eklendi. Bir kez eşlenen MAL/AniList kimliği sonraki açılışlarda ağ araması yapmadan doğrudan açılır.
+- **Çoklu sezon zinciri (`internal/seasons`)**: AniList `PREQUEL`/`SEQUEL` komşuluklarından sezon zinciri kurulur; tek sezon altında mutlak numaralandırma yapan kaynaklar ile sezon bazlı kaynaklar arasında otomatik bölüm dönüşümü yapılır.
+- **Kural tabanlı sunucu ve kalite seçimi (`internal/choose`)**: **Ayarlar → Tercih edilen sunucu** seçeneği eklendi. Otomatik oynatmada (`p`) tam eşleşen sunucu anında açılır; aksi halde ilk çözümden sonra kısa süre beklenerek en yüksek puanlı sunucu seçilir.
+- **HLS ve MP4 akış doğrulama (`internal/extract`)**: HLS `#EXT-X-STREAM-INF` manifestlerinden gerçek çözünürlük, bitrate ve codec (`H.264`, `HEVC`, `AV1`) bilgisi okunur; MP4 kaynakları HTTP `Range` ile yoklanarak bozuk dosyalar elenir.
+- **Tanılama ve bağlantı inceleme (`internal/diag`)**: `aniclitr doctor --blame` komutu, **Kaynaklar** ekranında kaynak/sunucu hata karnesi ve fansub/kaynak seçicide `u` (**bağlantıları göster**) penceresi eklendi.
+
+### Değişenler
+- Fansub/kaynak seçicide eşzamanlı sunucu çözme sınırı 3'ten 6'ya çıkarıldı.
+- Kaynak adaptörlerinde (`AnimeciX`, `AnimeTR`, `HiAnime`) alternatif başlıklar (`Titles`) ve film/sezon normalizasyonu standartlaştırıldı.
+
+### Düzeltilenler
+- Silinmiş, telif nedeniyle kaldırılmış veya 404 veren videolar (`KindDeleted`, `KindCopyright`, `KindNotFound`) kalıcı hata olarak işaretlenir ve otomatik kurtarma döngüsünde tekrar denenmez.
+- İndirme yöneticisinde (`internal/download`) kalıcı hatalarda gereksiz yeniden denemeler kaldırıldı; geçici ağ hatalarında üstel geri çekilme (exponential backoff + jitter) uygulanır.
+- `mpv` yalnızca başlangıçtaki yükleme sırasında (`MaxTime == 0`) çökerse yedek sunucuya geçilir; izleme ortasında kullanıcı veya pencere kapanışı hata sayılmaz.
+
 ## [0.12.0]
 
 ### Değişenler
@@ -96,5 +135,8 @@ Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları 
 - Benzer animeler (`y`), kapaklı çevrimdışı kitaplık, `ctrl+z` ile geri alma.
 - Bozuk kaynakta sıradaki kaynağa otomatik geçiş ve bölüm bağlantılarının önceden hazırlanması.
 
+[0.15.0]: https://github.com/RobloxPro1453/aniclitr/releases/tag/v0.15.0
+[0.14.0]: https://github.com/RobloxPro1453/aniclitr/releases/tag/v0.14.0
+[0.13.0]: https://github.com/RobloxPro1453/aniclitr/releases/tag/v0.13.0
 [0.12.0]: https://github.com/RobloxPro1453/aniclitr/releases/tag/v0.12.0
 [0.11.0]: https://github.com/RobloxPro1453/aniclitr/releases/tag/v0.11.0

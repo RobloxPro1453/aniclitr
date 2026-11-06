@@ -15,6 +15,7 @@ import (
 	"aniclitr/internal/aniskip"
 	"aniclitr/internal/config"
 	"aniclitr/internal/source"
+	_ "aniclitr/internal/source/anihub"
 	_ "aniclitr/internal/source/animecix"
 	_ "aniclitr/internal/source/animedepo"
 	_ "aniclitr/internal/source/animetr"

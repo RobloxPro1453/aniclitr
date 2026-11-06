@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"aniclitr/internal/anilist"
 	"aniclitr/internal/download"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
@@ -34,6 +35,7 @@ func TestScreenSweep(t *testing.T) {
 		screens := map[string]func() screen{
 			"home":      func() screen { return a.stack[0] },
 			"library":   func() screen { return newLibrary() },
+			"libstats":  func() screen { l := newLibrary(); l.selectShelf(a, "stats"); return l },
 			"discover":  func() screen { d := newDiscover(); d.schedOK = true; return d },
 			"discsec":   func() screen { d := newDiscover(); d.schedOK = true; d.menu = false; return d },
 			"genrepick": func() screen { d := newDiscover(); d.tab, d.menu, d.gpick = tGenre, false, true; return d },
@@ -46,6 +48,18 @@ func TestScreenSweep(t *testing.T) {
 			"sources":   func() screen { return &sourcesScreen{} },
 			"mal":       func() screen { return newMalScreen(a) },
 			"onboard":   func() screen { return &onboard{tools: map[string]bool{"mpv": true}} },
+			"characters": func() screen {
+				cs := newCharactersScreen(an)
+				cs.loading = false
+				c1 := anilist.Character{ID: 1, Role: "MAIN", Age: "1000+", Gender: "Female", Description: "Bin yılı aşkın süredir yaşayan elf büyücü."}
+				c1.Name.Full = "Frieren"
+				c1.Name.Native = "フリーレン"
+				c2 := anilist.Character{ID: 2, Role: "MAIN", Age: "18", Gender: "Female", Description: "Frieren'in çırağı."}
+				c2.Name.Full = "Fern"
+				c2.Name.Native = "フェルン"
+				cs.chars = []anilist.Character{c1, c2}
+				return cs
+			},
 			"results": func() screen {
 				r := newResults("frieren")
 				r.order = []string{"animecix"}

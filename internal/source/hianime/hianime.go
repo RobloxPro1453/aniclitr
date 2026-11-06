@@ -59,7 +59,7 @@ func (Provider) Search(ctx context.Context, q string) ([]source.Anime, error) {
 		page = page[:i]
 	}
 	if strings.Contains(page, "<title>Just a moment") {
-		return nil, errors.New("hianime: cloudflare engeli")
+		return nil, extract.NewError(extract.KindBlocked, "hianime: cloudflare engeli")
 	}
 	idx := reCard.FindAllStringIndex(page, -1)
 	var out []source.Anime
@@ -89,6 +89,10 @@ func (Provider) Search(ctx context.Context, q string) ([]source.Anime, error) {
 		if s := reSubs.FindStringSubmatch(card); s != nil {
 			a.EpCount, _ = strconv.Atoi(s[1])
 		}
+		if a.AltTitle != "" {
+			a.Titles = []string{a.AltTitle}
+		}
+		a.Normalize()
 		out = append(out, a)
 	}
 	return out, nil
@@ -179,7 +183,10 @@ func (Provider) Resolve(ctx context.Context, v source.Variant) (*source.Stream, 
 	}
 	m := reBlob.FindSubmatch(body)
 	if m == nil {
-		return nil, errors.New("zoko: yapılandırma bulunamadı (site değişmiş olabilir)")
+		if k := extract.Classify(200, body); k != extract.KindUnknown {
+			return nil, extract.NewError(k, "zoko: "+k.Message())
+		}
+		return nil, extract.NewError(extract.KindChanged, "zoko: yapılandırma bulunamadı (site değişmiş olabilir)")
 	}
 	raw, err := base64.StdEncoding.DecodeString(string(m[1]))
 	if err != nil {
@@ -214,5 +221,26 @@ func (Provider) Resolve(ctx context.Context, v source.Variant) (*source.Stream, 
 	if mm := reMal.FindStringSubmatch(v.URL); mm != nil {
 		st.MalID, _ = strconv.Atoi(mm[1])
 	}
+	extract.ProbeHLS(ctx, st)
 	return st, nil
+}
+
+// OpenURL recognises hianime watch/series URLs.
+func (p Provider) OpenURL(ctx context.Context, u *url.URL) (source.Anime, *source.Episode, bool, error) {
+	if u == nil || !strings.Contains(strings.ToLower(u.Host), "hianime") {
+		return source.Anime{}, nil, false, nil
+	}
+	slug := strings.Trim(u.Path, "/")
+	slug = strings.TrimPrefix(slug, "watch/")
+	if i := strings.IndexByte(slug, '/'); i >= 0 {
+		slug = slug[:i]
+	}
+	if slug == "" {
+		return source.Anime{}, nil, false, nil
+	}
+	an, err := p.Details(ctx, source.Anime{Source: "hianime", ID: slug, Title: slug})
+	if err != nil {
+		return source.Anime{}, nil, true, err
+	}
+	return an, nil, true, nil
 }

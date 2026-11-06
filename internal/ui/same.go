@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strconv"
 
+	"aniclitr/internal/match"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
@@ -24,19 +25,7 @@ func sameKeys(an source.Anime) []string {
 }
 
 func sameAnime(x, y source.Anime) bool {
-	if x.MalID > 0 && y.MalID > 0 {
-		return x.MalID == y.MalID // ids are exact; titles may collide
-	}
-	ky := map[string]bool{}
-	for _, k := range sameKeys(y) {
-		ky[k] = true
-	}
-	for _, k := range sameKeys(x) {
-		if ky[k] {
-			return true
-		}
-	}
-	return false
+	return match.SameAnime(x, y)
 }
 
 // recent is history newest first with one entry per anime: the most recently
@@ -181,7 +170,7 @@ func (a *App) watchView(an source.Anime) watchView {
 	if it, ok := a.libItem(an); ok {
 		v.listed = true
 		v.upTo = it.Watched
-		if it.Status == store.Completed && v.upTo == 0 {
+		if it.Status == store.Completed {
 			v.upTo = 1 << 30
 		}
 	}

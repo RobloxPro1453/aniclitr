@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -20,6 +21,8 @@ import (
 	"github.com/muesli/termenv"
 
 	"aniclitr/internal/config"
+	"aniclitr/internal/extract"
+	"aniclitr/internal/match"
 	"aniclitr/internal/player"
 	"aniclitr/internal/source"
 )
@@ -346,5 +349,265 @@ func TestSelfPaintNoBlink(t *testing.T) {
 	// the poster's area is rewritten as text (row 4 = where it sat)
 	if strings.Contains(out.String(), "\x1bP") || !strings.Contains(out.String(), "\x1b[4;") {
 		t.Fatal("leaving the screen should repaint the poster area, not re-send it")
+	}
+}
+
+func TestDeletedLinkNotRetried(t *testing.T) {
+	a := testApp(t, Graphics{})
+	a.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	deadURL := "https://fakedead.example.com/embed/deleted1"
+	quotaURL := "https://fakedead.example.com/embed/quota1"
+
+	a.Update(resolveMsg{
+		src: "animecix",
+		url: deadURL,
+		err: extract.NewError(extract.KindDeleted, "File was deleted"),
+	})
+	a.Update(resolveMsg{
+		src: "animecix",
+		url: quotaURL,
+		err: extract.NewError(extract.KindQuota, "Quota exceeded"),
+	})
+
+	if !a.permFailed[deadURL] || !recentlyFailed(a, deadURL) {
+		t.Fatal("deleted link must be marked permanently failed")
+	}
+	if a.permFailed[quotaURL] {
+		t.Fatal("quota error is transient and must not be marked permanently failed")
+	}
+
+	// Backdate both entries by 5 minutes: pruneResolved must keep deadURL and drop quotaURL.
+	a.resolved[deadURL].at = time.Now().Add(-5 * time.Minute)
+	a.resolved[quotaURL].at = time.Now().Add(-5 * time.Minute)
+	a.pruneResolved()
+
+	if a.resolved[deadURL] == nil {
+		t.Fatal("pruneResolved must not evict permanently failed (deleted) links")
+	}
+	if a.resolved[quotaURL] != nil {
+		t.Fatal("pruneResolved should evict transient (quota) errors after TTL")
+	}
+
+	// Attempting to resolve deadURL again must be a no-op (nil tea.Cmd).
+	if cmd := a.resolve("animecix", source.Variant{Host: "Fake", URL: deadURL}); cmd != nil {
+		t.Fatal("a.resolve must not retry a permanently deleted URL")
+	}
+
+	// Pressing enter on the permanently failed host in picker must not delete or retry it.
+	an := source.Anime{Source: "animecix", ID: "1", Title: "T", Kind: "TV"}
+	ep := source.Episode{Season: 1, Number: 1}
+	pk := newPicker(an, ep, []source.Episode{ep}, false)
+	pk.groups = []group{{name: "Sub", vs: []source.Variant{{Fansub: "Sub", Host: "DeadHost", URL: deadURL}}}}
+	pk.focus = 1
+	a.stack = append(a.stack, pk)
+	a.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if a.resolved[deadURL] == nil {
+		t.Fatal("picker enter on permanently deleted host must not clear resolved state")
+	}
+}
+
+func TestBlockedSourceMarksHealth(t *testing.T) {
+	a := testApp(t, Graphics{})
+	a.Update(resolveMsg{
+		src: "hianime",
+		url: "https://hianime.at/embed/1",
+		err: extract.NewError(extract.KindBlocked, "Cloudflare challenge"),
+	})
+	h, ok := a.health["hianime"]
+	if !ok || h.OK || h.Err != extract.KindBlocked.Message() {
+		t.Fatalf("expected hianime health to be marked blocked, got %+v (ok=%v)", h, ok)
+	}
+}
+
+func TestMpvSpeedPreservedAcrossEpisodes(t *testing.T) {
+	a := testApp(t, Graphics{})
+	a.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	st := &source.Stream{Qualities: []source.Quality{{Label: "1080p", URL: "https://cdn.example/1.mp4", Height: 1080}}}
+	eps := []source.Episode{
+		{ID: "1", Season: 1, Number: 1, Title: "Bölüm 1"},
+		{ID: "2", Season: 1, Number: 2, Title: "Bölüm 2"},
+	}
+	p := newPlaying(source.Anime{Source: "animecix", ID: "1", Title: "T", Kind: "TV"}, eps[0], eps, "F", "Tau", st, st.Qualities[0])
+	a.stack = append(a.stack, p)
+	ch := make(chan player.Event, 1)
+	p.sess = &player.Session{Events: ch}
+	close(ch)
+
+	a.Update(playerMsg{
+		id: p.id,
+		ok: true,
+		ev: player.Event{Kind: player.EvEnded, Pos: 1200, Dur: 1400, Speed: 1.5},
+	})
+	if a.playSpeed != 1.5 {
+		t.Fatalf("expected App.playSpeed=1.5 after playback ended at 1.5x, got %v", a.playSpeed)
+	}
+}
+
+type stubMappingSource struct{}
+
+func (stubMappingSource) Info() source.Info {
+	return source.Info{ID: "animecix", Name: "AnimeciX", Lang: "tr", Primary: true}
+}
+func (stubMappingSource) Search(ctx context.Context, q string) ([]source.Anime, error) {
+	return nil, fmt.Errorf("unexpected network search")
+}
+func (stubMappingSource) Details(ctx context.Context, a source.Anime) (source.Anime, error) {
+	return a, nil
+}
+func (stubMappingSource) Episodes(ctx context.Context, a source.Anime, s int) ([]source.Episode, error) {
+	return nil, nil
+}
+func (stubMappingSource) Variants(ctx context.Context, a source.Anime, ep source.Episode) ([]source.Variant, error) {
+	return nil, nil
+}
+func (stubMappingSource) Resolve(ctx context.Context, v source.Variant) (*source.Stream, error) {
+	return nil, nil
+}
+
+func TestOpenByMalUsesMappingCache(t *testing.T) {
+	if source.Get("animecix") == nil {
+		source.Register(stubMappingSource{})
+	}
+	a := testApp(t, Graphics{})
+	a.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	match.Default().SetAuto("animecix:777", 52991, 154587, "Sousou no Frieren", 0.99)
+
+	cmd := a.openByMal(52991, []string{"Sousou no Frieren"}, "https://poster.example/frieren.jpg")
+	if cmd == nil {
+		t.Fatal("expected openByMal to return a command")
+	}
+	msg := cmd()
+	m, ok := msg.(malOpenMsg)
+	if !ok {
+		t.Fatalf("expected immediate malOpenMsg from mappings.json cache, got %T", msg)
+	}
+	if m.err != nil || m.an.Key() != "animecix:777" || m.an.MalID != 52991 {
+		t.Fatalf("unexpected malOpenMsg: %+v", m)
+	}
+}
+
+func TestResultsMergeAndMovieSeparation(t *testing.T) {
+	r := newResults("youjo senki")
+	r.order = []string{"animecix", "animetr", "hianime"}
+	r.byProv["animecix"] = []source.Anime{
+		{Source: "animecix", ID: "1", Title: "Another", Kind: "TV"},
+		{Source: "animecix", ID: "10", Title: "Youjo Senki", Kind: "TV"},
+		{Source: "animecix", ID: "11", Title: "Youjo Senki Movie", Kind: "MOVIE"},
+	}
+	r.byProv["animetr"] = []source.Anime{
+		{Source: "animetr", ID: "2", Title: "Another (TV)", Kind: "TV"},
+		{Source: "animetr", ID: "20", Title: "Saga of Tanya the Evil", Titles: []string{"Youjo Senki"}, Kind: "TV"},
+	}
+	r.byProv["hianime"] = []source.Anime{
+		{Source: "hianime", ID: "3", Title: "Another", Kind: "TV"},
+	}
+	r.rebuild()
+	if len(r.items) != 3 {
+		t.Fatalf("expected 3 merged result rows (Another, Youjo Senki TV, Youjo Senki Movie), got %d", len(r.items))
+	}
+	if len(r.items[0].all()) != 3 {
+		t.Fatalf("expected Another to merge all 3 sources into one card, got %d", len(r.items[0].all()))
+	}
+	if len(r.items[1].all()) != 2 {
+		t.Fatalf("expected Youjo Senki TV to merge 2 sources, got %d", len(r.items[1].all()))
+	}
+	if len(r.items[2].all()) != 1 || !r.items[2].main.IsMovie() {
+		t.Fatalf("expected Youjo Senki Movie to stay separate as MOVIE, got %+v", r.items[2].main)
+	}
+}
+
+func TestPickerSkipsBrokenAndShowsRedactedLinks(t *testing.T) {
+	a := testApp(t, Graphics{})
+	a.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	an := source.Anime{Source: "animecix", ID: "1", Title: "Frieren", Kind: "TV"}
+	ep := source.Episode{Season: 1, Number: 1}
+	v1 := source.Variant{Fansub: "Adonis", Host: "Sibnet", URL: "https://video.sibnet.ru/shell.php?videoid=1&token=SECRET123"}
+	v2 := source.Variant{Fansub: "Adonis", Host: "Tau Video", URL: "https://tau-video.xyz/embed/2"}
+
+	a.resolved[v1.URL] = &resolveState{
+		st: &source.Stream{
+			Qualities: []source.Quality{
+				{Label: "720p", URL: "https://cdn.sibnet.ru/broken.mp4?sig=TOPSECRET", Height: 720, Broken: true},
+			},
+		},
+		at: time.Now(),
+	}
+	a.resolved[v2.URL] = &resolveState{
+		st: &source.Stream{
+			Qualities: []source.Quality{
+				{Label: "1080p", URL: "https://cdn.tau.xyz/good.m3u8?token=HIDDEN999", Height: 1080, Codec: "H.264", Bitrate: 4500000, Probed: true},
+			},
+		},
+		at: time.Now(),
+	}
+
+	pk := newPicker(an, ep, []source.Episode{ep}, false)
+	pk.build(a, []source.Variant{v1, v2})
+	a.stack = append(a.stack, pk)
+
+	// Press 'u' to inspect resolved links and verify secret tokens are redacted.
+	a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
+	if a.drop == nil {
+		t.Fatal("expected 'u' in picker to open resolved links dropdown")
+	}
+	for _, it := range a.drop.items(a) {
+		if strings.Contains(it.label, "SECRET123") || strings.Contains(it.label, "TOPSECRET") || strings.Contains(it.label, "HIDDEN999") ||
+			strings.Contains(it.group, "SECRET123") {
+			t.Fatalf("unredacted secret leaked in picker URL inspector: %+v", it)
+		}
+	}
+}
+
+func TestCrossSourceRecoveryMenu(t *testing.T) {
+	a := testApp(t, Graphics{})
+	a.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	an := source.Anime{Source: "animecix", ID: "1", Title: "Frieren", Kind: "TV"}
+	alt := source.Anime{Source: "anihub", ID: "sousou-no-frieren", Title: "Sousou no Frieren", Kind: "TV"}
+	ep := source.Episode{Season: 1, Number: 5}
+
+	sc := newAnime(an, []source.Anime{alt}, 1, 5)
+	a.stack = append(a.stack, sc)
+	pk := newPicker(an, ep, []source.Episode{ep}, false)
+	pk.groups = []group{{name: "FansubA", vs: []source.Variant{{Fansub: "FansubA", Host: "Dead", URL: "https://dead.example/1"}}}}
+	a.stack = append(a.stack, pk)
+
+	// Pressing 'r' opens the recovery dropdown listing the alternative source (anihub) and remap action.
+	a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	if a.drop == nil {
+		t.Fatal("expected 'r' in picker to open recovery menu")
+	}
+	items := a.drop.items(a)
+	foundAlt, foundRemap := false, false
+	for _, it := range items {
+		if strings.Contains(strings.ToLower(it.label), "anihub") && strings.Contains(it.label, "S1 · B5") {
+			foundAlt = true
+		}
+		if strings.Contains(it.label, "Eşlemeyi sıfırla") {
+			foundRemap = true
+		}
+	}
+	if !foundAlt || !foundRemap {
+		t.Fatalf("expected recovery menu to include AniHub fallback and remap option, got %+v", items)
+	}
+}
+
+func TestURLOpenMsgPushesAnimeAtEpisode(t *testing.T) {
+	a := testApp(t, Graphics{})
+	a.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	an := source.Anime{Source: "animecix", ID: "7822", Title: "Sousou no Frieren", Kind: "TV"}
+	ep := source.Episode{ID: "7", Season: 1, Number: 7}
+	a.Update(urlOpenMsg{
+		raw:     "https://animecix.tv/titles/7822/season/1/episode/7",
+		an:      an,
+		ep:      &ep,
+		handled: true,
+	})
+	sc, ok := a.top().(*animeScreen)
+	if !ok {
+		t.Fatalf("expected urlOpenMsg to push *animeScreen, got %T", a.top())
+	}
+	if sc.an.Key() != "animecix:7822" || sc.wantSeason != 1 || sc.wantEp != 7 {
+		t.Fatalf("unexpected animeScreen from URL: key=%s wantSeason=%d wantEp=%d", sc.an.Key(), sc.wantSeason, sc.wantEp)
 	}
 }

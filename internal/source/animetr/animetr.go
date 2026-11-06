@@ -17,7 +17,6 @@ package animetr
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html"
 	"net/url"
@@ -89,7 +88,9 @@ func (Provider) Search(ctx context.Context, q string) ([]source.Anime, error) {
 		}
 		if en := html.UnescapeString(strings.TrimSpace(string(s.EnTitle))); en != "" && !strings.EqualFold(en, a.Title) {
 			a.AltTitle = en
+			a.Titles = []string{en}
 		}
+		a.Normalize()
 		out = append(out, a)
 	}
 	return out, nil
@@ -150,7 +151,9 @@ func (p Provider) Details(ctx context.Context, a source.Anime) (source.Anime, er
 			a.Genres = append(a.Genres, name)
 		}
 	}
-	a.EpCount = len(parseEpisodes(pg, a.ID))
+	eps := parseEpisodes(pg, a.ID)
+	eps = source.NormalizeEpisodes(&a, eps)
+	a.EpCount = len(eps)
 	// each season is its own series here; one "season" per title
 	a.Seasons = []source.Season{{Number: 1, Name: "Bölümler", EpisodeCount: a.EpCount}}
 	return a, nil
@@ -224,7 +227,10 @@ func (Provider) Variants(ctx context.Context, a source.Anime, ep source.Episode)
 func parseVariants(b []byte) ([]source.Variant, error) {
 	m := reEpData.FindSubmatch(b)
 	if m == nil {
-		return nil, errors.New("animetr: oynatıcı listesi yok (sayfa değişmiş olabilir)")
+		if k := extract.Classify(200, b); k != extract.KindUnknown {
+			return nil, extract.NewError(k, "animetr: "+k.Message())
+		}
+		return nil, extract.NewError(extract.KindChanged, "animetr: oynatıcı listesi yok (sayfa değişmiş olabilir)")
 	}
 	var d epData
 	if err := json.Unmarshal(m[1], &d); err != nil {
@@ -295,4 +301,38 @@ func hostRank(u string) int {
 
 func (Provider) Resolve(ctx context.Context, v source.Variant) (*source.Stream, error) {
 	return extract.Resolve(ctx, v.URL)
+}
+
+var (
+	reURLSeri = regexp.MustCompile(`(?i)^/seri/([^/?#]+)`)
+	reURLIzle = regexp.MustCompile(`(?i)^/izle/([^/?#]+)/bolum-(\d+)`)
+)
+
+// OpenURL recognises animetr.co series (/seri/slug) and episode (/izle/slug/bolum-N) URLs.
+func (p Provider) OpenURL(ctx context.Context, u *url.URL) (source.Anime, *source.Episode, bool, error) {
+	if u == nil || !strings.Contains(strings.ToLower(u.Host), "animetr") {
+		return source.Anime{}, nil, false, nil
+	}
+	if m := reURLIzle.FindStringSubmatch(u.Path); m != nil {
+		slug := m[1]
+		num, _ := strconv.Atoi(m[2])
+		an, err := p.Details(ctx, source.Anime{Source: "animetr", ID: slug, Title: slug})
+		if err != nil {
+			return source.Anime{}, nil, true, err
+		}
+		if num > 0 {
+			ep := source.Episode{ID: fmt.Sprintf("/izle/%s/bolum-%d", slug, num), Season: 1, Number: num}
+			return an, &ep, true, nil
+		}
+		return an, nil, true, nil
+	}
+	if m := reURLSeri.FindStringSubmatch(u.Path); m != nil {
+		slug := m[1]
+		an, err := p.Details(ctx, source.Anime{Source: "animetr", ID: slug, Title: slug})
+		if err != nil {
+			return source.Anime{}, nil, true, err
+		}
+		return an, nil, true, nil
+	}
+	return source.Anime{}, nil, false, nil
 }
