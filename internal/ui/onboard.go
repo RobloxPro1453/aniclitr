@@ -15,6 +15,12 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"0.16.1": {
+		"Yeni arayüz (deneme): Ayarlar → Görünüm → Arayüz → yeni. Üst çubukta indirme dalgası ve adıyla kaynak işaretleri, tuş kapakları, renkli bildirimler; istediğin an klasiğe dönebilirsin",
+		"Yeni arayüzde ana sayfa: kapak kartları (← →), seçili kart çerçeveli; altta kaldığın an görüntüsü, yaklaşan bölümler ve sade istatistikler",
+		"Menüler (bildirimler, işlemler, kaynak seçici, arama önerileri) açıkken kapaklar artık kaybolmuyor; yalnızca menünün altında kalan gizlenir",
+		"Ana menüde İndirilenler artık seri sayısını gösterir; bölüm sayısı İndirilenler ekranında",
+	},
 	"0.16.0": {
 		"İki yeni Türkçe kaynak: SonAnime (doğrudan MP4, 1080p'ye kadar) ve Animim (fansub seçimi, ayrı Türkçe altyazı)",
 		"Kaynak seçici (s): anime ekranında ortada açılır; istediğin kaynağa 1–9 ile doğrudan geçersin, diğerleri arka planda aranır",

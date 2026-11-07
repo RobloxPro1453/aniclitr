@@ -161,6 +161,9 @@ type App struct {
 	libMemo map[string]libHit // libItem answers (same.go)
 
 	aligns     map[string]*alignState // season chains by anime key (seasonsync.go)
+	pulse      dlPulse                // download speed history for the Nova top bar
+	cards      []toastCard            // Nova notifications (nova_shell.go)
+	covers     []coverRect            // boxes drawn over the body this frame (pictures under them are dropped)
 	malWRev    int                    // library revision malWMemo belongs to
 	malWMemo   map[int]int            // MAL id → watched count (seasonsync.go)
 	recentRev  int                    // history revision recentMemo belongs to
@@ -364,6 +367,9 @@ func (a *App) notify(text, kind string) {
 		playSound(a, sndError)
 	}
 	a.toast, a.toastKind, a.toastUntil, a.toastAt = text, kind, time.Now().Add(4*time.Second), time.Now()
+	if a.nova() {
+		a.pushCard(text, kind)
+	}
 }
 
 func (a *App) notifyErr(prefix string, err error) {
@@ -732,6 +738,7 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		cmds = append(cmds, a.tick())
 	case dlMsg:
 		a.onDL()
+		a.samplePulse()
 		cmds = append(cmds, a.waitDL(), a.tick(), a.offlineCovers()) // new shelf cards get their covers
 	case malMsg:
 		a.onMal()
@@ -834,7 +841,7 @@ func (a *App) View() (out string) {
 	if frame == nil {
 		return ""
 	}
-	frame = a.gfx.finish(frame, suppress)
+	frame = a.gfx.finish(frame, suppress || len(a.covers) > 0) // the classic path cannot drop single pictures
 	return a.withOSC(strings.Join(frame, "\n"))
 }
 
@@ -844,6 +851,7 @@ func (a *App) compose() (frame []string, suppress bool) {
 	a.gfx.reqs = a.gfx.reqs[:0]
 	a.gliding = false
 	a.hideImages = false
+	a.covers = a.covers[:0]
 	if a.w == 0 || a.h == 0 {
 		return nil, true
 	}
@@ -909,11 +917,19 @@ func (a *App) compose() (frame []string, suppress bool) {
 		lines = a.drop.draw(a, lines)
 	}
 	frame = make([]string, 0, a.h)
-	frame = append(frame, header, stFaint.Render(strings.Repeat("─", a.w)))
-	frame = append(frame, lines...)
-	frame = append(frame, a.footer())
+	if a.nova() {
+		frame = append(frame, a.novaHeader(), a.novaRule())
+		frame = append(frame, lines...)
+		frame = append(frame, a.novaFooter())
+	} else {
+		frame = append(frame, header, stFaint.Render(strings.Repeat("─", a.w)))
+		frame = append(frame, lines...)
+		frame = append(frame, a.footer())
+	}
 	// images are hidden while something slides or covers them
-	return frame, a.trans.active() || a.help || a.pal != nil || a.popup != nil || a.drop != nil || a.hideImages || !a.gfx.on
+	// dropdowns and the search suggestions only cover a box: the pictures
+	// under it go (a.covers), the rest stay; full-screen dims hide them all
+	return frame, a.trans.active() || a.help || a.pal != nil || a.popup != nil || a.hideImages || !a.gfx.on
 }
 
 // withOSC prefixes the terminal-background sequence for a few frames after
@@ -1057,4 +1073,24 @@ func hintLine(hs []hint, w int) string {
 		}
 	}
 	return truncate(render(hs[len(hs)-tail:]), w)
+}
+
+// coverRect is a box drawn over the body, in frame cells.
+type coverRect struct{ x, y, w, h int }
+
+// cover records a box drawn at body position (x, y): pictures that touch it
+// are not sent this frame (text may never be written into a picture), while
+// the others stay on screen.
+func (a *App) cover(x, y, w, h int) {
+	a.covers = append(a.covers, coverRect{x: x, y: y + 2, w: w, h: h}) // the body starts under the top bar and its rule
+}
+
+// covered reports whether a picture at (row, col) sized w×h touches a cover.
+func (a *App) covered(row, col, w, h int) bool {
+	for _, c := range a.covers {
+		if col < c.x+c.w && c.x < col+w && row < c.y+c.h && c.y < row+h {
+			return true
+		}
+	}
+	return false
 }

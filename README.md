@@ -4,7 +4,7 @@
 
 **Türkçe altyazılı anime için klavyeyle kullanılan terminal oynatıcısı**
 
-[![Sürüm](https://img.shields.io/github/v/release/RobloxPro1453/aniclitr?label=s%C3%BCr%C3%BCm)](https://github.com/RobloxPro1453/aniclitr/releases/latest)
+[![Sürüm](https://img.shields.io/github/v/release/RobloxPro1453/aniclitr?label=s%C3%BCr%C3%BCm&cacheSeconds=600)](https://github.com/RobloxPro1453/aniclitr/releases/latest)
 [![Go](https://img.shields.io/badge/Go-1.27%2B-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Platformlar](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux%20%C2%B7%20macOS-informational)](#kurulum)
 [![Lisans: GPL-3.0](https://img.shields.io/badge/lisans-GPL--3.0-blue)](LICENSE)
@@ -275,6 +275,7 @@ Parolanız aniclitr'e hiçbir zaman iletilmez (OAuth PKCE). Oturum otomatik olar
 
 ## Görünüm
 
+- **Yeni arayüz (deneme):** **Ayarlar → Görünüm → Arayüz → yeni**. Üst çubukta indirme dalgası ve adıyla kaynak işaretleri, tuş kapakları, renkli bildirimler; ana sayfada kapak kartları, kaldığın anın görüntüsü, yaklaşan bölümler ve sade istatistikler. Klasik arayüz varsayılan kalır; istediğin an geri dönebilirsin.
 - **Temalar:** gece, catppuccin, tokyo night, rosé pine, gruvbox, nord, matcha, şafak (açık tema). `ctrl+t` ile canlı önizlemeyle seçilir.
 - **Özel temalar:** `%APPDATA%\aniclitr\themes\<ad>.json` dosyası olarak eklenebilir. Alanlar: `name`, `bg`, `text`, `sub`, `muted`, `faint`, `band`, `surface`, `accent`, `accent2`, `sky`, `ok`, `warn`, `err` ve isteğe bağlı `light`.
 - **Kapaktan tema:** Bir anime açıldığında arayüz kapak görselinin renklerini alır.
@@ -302,6 +303,7 @@ Ayarların tamamı uygulama içinden (`ctrl+o`) değiştirilebilir ve `%APPDATA%
 | `opensubtitles_api_key` | Çevrimiçi altyazı (opensubtitles.com → profil → API consumers) |
 | `download_dir` | İndirme klasörü |
 | `renderer` | `hücre` (varsayılan) ya da `klasik` (yedek çizici) |
+| `ui` | Arayüz: boş (klasik, varsayılan) ya da `yeni` (deneme aşamasındaki yeni arayüz) |
 | `mpv_path`, `extra_mpv_args` | mpv yolu ve ek argümanlar |
 
 ### Veri dosyaları

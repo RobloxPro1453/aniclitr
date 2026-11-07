@@ -187,6 +187,22 @@ type typer    interface{ typing() bool }          // printable keys belong to a 
 
 While any overlay is open, sixel images are suppressed (see §5).
 
+### 4.1.1 Nova (the new interface, opt-in)
+
+`cfg.UI == "yeni"` (Settings → Görünüm → Arayüz). Only presentation forks;
+data, screens, keys and hints are shared. Files: `nova_shell.go` (top bar
+with the download wave and source chips, the progress rule, keycap footer,
+notification pills), `nova_home.go` (home as cover cards plus a band).
+`compose()` picks the shell; a screen picks its Nova layout with
+`a.nova()`. Screens not redone yet use their classic body inside the Nova
+shell. Both interfaces run through `TestScreenSweep`.
+
+**Pictures under boxes.** Dropdowns and the search suggestions call
+`a.cover(x, y, w, h)`; `buildFrame` skips pictures that touch a cover
+(`a.covered`) instead of hiding them all. Full-screen dims (help, popup,
+palette) still suppress every picture, and so does the classic renderer
+path, which cannot drop single pictures.
+
 ### 4.2 Frame composition
 
 `App.compose()` returns the frame as styled lines: header, rule, body,

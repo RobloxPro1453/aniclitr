@@ -72,8 +72,8 @@ func (h *home) items(a *App) []mItem {
 	dlMeta, dlC := "", cMuted
 	if n := a.dl.Active(); n > 0 {
 		dlMeta, dlC = fmt.Sprintf("↓ %d iniyor", n), cAccent
-	} else if n := countDone(a); n > 0 {
-		dlMeta = fmt.Sprint(n)
+	} else if n := countSeries(a); n > 0 {
+		dlMeta = fmt.Sprintf("%d seri", n) // episodes are counted on the downloads screen
 	}
 	out = append(out,
 		mItem{id: "feed", icon: ic("feed"), label: "Yeni bölümler", desc: "son yayınlananlar", meta: feedMeta, metaC: feedC,
@@ -103,6 +103,17 @@ func plural(n int) string {
 		return ""
 	}
 	return fmt.Sprint(n)
+}
+
+// countSeries is how many shows have at least one downloaded episode.
+func countSeries(a *App) int {
+	seen := map[string]bool{}
+	for _, j := range a.dl.Jobs() {
+		if j.State == download.Done {
+			seen[j.Key()] = true
+		}
+	}
+	return len(seen)
 }
 
 func countDone(a *App) int {

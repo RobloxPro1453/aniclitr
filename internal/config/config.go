@@ -42,6 +42,8 @@ type Config struct {
 	// are separate MAL entries may write progress to those entries (true), or
 	// only to its own (false). Missing: not asked yet.
 	SeasonSync map[string]bool `json:"season_sync,omitempty"`
+	// UI: "" (klasik, the default) or "yeni" (the new Nova interface).
+	UI string `json:"ui,omitempty"`
 	WaitAfterFirstMs int             `json:"wait_after_first_ms,omitempty"` // grace period after first resolved host (ms)
 	AutoFallback     bool            `json:"auto_fallback"`                 // offer/switch to another source when all hosts fail
 	SpeedGraph       bool            `json:"speed_graph"`                   // show live ASCII speed sparkline on downloads screen

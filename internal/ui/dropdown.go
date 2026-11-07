@@ -298,6 +298,7 @@ func (d *dropdown) draw(a *App, lines []string) []string {
 		if d.openT.active() {
 			y += int(3 * (1 - easeOutCubic(d.openT.p())))
 		}
+		a.cover(x, y, w, len(box))
 		return overlayAt(lines, box, x, y, a.w)
 	}
 	// slides down from under the header
@@ -305,6 +306,7 @@ func (d *dropdown) draw(a *App, lines []string) []string {
 	if d.openT.active() {
 		y = int(float64(-len(box)) * (1 - easeOutCubic(d.openT.p())))
 	}
+	a.cover(a.w-w-1, y, w, len(box))
 	return overlayAt(lines, box, a.w-w-1, y, a.w)
 }
 

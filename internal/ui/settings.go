@@ -115,6 +115,17 @@ func newSettings() *settings {
 				playSound(a, sndSelect)
 			},
 		},
+		cycle("Arayüz", "klasik: alışık olduğun görünüm. yeni: deneme aşamasındaki yeni arayüz (Nova); üst çubukta indirme dalgası ve adlı kaynak işaretleri, tuş kapakları, renkli bildirimler. İstediğin zaman geri dönebilirsin.",
+			[]string{"klasik", "yeni"}, func(a *App) *string {
+				if a.cfg.UI == "" {
+					a.cfg.UI = "klasik"
+				}
+				return &a.cfg.UI
+			}, func(a *App) {
+				if a.cfg.UI == "klasik" {
+					a.cfg.UI = "" // the default stays out of config.json
+				}
+			}),
 		setting{
 			label: "Tema", desc: "ctrl+t canlı önizlemeli tema seçiciyi açar. Özel temalar %APPDATA%\\aniclitr\\themes\\*.json dosyası olarak eklenebilir.",
 			value: func(a *App) string { return a.themeName },

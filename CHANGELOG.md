@@ -2,6 +2,19 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [0.16.1]
+
+### Eklenenler
+- **Yeni arayüz (Nova, deneme aşamasında).** **Ayarlar → Görünüm → Arayüz → yeni** ile açılır; klasik arayüz varsayılan kalır. Yalnızca görünüm ayrılır, veri ve tuşlar ortaktır (`internal/ui/nova_*.go`).
+  - Üst çubuk: indirme sürerken canlı hız dalgası, hız ve yüzde; altındaki çizgi indirme ilerlemesiyle dolar. Kaynaklar kısa adlarıyla görünür: açık olan renkli, kapalı olan soluk, yavaş sarı, yanıt vermeyen kırmızı `✗`. Dar terminalde noktalara iner.
+  - Alt çubuk: tuş kapakları; bildirimler türüne göre renkli, yuvarlak uçlu, kayarak gelip sönen bir hap (`+N` ile birden fazlası).
+  - Ana sayfa: kapak kartları (`←` `→`), seçili kart kendi renginde çerçeveli; her kartın altında ilerleme çizgisi. Yüksek ekranda alt bant: kaldığın anın görüntüsü, takip ettiklerinden yaklaşan bölümler (gün, saat, bölüm), sade istatistik cümleleri. Varış yerleri tek satırda.
+
+### Değişenler
+- Bildirimler, işlemler (`?`), kaynak seçici ve arama önerileri açıkken artık bütün resimler gizlenmiyor; yalnızca kutunun altında kalan resim gizlenir. Ekranı karartan pencerelerde (yardım, komut paleti) davranış aynı.
+- Ana menüde İndirilenler seri sayısını gösterir ("3 seri"); bölüm sayısı İndirilenler ekranındadır.
+- README'deki sürüm rozetinin önbellek süresi kısaltıldı.
+
 ## [0.16.0]
 
 ### Eklenenler

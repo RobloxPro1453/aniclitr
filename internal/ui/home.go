@@ -283,6 +283,11 @@ func (h *home) key(a *App, k tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	if h.focus != 0 {
+		if a.nova() {
+			if cmd, ok := h.novaKey(a, k); ok {
+				return cmd
+			}
+		}
 		return h.menuKey(a, k)
 	}
 	switch k.Type {
@@ -328,14 +333,20 @@ func (h *home) key(a *App, k tea.KeyMsg) tea.Cmd {
 // ---- view ----
 
 func (h *home) view(a *App, w, ht int) string {
-	s := h.viewBase(a, w, ht)
+	var s string
+	if a.nova() {
+		s = h.novaView(a, w, ht)
+	} else {
+		s = h.viewBase(a, w, ht)
+	}
 	if h.focus != 0 || !h.sug.open() {
 		return s
 	}
 	// the dropdown covers what is below the search box (pictures hide meanwhile)
-	a.hideImages = true
 	lines := strings.Split(s, "\n")
-	return strings.Join(overlayAt(lines, h.sug.box(a, h.sugW), h.sugX, h.sugY, w), "\n")
+	box := h.sug.box(a, h.sugW)
+	a.cover(h.sugX, h.sugY, h.sugW, len(box)) // only the pictures under it hide
+	return strings.Join(overlayAt(lines, box, h.sugX, h.sugY, w), "\n")
 }
 
 // hero: the wordmark enters (bouncing drop, glitch or matrix rain), then

@@ -71,6 +71,9 @@ func (a *App) buildFrame() *tty.Frame {
 	}
 	if !suppress && a.gfx.on {
 		for _, p := range places {
+			if a.covered(p.row, p.col, p.w, p.h) {
+				continue // under a dropdown: this one sits out, the others stay
+			}
 			if data := a.gfx.encode(p.placeReq); data != "" {
 				f.Place(tty.Image{Key: encKey(p.url, p.w, p.h), Row: p.row, Col: p.col, W: p.w, H: p.h, Data: data})
 			}
