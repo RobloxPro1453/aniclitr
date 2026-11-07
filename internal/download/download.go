@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -155,7 +156,7 @@ func Open(dir string) *Manager {
 	return m
 }
 
-var reDiskFile = regexp.MustCompile(`(?i)^(?:S(\d+)E(\d+)|(Film))(?:\s*\[([^\]]+)\])?(?:\s*\[([^\]]+)\])?\.mp4$`)
+var reDiskFile = regexp.MustCompile(`(?i)^(?:S(\d+)E(\d+(?:\.\d+)?)|(Film))(?:\s*\[([^\]]+)\])?(?:\s*\[([^\]]+)\])?\.mp4$`)
 
 // ScanDisk discovers downloaded .mp4 files in m.dir that were orphaned when
 // the queue was cleared, restoring them into the offline shelf.
@@ -208,7 +209,7 @@ func (m *Manager) ScanDisk() {
 				kind = "Film"
 			} else {
 				season, _ = strconv.Atoi(mm[1])
-				ep, _ = strconv.Atoi(mm[2])
+				ep, _ = source.ParseEpisodeNumber(mm[2]) // "12.5" → its in-between key
 			}
 			fansub, qual := strings.TrimSpace(mm[4]), strings.TrimSpace(mm[5])
 			if fansub != "" && qual == "" && strings.HasSuffix(strings.ToLower(fansub), "p") {
@@ -635,6 +636,9 @@ func (m *Manager) do(ctx context.Context, j *Job) error {
 		}
 	}
 	name := fmt.Sprintf("S%02dE%02d", j.Season, j.Episode)
+	if j.Episode < 0 { // in-between episode: S01E12.5, never S01E-1250
+		name = fmt.Sprintf("S%02dE%s", j.Season, strings.ReplaceAll(source.EpNum(j.Episode), ",", "."))
+	}
 	if j.Kind == "Film" || strings.EqualFold(j.Kind, "movie") {
 		name = "Film"
 	}
@@ -655,7 +659,9 @@ func (m *Manager) do(ctx context.Context, j *Job) error {
 			suffix = "." + safeName(s.Label)
 		}
 		if b, err := netx.Get(ctx, s.URL, map[string]string{"Referer": st.Referer}); err == nil {
-			_ = os.WriteFile(filepath.Join(dir, name+suffix+".vtt"), b, 0o644)
+			// keep the subtitle's own format (.ass styling would be lost, and
+			// mpv would misread it, under a .vtt name)
+			_ = os.WriteFile(filepath.Join(dir, name+suffix+subExt(s.URL)), b, 0o644)
 		}
 	}
 	switch {
@@ -750,7 +756,7 @@ func pickQuality(st *source.Stream, pref string) source.Quality {
 	}
 	h, _ := strconv.Atoi(want)
 	for _, c := range st.Qualities {
-		if c.Height > 0 && c.Height <= h {
+		if !c.Broken && c.Height > 0 && c.Height <= h {
 			return c
 		}
 	}
@@ -831,13 +837,16 @@ func (m *Manager) ytdlp(ctx context.Context, j *Job, st *source.Stream, q source
 	if ref != "" {
 		args = append(args, "--referer", ref)
 	}
-	if q.Page {
-		// a host page (Google Drive): yt-dlp picks the file, within the height
+	if q.Page || q.HLSBandwidth > 0 {
+		// A host page (Google Drive), or an HLS master whose audio is a
+		// separate group: yt-dlp picks the video within the height and merges
+		// the audio, preferring the original Japanese track.
 		h := q.Height
 		if h <= 0 {
 			h = 1080
 		}
-		args = append(args, "-f", fmt.Sprintf("bestvideo[height<=%d]+bestaudio/best[height<=%d]/best", h, h))
+		args = append(args, "-f", fmt.Sprintf(
+			"bestvideo[height<=%[1]d]+bestaudio[language=ja]/bestvideo[height<=%[1]d]+bestaudio/best[height<=%[1]d]/best", h))
 	}
 	args = append(args, q.URL)
 	m.set(func() { j.Tool = "yt-dlp" })
@@ -1040,4 +1049,16 @@ func (m *Manager) Preview(j Job) {
 	c := j
 	m.jobs = append(m.jobs, &c)
 	m.mu.Unlock()
+}
+
+// subExt is a subtitle file's extension from its URL (.ass, .srt…), .vtt
+// when the URL does not say.
+func subExt(raw string) string {
+	if u, err := url.Parse(raw); err == nil {
+		switch ext := strings.ToLower(filepath.Ext(u.Path)); ext {
+		case ".ass", ".ssa", ".srt", ".vtt":
+			return ext
+		}
+	}
+	return ".vtt"
 }

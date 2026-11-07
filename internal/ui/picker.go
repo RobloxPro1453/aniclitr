@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -56,6 +57,46 @@ type picker struct {
 	waitScheduled   bool
 	waitRecovery    bool
 	alts            []source.Anime
+	// recs: each host's track record (diag "extract"), read once on open;
+	// shown before a host is resolved so the choice is an informed one
+	recs map[string]diag.Op
+}
+
+// hostRecord is how this variant's host has done before. The extractor is
+// found by the URL first (exact), else by the host's name.
+func (p *picker) hostRecord(v source.Variant) (diag.Op, bool) {
+	if p.recs == nil {
+		p.recs = diag.Snapshot()["extract"]
+		if p.recs == nil {
+			p.recs = map[string]diag.Op{}
+		}
+	}
+	var names []string
+	if u, err := url.Parse(extract.NormalizeURL(v.URL)); err == nil && u.Host != "" {
+		for _, e := range extract.Match(u) {
+			names = append(names, e.Name())
+		}
+	}
+	names = append(names, v.Host)
+	for _, n := range names {
+		for k, o := range p.recs {
+			if strings.EqualFold(k, n) && o.Calls >= 3 { // fewer calls say nothing yet
+				return o, true
+			}
+		}
+	}
+	return diag.Op{}, false
+}
+
+// recordSpan renders a track record: "%92 açıldı · 1,4 sn".
+func recordSpan(o diag.Op) span {
+	ok := 100 - o.FailPct()
+	c := cMuted
+	if ok < 50 {
+		c = cWarn
+	}
+	sec := strings.ReplaceAll(fmt.Sprintf("%.1f sn", float64(o.AvgMs())/1000), ".", ",")
+	return sp(fmt.Sprintf("%%%d açıldı · %s ", ok, sec), c)
 }
 
 // recentlyFailed reports whether this variant should be skipped by automatic
@@ -104,7 +145,7 @@ func (p *picker) crumb() string {
 	if p.an.IsMovie() {
 		return "Film"
 	}
-	return fmt.Sprintf("S%d · B%d", p.ep.Season, p.ep.Number)
+	return fmt.Sprintf("S%d · B%s", p.ep.Season, p.ep.Num())
 }
 
 func (p *picker) hints() []hint {
@@ -171,7 +212,7 @@ func (p *picker) build(a *App, vs []source.Variant) tea.Cmd {
 	}
 	// subtitles before dubs (sites list the dub first); the remembered
 	// fansub still wins below
-	sort.SliceStable(p.groups, func(i, j int) bool { return !isDub(p.groups[i].name) && isDub(p.groups[j].name) })
+	sort.SliceStable(p.groups, func(i, j int) bool { return !p.groups[i].dub() && p.groups[j].dub() })
 	// remembered fansub first, then sort hosts by rule priority (with remembered host first)
 	rules := a.selectionRules()
 	p.fCur = 0
@@ -554,11 +595,11 @@ func (p *picker) view(a *App, w, h int) string {
 	case 2:
 		meta = pill(fmt.Sprintf("↓ TOPLU İNDİRME · %d BÖLÜM", len(p.dlSeason)), cAccent)
 	}
-	epl := fmt.Sprintf("%d. Bölüm", p.ep.Number)
+	epl := fmt.Sprintf("%s. Bölüm", p.ep.Num())
 	if p.dlMode == 2 && len(p.dlSeason) > 1 {
-		epl = fmt.Sprintf("%d. – %d. Bölümler (%d bölüm)", p.dlSeason[0].Number, p.dlSeason[len(p.dlSeason)-1].Number, len(p.dlSeason))
+		epl = fmt.Sprintf("%s. – %s. Bölümler (%d bölüm)", p.dlSeason[0].Num(), p.dlSeason[len(p.dlSeason)-1].Num(), len(p.dlSeason))
 	} else if p.ep.Season > 1 || (len(p.an.Seasons) > 1) {
-		epl = fmt.Sprintf("Sezon %d · Bölüm %d", p.ep.Season, p.ep.Number)
+		epl = fmt.Sprintf("Sezon %d · Bölüm %s", p.ep.Season, p.ep.Num())
 	}
 	if p.an.IsMovie() {
 		epl = "Film"
@@ -629,7 +670,16 @@ func (p *picker) fansubPane(a *App, w, h int) []string {
 		if p.prefFan != "" && strings.EqualFold(g.name, shortFansub(p.prefFan)) {
 			name += " ★"
 		}
-		out = append(out, row(w, bg, []span{bar, span{t: name, c: tc, bold: sel}}, dots))
+		// tags only where they tell something: dubbing, or a language other
+		// than the Turkish this app is for (the name may already say it)
+		var tags []span
+		if g.dub() && !isDub(g.name) {
+			tags = append(tags, sp("dublaj ", cAccent2))
+		}
+		if l := g.lang(); l != "" && l != "tr" && !strings.Contains(strings.ToLower(g.name), "("+l+")") {
+			tags = append(tags, sp(strings.ToUpper(l)+" ", cMuted))
+		}
+		out = append(out, row(w, bg, []span{bar, span{t: name, c: tc, bold: sel}}, append(tags, dots...)))
 	}
 	if src := source.Get(p.an.Source); src != nil && src.Info().Lang == "en" && len(out) < h-4 {
 		out = append(out, "", stWarn.Render("! ")+stSub.Render("İngilizce kaynak."),
@@ -666,9 +716,16 @@ func (p *picker) hostPane(a *App, w, h int) []string {
 		}
 		// host header line
 		var status []span
+		rec, hasRec := p.hostRecord(v)
 		switch {
+		case st == nil && recentlyFailed(a, v.URL):
+			status = []span{sp("son denemede açılmadı ", cWarn)}
+		case st == nil && hasRec:
+			status = []span{recordSpan(rec)}
 		case st == nil:
 			status = []span{sp("enter: dene ", cMuted)}
+		case st.loading && hasRec && w >= 56:
+			status = []span{recordSpan(rec), sp(spinner(a.frame/2)+" çözülüyor ", cAccent)}
 		case st.loading:
 			status = []span{sp(spinner(a.frame/2)+" çözülüyor ", cAccent)}
 		case st.st != nil:
@@ -765,9 +822,29 @@ func shortErr(err error) string {
 	return s
 }
 
-func isDub(name string) bool {
-	n := strings.ToLower(name)
-	return strings.Contains(n, "dublaj") || strings.Contains(n, "dub")
+func isDub(name string) bool { return source.IsDubName(name) }
+
+// dub: the source says this group dubs, or its name does.
+func (g group) dub() bool {
+	for _, v := range g.vs {
+		if v.Dub {
+			return true
+		}
+	}
+	return isDub(g.name)
+}
+
+// lang is the group's translation language when every upload agrees.
+func (g group) lang() string {
+	l := ""
+	for i, v := range g.vs {
+		if i == 0 {
+			l = v.Lang
+		} else if v.Lang != l {
+			return ""
+		}
+	}
+	return l
 }
 
 // showLinks opens a dropdown inspecting resolved URLs (tokens masked).
@@ -783,7 +860,11 @@ func (p *picker) showLinks(a *App) tea.Cmd {
 		if host == "" {
 			host = "Oynatıcı"
 		}
-		items = append(items, dropItem{group: host + " · " + diag.RedactURL(v.URL)})
+		head := host
+		if v.Kind != "" {
+			head += " (" + v.Kind + ")"
+		}
+		items = append(items, dropItem{group: head + " · " + diag.RedactURL(v.URL)})
 		if st == nil {
 			items = append(items, dropItem{icon: "·", label: "henüz çözülmedi", dim: true})
 			continue
@@ -865,10 +946,12 @@ func (p *picker) showRecoveryMenu(a *App) tea.Cmd {
 					a.pop() // close picker
 					if as, ok := a.top().(*animeScreen); ok {
 						*as = *newAnime(alt, p.alts, p.ep.Season, p.ep.Number)
+						as.explicit = true // you picked this source
 						a.notify("kaynak değiştirildi: "+srcName, "ok")
 						return as.start(a)
 					}
 					sc := newAnime(alt, nil, p.ep.Season, p.ep.Number)
+					sc.explicit = true
 					return tea.Batch(a.push(sc), sc.start(a))
 				},
 			})

@@ -57,6 +57,7 @@ func TestKeyStorm(t *testing.T) {
 		"feed":      func(a *App) screen { return newFeedScreen() },
 		"settings":  func(a *App) screen { return newSettings() },
 		"sources":   func(a *App) screen { return &sourcesScreen{} },
+		"hostorder": func(a *App) screen { return newHostOrder(a) },
 		"characters": func(a *App) screen {
 			cs := newCharactersScreen(an)
 			cs.loading = false

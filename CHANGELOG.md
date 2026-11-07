@@ -2,6 +2,34 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [0.16.0]
+
+### Eklenenler
+- **Yeni kaynaklar: SonAnime ve Animim** (`internal/source/sonanime`, `internal/source/animim`). SonAnime bölüm başına doğrudan MP4 (1080p/720p/480p) ve hazır MAL kimliği sunar; Animim fansub seçimi, doğrudan MP4 ve ayrı Türkçe altyazı (`.ass`) sunar. İkisinde de sağlık yoklaması, canlı uçtan uca test ve kayıtlı yanıt testleri bulunur.
+- **Kaynak seçici (`s`).** Anime ekranında ortada açılan, başlatıcı (launcher) tarzı liste: bilinen kaynaklar hemen, diğerleri arka planda aranarak canlı dolar; `1`–`9` ile istenen kaynağa doğrudan geçilir. Bölüm listesindeki uzun kaynak çubuğu tek satırlık bir özete indi.
+- **Çok sezonlu MAL eşitlemesi** (`internal/ui/seasonsync.go`). AniList sezon zinciri uygulamaya bağlandı: izlenen bölüm MAL'de ait olduğu kayda yazılır, bölüm listesindeki ✓ işaretleri de o kayıttan okunur. Başlığın kendi kaydı dışındaki kayıtlara yazmadan önce seri başına bir kez onay istenir; "evet" geçmişte izlenenleri de aktarır.
+- **Elle MAL eşlemesi.** Anime ekranında `r`: AniList adaylarından doğru kaydı seçme, eşlemeyi sıfırlama, sezon eşitlemesini açıp kapatma.
+- **Ayarlar → Sunucu sırası.** Sunucuların deneme sırası; `asla` (`never_hosts`) ve `yalnızca` (`only_hosts`) işaretleri.
+- **Sunucu karnesi.** Fansub seçicide çözülmemiş sunucuların geçmiş başarı oranı ve ortalama süresi; bu oturumda düşenler ayrıca işaretlenir.
+- **Kaynak sağlığı.** AnimeciX, AnimeTR ve HiAnime için arama + bölüm listesi yoklaması; site yapısı değişirse "yanıt vermiyor" yerine ayrı bir "yapısı değişmiş" uyarısı. Kaynaklar ekranındaki tanılama son 24 saati gösterir.
+- **AnimeciX fansub adları.** Sitenin çevirmen listesi günde bir kez alınır; serbest künye satırları grubun gerçek adına çevrilir, dublaj grupları işaretlenir.
+
+### Değişenler
+- Ayarlarda kapalı bir kaynakta izlenen seri açılınca önce açık kaynaklarda aranır ve bulunursa kaldığın yerden orada açılır; yalnızca kapalı kaynakta varsa işaretlenerek açılır. Yapıştırılan bağlantı ve açık "şurada aç" seçimi yönlendirilmez.
+- Varsayılan sunucu dışlaması (Vidmoly) kaldırıldı; sırada en sonda olduğu için yalnızca başka sunucu açılmazsa seçilir.
+- Varyantlar artık türünü (`embed`/`hls`/`mp4`), dilini ve dublaj olup olmadığını taşır; seçicide dublaj grupları altyazılılardan sonra gelir.
+- README'deki `preferred_host` anahtarı, gerçek adı olan `host_order` olarak düzeltildi.
+
+### Düzeltilenler
+- **AniHub sessiz oynatma:** ayrı ses kanalı olan HLS akışlarında seçilen kalite sesi içermiyordu; oynatma ve indirme sessizdi. Kalite artık ana liste üzerinden seçilir (`--hls-bitrate`), indirmede Japonca ses birleştirilir.
+- **Yanlış dosya boyutları:** Tau büyük dosyalar için hep 500.000.000 bayt (477 MB) bildiriyordu; artık sunucunun gerçek boyutu gösterilir.
+- **Ölü MP4'ler:** her çözümlemede yoklanır; tümü ölüyse sıradaki sunucuya geçilir. Zaman aşımı bozuk sayılmaz.
+- **Bleach türü sayı hataları:** tamamlanan bir seride MAL'e sitenin bölüm sayısı (412) yerine MAL kaydının sayısı (366) gönderilir.
+- **Ara bölümler (12.5):** HiAnime bunları 0. bölüm, AnimeTR 12. bölümle aynı sayıyordu, AniHub tamsayıya kırpıyordu; artık kendi yerlerinde gösterilir ve ilerleme sayılmaz.
+- **HiAnime filler bölümleri** listeden sessizce düşüyordu.
+- İndirilen altyazılar kendi uzantısıyla (`.ass`, `.srt`) kaydedilir; eskiden hep `.vtt`.
+- Tanılama kayıtlarında saatlik kovaların budanmasındaki bir hata giderildi.
+
 ## [0.15.1]
 
 ### Eklenenler

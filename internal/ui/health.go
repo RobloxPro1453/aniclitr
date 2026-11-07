@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"aniclitr/internal/diag"
+	"aniclitr/internal/logx"
 	"aniclitr/internal/source"
 )
 
@@ -47,7 +48,14 @@ func (a *App) onHealth(h source.Health) {
 		name = p.Info().Name
 	}
 	switch {
-	case !h.OK && (!seen || prev.OK):
+	case h.Changed && (!seen || !prev.Changed):
+		// reachable but unreadable: retrying will not fix it, an update will
+		logx.Errorf("kaynak yapısı değişmiş [%s]: %s", h.ID, h.Err)
+		a.notify(name+" sitesinin yapısı değişmiş — diğer kaynaklar kullanılıyor", "warn")
+		a.addNotice(notice{key: fmt.Sprintf("changed:%s:%d", h.ID, h.At.Unix()), kind: "warn",
+			text:   name + " değişmiş: güncelleme gerekebilir",
+			action: func(a *App) tea.Cmd { return a.push(&sourcesScreen{}) }})
+	case !h.OK && !h.Changed && (!seen || prev.OK):
 		a.notify(name+" şu an yanıt vermiyor — diğer kaynaklar kullanılıyor", "warn")
 		a.addNotice(notice{key: fmt.Sprintf("health:%s:%d", h.ID, h.At.Unix()), kind: "warn", text: name + " yanıt vermiyor",
 			action: func(a *App) tea.Cmd { return a.push(&sourcesScreen{}) }})
@@ -130,6 +138,8 @@ func (s *sourcesScreen) view(a *App, w, h int) string {
 		case !on:
 		case !probed:
 			state, sc = spinner(a.frame/2)+" yoklanıyor", cAccent2
+		case hl.Changed:
+			state, sc = "✗ yapısı değişmiş", cErr
 		case !hl.OK:
 			state, sc = "✗ yanıt yok", cErr
 		case hl.Slow():

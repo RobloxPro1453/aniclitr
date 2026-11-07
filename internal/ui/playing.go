@@ -136,7 +136,7 @@ func (p *playing) launch(a *App) tea.Cmd {
 	trimMemory() // mpv takes over; the terminal idles while you watch
 	title := p.an.Title
 	if !p.an.IsMovie() {
-		title = fmt.Sprintf("%s — %d. Bölüm", p.an.Title, p.ep.Number)
+		title = fmt.Sprintf("%s — %s. Bölüm", p.an.Title, p.ep.Num())
 		if p.ep.Title != "" && !strings.HasSuffix(p.ep.Title, "Bölüm") {
 			title += " · " + p.ep.Title
 		}
@@ -466,7 +466,7 @@ func (p *playing) view(a *App, w, h int) string {
 			info = append(info, stBold.Render(l))
 		}
 	}
-	epLine := fmt.Sprintf("Sezon %d · Bölüm %d", p.ep.Season, p.ep.Number)
+	epLine := fmt.Sprintf("Sezon %d · Bölüm %s", p.ep.Season, p.ep.Num())
 	if p.an.IsMovie() {
 		epLine = "Film"
 	}
@@ -525,7 +525,7 @@ func (p *playing) view(a *App, w, h int) string {
 		}
 		info = append(info, "")
 		if p.nextEp != nil {
-			info = append(info, stText.Render(fmt.Sprintf("Sıradaki: %d. Bölüm", p.nextEp.Number))+stMuted.Render(fmt.Sprintf("  ·  %.0f sn", left+.5)))
+			info = append(info, stText.Render(fmt.Sprintf("Sıradaki: %s. Bölüm", p.nextEp.Num()))+stMuted.Render(fmt.Sprintf("  ·  %.0f sn", left+.5)))
 			info = append(info, progressBar(tw, 1-left/6, []string{acc, cAccent2}))
 		} else {
 			info = append(info, stAccent.Render(spinner(a.frame/2))+stMuted.Render(" sıradaki bölüm aranıyor…"))
@@ -566,7 +566,16 @@ func (p *playing) view(a *App, w, h int) string {
 // (with confetti on the next screen).
 func (p *playing) libraryProgress(a *App) {
 	last := false
-	if len(p.eps) > 0 && p.eps[len(p.eps)-1].Number == p.ep.Number && p.an.NextEpisode == "" {
+	// the finale is the last regular episode: a 12.5 listed after it does
+	// not finish the show, nor does watching it
+	lastReg := 0
+	for i := len(p.eps) - 1; i >= 0; i-- {
+		if !p.eps[i].Extra() {
+			lastReg = p.eps[i].Number
+			break
+		}
+	}
+	if !p.ep.Extra() && len(p.eps) > 0 && lastReg == p.ep.Number && p.an.NextEpisode == "" {
 		lastSeason := len(p.an.Seasons) <= 1 || p.an.Seasons[len(p.an.Seasons)-1].Number == p.ep.Season
 		if lastSeason && (p.an.EpCount <= 0 || len(p.an.Seasons) > 1 || p.ep.Number >= p.an.EpCount) {
 			last = true
@@ -576,6 +585,17 @@ func (p *playing) libraryProgress(a *App) {
 		last = true
 	}
 	bumpWatched(a, p.an, p.ep)
+	if al, ok := a.alignment(p.an); ok && a.seasonSyncOK(p.an) && spansEntries(al, a.ownMal(p.an)) {
+		// the title spans several MAL entries: bumpWatched already moved the
+		// entry this episode belongs to (status included); finishing the
+		// site's last episode must not complete the title's first entry
+		if last {
+			a.anchorOK = false
+			a.celebrate(80)
+			a.notify("◆ "+p.an.Title+" bitti! kitaplıkta puan ver (ctrl+b)", "ok")
+		}
+		return
+	}
 	it, inLib := a.libItem(p.an)
 	switch {
 	case last && it.Status != store.Completed:

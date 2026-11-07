@@ -59,6 +59,9 @@ func (a *App) malLine() string {
 // bumpWatched records progress for MAL: the highest episode of the first
 // season (later seasons are separate MAL entries — see TODO).
 func bumpWatched(a *App, an source.Anime, ep source.Episode) {
+	if a.recordWatched(an, ep) {
+		return // the season chain filed it under the right MAL entry
+	}
 	if len(an.Seasons) > 1 && ep.Season != an.Seasons[0].Number {
 		return
 	}

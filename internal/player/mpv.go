@@ -164,6 +164,11 @@ func buildArgs(o Options, sock string) []string {
 	if o.Fullscreen {
 		args = append(args, "--fs")
 	}
+	if o.Quality.HLSBandwidth > 0 {
+		// URL is the master playlist (the rendition's audio is a separate
+		// group): pick the chosen rendition; a later option overrides "max"
+		args = append(args, fmt.Sprintf("--hls-bitrate=%d", o.Quality.HLSBandwidth))
+	}
 	if o.Quality.Page {
 		// a host page: mpv's yt-dlp hook resolves it; keep within the preference
 		h := o.Quality.Height

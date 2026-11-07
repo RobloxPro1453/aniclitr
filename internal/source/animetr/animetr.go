@@ -64,6 +64,11 @@ func kindOf(t string) string {
 	return "TV"
 }
 
+// Probe checks search and the series page parser in one go.
+func (p Provider) Probe(ctx context.Context) error {
+	return source.ProbeChain(ctx, p, "one piece")
+}
+
 func (Provider) Search(ctx context.Context, q string) ([]source.Anime, error) {
 	q = source.Clean(q)
 	if q == "" {
@@ -105,7 +110,7 @@ var (
 	reType   = regexp.MustCompile(`(?s)Tip:\s*</span>.*?<span[^>]*>\s*([^<]+?)\s*</span>`)
 	reYear   = regexp.MustCompile(`(?s)Sezon:\s*</span>.*?(\d{4})\s*</span>`)
 	reEp     = regexp.MustCompile(`(?s)<a href="(/izle/[^"]+)" class="ep-item__link[^"]*"[^>]*>.*?ep-item__num">([^<]*)<.*?ep-item__title">([^<]*)<`)
-	reEpNum  = regexp.MustCompile(`/bolum-(\d+)`)
+	reEpNum  = regexp.MustCompile(`/bolum-(\d+(?:[-.]\d+)?)`)
 	reTags   = regexp.MustCompile(`<[^>]+>`)
 	reEpData = regexp.MustCompile(`(?s)<script type="application/json" id="epspage-data">(.*?)</script>`)
 )
@@ -171,19 +176,20 @@ func parseEpisodes(pg, slug string) []source.Episode {
 			continue
 		}
 		seen[href] = true
-		n, err := strconv.Atoi(strings.TrimSpace(m[2]))
-		if err != nil {
+		// "12" or "12.5"; else the link: bolum-12, bolum-12-5 (12.5, not 12)
+		n, ok := source.ParseEpisodeNumber(m[2])
+		if !ok {
 			if mm := reEpNum.FindStringSubmatch(href); mm != nil {
-				n, _ = strconv.Atoi(mm[1])
+				n, ok = source.ParseEpisodeNumber(strings.ReplaceAll(mm[1], "-", "."))
 			}
 		}
-		if n <= 0 {
+		if !ok {
 			continue
 		}
 		title := strings.TrimSpace(html.UnescapeString(m[3]))
 		eps = append(eps, source.Episode{ID: href, Season: 1, Number: n, Title: title})
 	}
-	sort.SliceStable(eps, func(i, j int) bool { return eps[i].Number < eps[j].Number })
+	source.SortEpisodes(eps)
 	return eps
 }
 
@@ -259,7 +265,7 @@ func parseVariants(b []byte) ([]source.Variant, error) {
 			if count[host]++; count[host] > 1 {
 				host += " " + strconv.Itoa(count[host])
 			}
-			out = append(out, source.Variant{Fansub: fansub, Host: host, URL: u})
+			out = append(out, source.Variant{Fansub: fansub, Host: host, URL: u, Kind: "embed", Lang: "tr", Dub: source.IsDubName(fansub)})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return hostRank(out[i].URL) < hostRank(out[j].URL) })

@@ -241,7 +241,7 @@ func (d *downloads) showView(a *App, s dlShow, w, h int) []string {
 		if e.Watched[fmt.Sprintf("%d:%d", j.Season, j.Episode)] {
 			mark = sp("✓ ", cOK)
 		}
-		title := fmt.Sprintf("S%d · %d. bölüm", j.Season, j.Episode)
+		title := fmt.Sprintf("S%d · %s. bölüm", j.Season, source.EpNum(j.Episode))
 		if j.EpTitle != "" && !genericTitle(j.EpTitle) {
 			title += "  " + j.EpTitle
 		}

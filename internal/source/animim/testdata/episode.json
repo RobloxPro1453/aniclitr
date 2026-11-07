@@ -1,0 +1,30 @@
+{
+"fanSubVideos": [
+{
+"_id": "6814bf4a3631a5a5281a23a8",
+"fanSubId": "680d24890050a871a3538572",
+"videoUrls": [
+{
+"1080p_url": "https://animim.app/api/video-proxy/animes/6813f503c8d1ba08dccd7657/6814bf4a3631a5a5281a23a7/680d24890050a871a3538572/minami_cdn-1080p",
+"identifier": "minami_cdn",
+"type": "mp4",
+"480p_url": null,
+"720p_url": null,
+"url": null
+}
+],
+"credits": "HakaiRyuu, Lexellures",
+"assSubtitles": [
+{
+"url": "https://cdn.animim.app/animes/6813f503c8d1ba08dccd7657/subtitles/holysubs/%5BHolySubs%5D%20Sousou%20no%20Frieren%20-%2001.ass?exp=0&sig=test",
+"fileName": "[HolySubs] Sousou no Frieren - 01.ass",
+"language": "tr",
+"translator": "",
+"typesetter": "",
+"author": "",
+"uploadedAt": "2025-11-24T11:19:03.737Z"
+}
+]
+}
+]
+}

@@ -157,6 +157,35 @@ func genreTR(s string) string {
 	return s
 }
 
+// Probe searches, then opens the first hit's title and episode list. The
+// title fetch is the x-e-h canary: without a valid header AnimeciX answers
+// /secure/titles/{id} with a different title, which title() rejects as
+// KindChanged. That surfaces here as source.ErrChanged within 5 minutes,
+// instead of the first time someone opens an anime.
+func (p Provider) Probe(ctx context.Context) error {
+	res, err := p.Search(ctx, "frieren")
+	if err != nil {
+		return err
+	}
+	if len(res) == 0 {
+		return source.ErrNotFound
+	}
+	if _, err := p.title(ctx, res[0].ID); err != nil {
+		if extract.KindOf(err) == extract.KindChanged {
+			return fmt.Errorf("%w: %v", source.ErrChanged, err)
+		}
+		return err
+	}
+	eps, err := p.Episodes(ctx, res[0], 1)
+	if err != nil {
+		return err
+	}
+	if len(eps) == 0 {
+		return fmt.Errorf("%w: bölüm listesi boş", source.ErrChanged)
+	}
+	return nil
+}
+
 func (Provider) Search(ctx context.Context, q string) ([]source.Anime, error) {
 	q = source.Clean(q)
 	if q == "" {
@@ -258,28 +287,25 @@ func (p Provider) Variants(ctx context.Context, a source.Anime, ep source.Episod
 		}
 		vids = res.Videos
 	}
+	idx := translators(ctx) // cached a day; empty when unavailable
 	out := make([]source.Variant, 0, len(vids))
 	for _, v := range vids {
 		if v.URL == "" {
 			continue
 		}
-		fansub := cleanFansub(string(v.Extra))
-		out = append(out, source.Variant{Fansub: fansub, Host: v.Name, URL: v.URL})
+		fansub, dub := groupInfo(string(v.Extra), idx)
+		lang := strings.ToLower(strings.TrimSpace(string(v.Language)))
+		if lang == "" {
+			lang = "tr"
+		}
+		out = append(out, source.Variant{Fansub: fansub, Host: v.Name, URL: v.URL, Kind: "embed", Lang: lang,
+			Dub: dub || source.IsDubName(fansub)})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return hostRank(out[i].Host) < hostRank(out[j].Host) })
 	if len(out) == 0 {
 		return nil, source.ErrNotFound
 	}
 	return out, nil
-}
-
-// cleanFansub turns "Çevirmen: Cent / Redaktör: Venus" credit lines into a compact label.
-func cleanFansub(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return "Bilinmeyen"
-	}
-	return s
 }
 
 func hostRank(h string) int {
@@ -331,6 +357,7 @@ func (Provider) Latest(ctx context.Context) ([]source.FeedItem, error) {
 	// ~10 items per page; 4 pages cover about a week (enough for the
 	// weekly schedule on the home screen). Pages are fetched in parallel.
 	const pages = 4
+	idx := translators(ctx) // fansub names, cached a day
 	type pageRes struct {
 		items []source.FeedItem
 		err   error
@@ -361,7 +388,7 @@ func (Provider) Latest(ctx context.Context) ([]source.FeedItem, error) {
 				ts, _ := time.Parse(time.RFC3339, d.Released)
 				fansub := ""
 				if len(d.Videos) > 0 {
-					fansub = cleanFansub(string(d.Videos[0].Extra))
+					fansub = groupName(string(d.Videos[0].Extra), idx)
 				}
 				results[page-1].items = append(results[page-1].items, source.FeedItem{
 					Anime:    source.Anime{Source: "animecix", ID: strconv.Itoa(int(d.TitleID)), Title: d.TitleName, Poster: string(d.TitlePoster), Kind: "TV"},

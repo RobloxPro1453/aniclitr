@@ -46,6 +46,7 @@ func TestScreenSweep(t *testing.T) {
 			"queue":     func() screen { d := newDownloads(); d.queue = true; return d },
 			"settings":  func() screen { return newSettings() },
 			"sources":   func() screen { return &sourcesScreen{} },
+			"hostorder": func() screen { return newHostOrder(a) },
 			"mal":       func() screen { return newMalScreen(a) },
 			"onboard":   func() screen { return &onboard{tools: map[string]bool{"mpv": true}} },
 			"characters": func() screen {

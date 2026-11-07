@@ -3,11 +3,13 @@ package extract
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"aniclitr/internal/netx"
@@ -207,7 +209,8 @@ func ProbeMP4(ctx context.Context, rawURL, referer string) (MP4Meta, error) {
 		return MP4Meta{}, err
 	}
 	if status >= 400 {
-		return MP4Meta{}, fmt.Errorf("HTTP %d", status)
+		// typed: the server answered and refused, unlike a timeout
+		return MP4Meta{}, &Error{Extractor: "MP4", Kind: Classify(status, nil), Detail: fmt.Sprintf("HTTP %d", status)}
 	}
 	meta := ParseMP4Atoms(headBuf, totalSize)
 	if !meta.OK && totalSize > mp4ProbeBytes*2 {
@@ -269,21 +272,35 @@ func parseTotalSize(h http.Header) int64 {
 // ProbeQuality enriches an MP4 source.Quality in-place via ProbeMP4.
 // If the server returns 4xx/5xx or if an unlabelled MP4 has no readable container
 // metadata (height, duration, bitrate all unknown), q.Broken is marked true.
+// A timeout or network error proves nothing about the file: the quality is
+// left untouched (not probed, not broken) so a slow link never hides it.
 func ProbeQuality(ctx context.Context, q *source.Quality, referer string) {
+	probeQuality(ctx, q, referer)
+}
+
+// probeQuality is ProbeQuality that also reports why a quality was marked
+// broken (KindUnknown when it was not, or when the file was unreadable).
+func probeQuality(ctx context.Context, q *source.Quality, referer string) Kind {
 	if q == nil || q.Page || q.Probed || strings.Contains(strings.ToLower(q.URL), ".m3u8") {
-		return
+		return KindUnknown
 	}
 	meta, err := ProbeMP4(ctx, q.URL, referer)
-	q.Probed = true
 	if err != nil {
-		q.Broken = true
-		return
+		var ee *Error
+		if errors.As(err, &ee) { // the server refused (HTTP 4xx/5xx)
+			q.Probed, q.Broken = true, true
+			return ee.Kind
+		}
+		return KindUnknown // timeout / network: unknown, keep it
 	}
+	q.Probed = true
 	if meta.Height > 0 {
 		q.Height = meta.Height
 		q.Label = fmt.Sprintf("%dp", meta.Height)
 	}
-	if meta.Size > 0 && q.Size == 0 {
+	// the file server's own answer (Content-Range) beats what the source
+	// said: Tau reports 500,000,000 bytes for any large file
+	if meta.Size > 0 {
 		q.Size = meta.Size
 	}
 	if meta.Bitrate > 0 {
@@ -299,4 +316,53 @@ func ProbeQuality(ctx context.Context, q *source.Quality, referer string) {
 	if q.Height <= 0 && q.Duration <= 0 && q.Bitrate <= 0 {
 		q.Broken = true
 	}
+	return KindUnknown
+}
+
+// mp4ProbeParallel caps concurrent Range probes per stream.
+const mp4ProbeParallel = 4
+
+// ProbeMP4s probes every direct MP4 quality of st in parallel (each bounded
+// by ProbeMP4's 6 s), then re-sorts so healthy renditions come first.
+//
+// dead is true when every probed quality was refused or unreadable, so the
+// stream has nothing playable; kind then says why (e.g. KindDeleted for 404),
+// letting failover treat a dead file as permanent.
+func ProbeMP4s(ctx context.Context, st *source.Stream) (dead bool, kind Kind) {
+	if st == nil || len(st.Qualities) == 0 {
+		return false, KindUnknown
+	}
+	kinds := make([]Kind, len(st.Qualities))
+	sem := make(chan struct{}, mp4ProbeParallel)
+	var wg sync.WaitGroup
+	for i := range st.Qualities {
+		q := &st.Qualities[i]
+		if q.Page || q.Probed || strings.Contains(strings.ToLower(q.URL), ".m3u8") {
+			continue
+		}
+		wg.Add(1)
+		go func(i int, q *source.Quality) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			kinds[i] = probeQuality(ctx, q, st.Referer)
+		}(i, q)
+	}
+	wg.Wait()
+
+	dead = true
+	for i, q := range st.Qualities {
+		if !q.Broken {
+			dead = false
+			break
+		}
+		if kind == KindUnknown {
+			kind = kinds[i]
+		}
+	}
+	st.SortQualities()
+	if !dead {
+		kind = KindUnknown
+	}
+	return dead, kind
 }

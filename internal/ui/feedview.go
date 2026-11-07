@@ -170,9 +170,9 @@ func feedRows(a *App, items []source.FeedItem, off, band int, at time.Time, w, h
 		if time.Since(it.Released) < 12*time.Hour {
 			wc = cAccent2
 		}
-		ep := fmt.Sprintf("%d. bölüm", it.Episode)
+		ep := source.EpNum(it.Episode) + ". bölüm"
 		if it.Season > 1 {
-			ep = fmt.Sprintf("S%d · %d. bölüm", it.Season, it.Episode)
+			ep = fmt.Sprintf("S%d · %s. bölüm", it.Season, source.EpNum(it.Episode))
 		}
 		right := []span{sp(fmt.Sprintf("%-14s", ep), cSub)}
 		if fs := shortFansub(it.Fansub); w > 76 && fs != "" && fs != "Bilinmeyen" && !strings.Contains(fs, "www.") && !strings.Contains(fs, "://") {
@@ -210,9 +210,9 @@ func feedCard(a *App, it source.FeedItem, w, h int) []string {
 		}
 		out = append(out, gradient(l, []string{acc.hex(), cAccent2}, true))
 	}
-	ep := fmt.Sprintf("%d. bölüm", it.Episode)
+	ep := source.EpNum(it.Episode) + ". bölüm"
 	if it.Season > 1 {
-		ep = fmt.Sprintf("Sezon %d · %d. bölüm", it.Season, it.Episode)
+		ep = fmt.Sprintf("Sezon %d · %s. bölüm", it.Season, source.EpNum(it.Episode))
 	}
 	out = append(out, stText.Render(ep), stMuted.Render(agoLong(it.Released)))
 	if it.Fansub != "" && it.Fansub != "Bilinmeyen" {

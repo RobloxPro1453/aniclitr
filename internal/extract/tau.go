@@ -11,6 +11,10 @@ import (
 
 type tauExtractor struct{}
 
+// tauSizePlaceholder is what Tau's API reports as "size" for large files
+// (seen 2026-11-07: a 627 MB and a 496 MB 1080p both said 500,000,000).
+const tauSizePlaceholder = 500_000_000
+
 func init() { Register(tauExtractor{}) }
 
 func (tauExtractor) Name() string { return "Tau Video" }
@@ -68,11 +72,15 @@ func tauResolve(ctx context.Context, u *url.URL, hdr map[string]string) (*source
 			continue
 		}
 		seen[x.Label] = true
+		size := x.Size
+		if size == tauSizePlaceholder {
+			size = 0 // not a size: better none than a wrong one (the probe fills it in)
+		}
 		st.Qualities = append(st.Qualities, source.Quality{
 			Label:  x.Label,
 			URL:    x.URL,
 			Height: Height(x.Label),
-			Size:   x.Size,
+			Size:   size,
 		})
 	}
 	if len(st.Qualities) == 0 {

@@ -19,7 +19,9 @@ import (
 	_ "aniclitr/internal/source/animecix"
 	_ "aniclitr/internal/source/animedepo"
 	_ "aniclitr/internal/source/animetr"
+	_ "aniclitr/internal/source/animim"
 	_ "aniclitr/internal/source/hianime"
+	_ "aniclitr/internal/source/sonanime"
 )
 
 // drain runs commands synchronously (ignoring animation ticks) and feeds results back.

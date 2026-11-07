@@ -12,6 +12,7 @@ package anihub
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
 	"sort"
 	"strings"
@@ -339,12 +340,15 @@ func (Provider) Episodes(ctx context.Context, a source.Anime, season int) ([]sou
 			continue
 		}
 		num := int(ep.Number)
-		if num <= 0 {
+		if ep.Number != math.Trunc(ep.Number) {
+			num = source.ExtraNumber(ep.Number) // 12.5: its own key, not a second 12
+		}
+		if ep.Number <= 0 {
 			num = idx + 1
 		}
 		title := strings.TrimSpace(ep.Title)
 		if title == "" {
-			title = fmt.Sprintf("%d. Bölüm", num)
+			title = source.EpNum(num) + ". Bölüm"
 		}
 		eps = append(eps, source.Episode{
 			ID:     slug,
@@ -369,6 +373,8 @@ func (Provider) Variants(_ context.Context, _ source.Anime, ep source.Episode) (
 			Fansub: "AniHub",
 			Host:   "AniHub HLS",
 			URL:    ep.ID,
+			Kind:   "hls",
+			Lang:   "tr",
 		},
 	}, nil
 }

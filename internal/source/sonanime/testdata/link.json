@@ -1,0 +1,131 @@
+{
+"anime_id": 13900,
+"anime_name": "Frieren: Beyond Journey's End",
+"anime_name_en": "Frieren: Beyond Journey's End",
+"anime_type": "anime",
+"anime_description": "Büyücü Frieren, Kahraman Himmel, Rahip Heiter ve Cengâver Eisen'den oluşan kahraman ekibi, Şeytan Kral'ı alt eder ve dağ",
+"anime_genres": [
+"Adventure",
+"Award Winning",
+"Drama",
+"Fantasy",
+"Shounen"
+],
+"anime_year": "2023",
+"anime_malScore": 9.27,
+"anime_photo": "https://image.tmdb.org/t/p/original/5ttg26VrZ2Xe2BNnFmSe6Dz13w8.jpg",
+"anime_link": "sousou-no-frieren",
+"tmdb_id": 209867,
+"mal_id": 52991,
+"user_rating_avg": 10,
+"user_rating_count": 2,
+"episodes": [
+{
+"id": 137128,
+"anime_id": 13900,
+"anime_season": 1,
+"upload_date": "2023-09-29T19:57:16.000Z",
+"episode_number": 1,
+"episode_link_1080": "https://video.konununuzmani.com/video/wPmMVf4lpHFiuDHs.xLHEa35qbOC4kDaO6bn-K5LzHQEe3N5ha0nRFLQhihZcKDpYm2f1cG6J6id7QX61bESTOqOppR0sfyYkR_adtBmFFCr23K2ToP-brai9IxhQ5bQ_.88C3aSxZyywqu5altRsH4g",
+"episode_link_720": "https://video.konununuzmani.com/video/rZp-zSCNW_BAi2eJ.v8w4Q2x4mZ3x8T9vZK1piQWkEHxunnaKp1sFkUSCWs0MqhZwDH1ZeG9clTWJc6jno7gR109J2FtyK97WKOjWLcWk9aiBCWetbfdHwYz4tsjNLCazAmF8w93BfhsYD6So.Bf5FEEA5VpJYb29yvejtFg",
+"episode_link_480": "https://video.konununuzmani.com/video/eOQrt6zAKin7m1Hu.TsSHbox4KQ5JTQkQLsOWP9LsRF0fTVAmLILYAVqZNQL4YxEtcDdTn_lwKZFfP2V17MJdUrk6biYq28uLaaMDVNm0aWw0sYYjTuEzfI7xW148GPB7vKD3RNXYyuhqpqj1._wLEF6uF2lIgoIIo3mHZig",
+"episode_link_360": null,
+"links_expire_at": 1794117038,
+"subtitles": [],
+"skip_times": {
+"intro": {
+"start": 1,
+"end": 91
+},
+"outro": null
+}
+},
+{
+"id": 137129,
+"anime_id": 13900,
+"anime_season": 1,
+"upload_date": "2023-10-01T11:32:28.000Z",
+"episode_number": 2,
+"episode_link_1080": null,
+"episode_link_720": "https://video.konununuzmani.com/video/MeJL22SFmzQfQiUN.2GEtoS2SoZpmLerKF6UqNi3bHhUUIwlvaQaevy884sqqMJjU-ZIRD0_rHqEmGmrz3Y_9o1Ahu324_fbUJFA86AJNUbwc0OReWBq7nunfoN9VJCkjf1X8hpjpxomlRxdCVSoz-A.6T1swUBloWL9-1XO2cBBlw",
+"episode_link_480": "https://video.konununuzmani.com/video/RQ9YzVCFbjBbCCWl.C6A7_20G2N_pKUARvqnDs1AnqnBC09Ee65tWVa0FHdyu9heSePazQpZZLg84jnpHx3puk45rG1M7Pf0MKVd9pfUw2VAY9tQp7moMHxZu8o7qAzNjCRkivCAAE-7QACbb-uNlcA.N7e69OFStWTH0g3Cr2WISg",
+"episode_link_360": null,
+"links_expire_at": 1794117038,
+"subtitles": [],
+"skip_times": {
+"intro": {
+"start": 1,
+"end": 91
+},
+"outro": null
+}
+},
+{
+"id": 137130,
+"anime_id": 13900,
+"anime_season": 1,
+"upload_date": "2023-10-02T19:09:36.000Z",
+"episode_number": 3,
+"episode_link_1080": "https://video.konununuzmani.com/video/kVPH6T9OZ1ysg7FD.a85Dt1m5R3qOmtdUbgktcMWBHdJfLKJoeJwGwewiyiV5bXR1YyvyOCqSAokBqnMqMMG5keSKjx_XqJr5NlNsH8U9Sgpo6rzLp92ZAN6zJ13RTY4f-vEz6wBKcDNHwJHvyQ.BwghFPdrjF4ADaB0YtLOaQ",
+"episode_link_720": "https://video.konununuzmani.com/video/jfdkmDrrsUGCMaSp.NFhxxToENPk4IBzcZxVktkjO71Ut13sPBlc6haKyqnl6zUt2WkUqf-sLdRijlK7gLsv3AV6E0-kRpkkxEfKIWeKJvdiX2e_KMVy0oM5828Wp9-Mhk3Tp8sXNTErT2zbJAQ.Fx3R9lfN_T1KYIXMHGbo9A",
+"episode_link_480": "https://video.konununuzmani.com/video/S6G9JNQRxpgMP8Br.8lebfLewpr16ke5ix7jeTbx2onCG6ebaZUBQz28L_FZq1CpFEm2KLObKSNZNjoKHFvmKq5xfNHtVtRwz728bPjvacxtnfcuvPItV9AUxbDsew1wAxkLmCiUfBkuGpdOoPw.siN81311ae74qVRBfnoAQg",
+"episode_link_360": null,
+"links_expire_at": 1794117038,
+"subtitles": [],
+"skip_times": {
+"intro": {
+"start": 1,
+"end": 91
+},
+"outro": null
+}
+},
+{
+"id": 137156,
+"anime_id": 13900,
+"anime_season": 2,
+"upload_date": "2026-01-16T16:09:35.000Z",
+"episode_number": 1,
+"episode_link_1080": "https://video.konununuzmani.com/video/gMT3kEJRJ3fCef2c.5_Q56FCgAjYU8TK3DtgxKyo-PUOydWyddPoks5mmn2o2m_vFqt9WHf88cMSMB51WJKGoA6z1opdsP7TiM6CUDyUu1qPpqDBUd22qv98NicjXqhPQ.5OweSr4yO9Ur8gOoXtolHQ",
+"episode_link_720": "https://video.konununuzmani.com/video/VU7AoMHqSBh7hS9j.soApFyX44cmgCL-Tk7jjxOZmtxDAaLUG1iBogHikY8xuJ2pKooMt5mwo9scPLL7Gh8G7aTjK2rvpOuGoa1i0C3yEsJ62iTnszcgdhwO7P9ldYEiIINOKD1u3ky4RnLdzLGU.0Tc8gxEFnvpc6BBuazZ3UQ",
+"episode_link_480": "https://video.konununuzmani.com/video/pAKh37O2KLMoyfvv.4ID1letvyJxdBfl2ThbsZGTAdqtkyL0iDGZ9lUetZ8eSkRkJvbfLq02HEjSE6qs_m8DrCu3IpULhx4JDUTJZRtfy3mixsENf7HKzhq5gOxAAvMrK-X9ZL1zpuMRycMiphN0I.DoABL5xW3XKjqFoJGEYteQ",
+"episode_link_360": null,
+"links_expire_at": 1794117038,
+"subtitles": [],
+"skip_times": {
+"intro": {
+"start": 127,
+"end": 218
+},
+"outro": {
+"start": 1341,
+"end": 1430
+}
+}
+},
+{
+"id": 137337,
+"anime_id": 13900,
+"anime_season": 2,
+"upload_date": "2026-01-23T16:48:42.000Z",
+"episode_number": 2,
+"episode_link_1080": "https://video.konununuzmani.com/video/av-cXaTGtZXOAvVC.5wim3F_IkoZO6ZR1bO7QGFwXxGWd44vmvNaMJnpz8BDeDnaKLKyFYU3Hm5gaK5SY_2d8p7u5AsbseZrWRoI94QjvW1TASuPMlGXMVRxGvo-Dqixd.JWd-9LeNIkr5lGEkz_-MnQ",
+"episode_link_720": "https://video.konununuzmani.com/video/7Fe04TkO4JM-BE_Q.iWHJXnXqsRl6l1MnWIaFZ82VgyjLIzFsTpJ1fazGvDC_kIIoL21t3W4cs0lxmMa7OUBxzVCQSKPtkKlfLuFVJl_tMMbj-LhNN2ianhE8m6xZIOeUWoYQJj4a5s-a0vfvEqIW1Q.J_9Hk4vyXiicd41kw3HYIg",
+"episode_link_480": "https://video.konununuzmani.com/video/-FpxIJd4e2jz8wOw.xo7dG9UnnlKinqaDIWRqAMnmrMXtObKX5AGmOpb9KHOONGSGqtDgTMfFuh25LJxLBe3Ab8cfvmy6nMdvqbD4oUui0sCkA6DT0VrTrKQTyjdsAGXSpeuJalRNmdIV6gfYCj5Cnw.o1k2fDsIhUlkLO4JvhHxJw",
+"episode_link_360": null,
+"links_expire_at": 1794117038,
+"subtitles": [],
+"skip_times": {
+"intro": {
+"start": 0,
+"end": 100
+},
+"outro": {
+"start": 1352,
+"end": 1442
+}
+}
+}
+],
+"shorts": []
+}

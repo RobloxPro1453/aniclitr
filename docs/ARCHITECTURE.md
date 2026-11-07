@@ -245,7 +245,8 @@ footer. Then:
 |---|---|---|
 | Notifications | dropdown.go | `a.addNotice(notice{key, kind, text, action})`; de-duplicated by `key`; unread count on the bell |
 | Toasts | `a.notify(text, kind)` | transient footer message; kinds `ok warn err` (err also plays the error sound) |
-| Same anime across sources | same.go | `sameAnime` (MAL id, else folded titles), `a.recent()` (history, one entry per show), `a.siblings(an)`, `a.sibling(an)`. **Anything the user sees as "this anime" (shelf, palette, tonight, suggestions, new-episode notices, shelf delete) must go through these**, never `hist.Recent()` / a source key alone. Library: read with `a.libItem(an)` (key → MAL id with film/series guard → title; memoised per `lib.Rev()`), write with `a.libSet(an, fn)`; never `a.lib.Get(an.Key())` / `a.lib.Set` from UI code. Opening: `animeScreen.start` ranks the sources once (`rankSources`: switched-on first, then registry rank) and opens on the best; progress comes from the freshest season-1 entry across sources. Watched state: `a.watchView(an).done(ep)` = history ✓ **or** within the list's (MAL) watched count, first season only |
+| Same anime across sources | same.go | `sameAnime` (MAL id, else folded titles), `a.recent()` (history, one entry per show), `a.siblings(an)`, `a.sibling(an)`. **Anything the user sees as "this anime" (shelf, palette, tonight, suggestions, new-episode notices, shelf delete) must go through these**, never `hist.Recent()` / a source key alone. Library: read with `a.libItem(an)` (key → MAL id with film/series guard → title; memoised per `lib.Rev()`), write with `a.libSet(an, fn)`; never `a.lib.Get(an.Key())` / `a.lib.Set` from UI code. Opening: `animeScreen.start` ranks the sources once (`rankSources`: switched-on first, then registry rank) and opens on the best; progress comes from the freshest season-1 entry across sources. Watched state: `a.watchView(an).done(ep)` = history ✓ **or** within the watched count of the MAL entry the episode belongs to (season chain, see Season sync), else the first season only |
+| Season sync | seasonsync.go, `internal/seasons` | One site title can span several MAL entries (AnimeciX Bleach = 5). `wantAlign` builds the AniList chain when an anime opens (`alignMsg`); `a.alignment(an)` aligns the site's season counts to it. `bumpWatched` → `recordWatched` files an episode under its MAL entry: the own entry always, **other entries only after the user said yes once per title** (`cfg.SeasonSync`, asked by `maybeAskSeasonSync`; yes backfills from history). `canonical` refuses overflow past a finished entry and site seasons the chain lacks: nothing is written rather than a wrong count. `libAnime` caps the own entry's `EpCount` at MAL's. The anime screen's `r` menu corrects the match by hand (`match.Store.SetUser`, applied by `userMal`) |
 | Undo | undo.go | `a.remember(label, func(a){restore})`; `ctrl+z` within 2 min. Use it instead of "press twice to confirm" |
 | Offline | offline.go | `probeNet()` at start; offline → `stack = [offlineScreen]`; re-probe every 15 s; online → fresh home |
 | Follow / new episodes | follow.go | feed × history/library → notices; home calendar from AniList |
@@ -376,10 +377,25 @@ NUL characters.
   (`*.cfd`). The first fetch of a file comes from the origin and is slow
   (~2–12 MB/s); cached copies are fast (30+ MB/s).
 - **Seasons vs MAL.** AnimeciX bundles seasons into one title; MAL gives each
-  season its own id. Watched-episode sync currently covers the first season
-  only (see TODO).
+  season its own id. The season chain (`internal/seasons`, wired in
+  `ui/seasonsync.go`) maps each site episode to its MAL entry.
 
 ### 6.3 Others
+
+- **SonAnime** (`api.sonanime.com`, JSON): `/anime/search?q=`, then
+  `/anime/link/{slug}` holds `mal_id` and every season's episodes with direct
+  MP4 links (1080/720/480). Links expire (`links_expire_at`, ~1 day), so
+  `Resolve` always refetches; one upload per episode (no fansub choice).
+- **Animim** (`animim.app`, JSON): every season is its own title.
+  `/api/episodes/{id}` lists `fanSubVideos` (per fansub: `videoUrls`, signed
+  `.ass` subtitles). Video URLs are `/api/video-proxy/…` → 302 → CDN MP4.
+  Subtitles go to mpv as `--sub-file` and to downloads with their own
+  extension.
+- **Switched-off sources** (`cfg.Sources`): opening a title whose best known
+  source is off first searches the switched-on ones (`animeScreen.gate`,
+  `findAltsIn(…, true)`); only when none has it does it open on the off
+  one, marked (`offSrc`). A pasted link or "open on X" is explicit and skips
+  this.
 
 - **AnimeTR** (animetr.co, Laravel, no bot wall):
   - `/search-series?q=` is JSON. **Every season is its own series**, so a

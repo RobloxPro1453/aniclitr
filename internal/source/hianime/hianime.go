@@ -21,7 +21,8 @@ import (
 	"aniclitr/internal/source"
 )
 
-const base = "https://hianime.at"
+// base is a var so tests can point the source at recorded pages.
+var base = "https://hianime.at"
 
 type Provider struct{}
 
@@ -39,11 +40,18 @@ var (
 	reDesc   = regexp.MustCompile(`(?s)<div class="description">\s*(.*?)\s*</div>`)
 	reType   = regexp.MustCompile(`<span class="fdi-item">([^<]+)</span>`)
 	reSubs   = regexp.MustCompile(`tick-sub"><i[^>]*></i>(\d+)`)
-	reEp     = regexp.MustCompile(`(?s)<a title="([^"]*)"\s+class="[^"]*ep-item"\s+data-number="([^"]+)"\s+data-id="(\d+)"`)
+	// ep-item may be followed by more classes ("ssl-item-filler"): fillers
+	// were silently dropped while the class had to end with ep-item
+	reEp     = regexp.MustCompile(`(?s)<a title="([^"]*)"\s+class="[^"]*ep-item[^"]*"\s+data-number="([^"]+)"\s+data-id="(\d+)"`)
 	reServer = regexp.MustCompile(`(?s)server-item" data-type="(\w+)"\s+data-server-name="([^"]+)"\s+data-hash="([^"]+)"`)
 	reBlob   = regexp.MustCompile(`window\.__P="([^"]*)"`)
 	reMal    = regexp.MustCompile(`/mal/(\d+)/`)
 )
+
+// Probe checks the search cards and the episode-list API in one go.
+func (p Provider) Probe(ctx context.Context) error {
+	return source.ProbeChain(ctx, p, "one piece")
+}
 
 func (Provider) Search(ctx context.Context, q string) ([]source.Anime, error) {
 	q = source.Clean(q)
@@ -123,9 +131,13 @@ func (Provider) Episodes(ctx context.Context, a source.Anime, season int) ([]sou
 	}
 	var eps []source.Episode
 	for _, m := range reEp.FindAllStringSubmatch(res.HTML, -1) {
-		n, _ := strconv.Atoi(m[2])
+		n, ok := source.ParseEpisodeNumber(m[2]) // "12.5" used to become episode 0
+		if !ok {
+			continue
+		}
 		eps = append(eps, source.Episode{ID: m[3], Season: 1, Number: n, Title: html.UnescapeString(m[1])})
 	}
+	source.SortEpisodes(eps)
 	if len(eps) == 0 {
 		return nil, source.ErrNotFound
 	}
@@ -146,13 +158,13 @@ func (Provider) Variants(ctx context.Context, a source.Anime, ep source.Episode)
 		if err != nil {
 			continue
 		}
-		track := "Altyazılı (EN)"
+		track, lang, dub := "Altyazılı (EN)", "en", false
 		if strings.EqualFold(m[1], "dub") {
-			track = "Dublaj (EN)"
+			track, dub = "Dublaj (EN)", true
 		} else if strings.EqualFold(m[1], "raw") {
-			track = "Ham (JP)"
+			track, lang = "Ham (JP)", ""
 		}
-		out = append(out, source.Variant{Fansub: track, Host: m[2], URL: string(embed)})
+		out = append(out, source.Variant{Fansub: track, Host: m[2], URL: string(embed), Kind: "embed", Lang: lang, Dub: dub})
 	}
 	// ZokoAnime is the only player we decode natively; keep it on top.
 	for i := range out {

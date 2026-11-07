@@ -50,9 +50,15 @@ func ResolveDetailed(ctx context.Context, embed string, hdr map[string]string) (
 		st, err := e.Resolve(ctx, u, hdr)
 		elapsed := time.Since(t0)
 		if err == nil && st != nil && len(st.Qualities) > 0 {
-			diag.Record("extract", e.Name(), elapsed, diag.OK)
 			ProbeHLS(ctx, st)
-			st.SortQualities()
+			if dead, kind := ProbeMP4s(ctx, st); dead {
+				// every direct file was refused or unreadable: nothing here
+				// will play, and yt-dlp would only find the same dead files
+				diag.Record("extract", e.Name(), elapsed, diag.Error)
+				fails = append(fails, Failure{Extractor: e.Name(), Kind: kind, Detail: "hiçbir kalite açılmıyor"})
+				return nil, DedupeFailures(fails)
+			}
+			diag.Record("extract", e.Name(), elapsed, diag.OK)
 			return st, DedupeFailures(fails)
 		}
 		diag.Record("extract", e.Name(), elapsed, diagOutcome(err, st))

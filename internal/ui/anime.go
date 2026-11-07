@@ -47,6 +47,41 @@ type animeScreen struct {
 	waitSwitch bool         // nothing else was known: switch when it returns
 	placed     bool         // the list was scrolled to the cursor once
 	ordered    bool         // sources ranked and the best one picked
+	// Switched-off sources (Settings → Kaynaklar) decide where you watch,
+	// not what you may open: a title known only on one is first looked
+	// for on the switched-on sources (gate), and opened on the off one,
+	// marked, only when no other has it (offSrc). explicit skips that: the
+	// user named this very source (a pasted link, "open on X").
+	gate     bool
+	offSrc   bool
+	explicit bool
+}
+
+// srcOn reports whether an's source is switched on in Settings.
+func srcOn(a *App, an source.Anime) bool {
+	p := source.Get(an.Source)
+	if p == nil {
+		return true // "mal:" items and the like: not a source to gate
+	}
+	in := p.Info()
+	return a.cfg.Enabled(in.ID, in.Legacy)
+}
+
+// anyOn reports whether at least one source is switched on.
+func anyOn(a *App) bool {
+	for _, p := range source.All() {
+		if in := p.Info(); a.cfg.Enabled(in.ID, in.Legacy) {
+			return true
+		}
+	}
+	return false
+}
+
+func srcName(id string) string {
+	if p := source.Get(id); p != nil {
+		return p.Info().Name
+	}
+	return id
 }
 
 func (s *animeScreen) typing() bool { return s.noting || s.ranging }
@@ -58,7 +93,7 @@ func newAnime(an source.Anime, alts []source.Anime, season, ep int) *animeScreen
 func (s *animeScreen) crumb() string { return truncate(s.an.Title, 28) }
 
 func (s *animeScreen) hints() []hint {
-	h := []hint{{"enter", "fansub seç"}, {"p", "hızlı oynat"}, {"c", "karakterler"}, {"tab [ ]", "sezon"}, {"s", "kaynak"}}
+	h := []hint{{"enter", "fansub seç"}, {"p", "hızlı oynat"}, {"c", "karakterler"}, {"tab [ ]", "sezon"}, {"s", "kaynak seç"}}
 	if s.noting {
 		return []hint{{"enter", "notu kaydet"}, {"esc", "vazgeç"}}
 	}
@@ -68,7 +103,7 @@ func (s *animeScreen) hints() []hint {
 	if len(s.selEps) > 0 {
 		return []hint{{"v", "seç/bırak"}, {"d/D", fmt.Sprintf("seçilileri indir (%d)", len(s.selEps))}, {"V", "seçimi temizle"}, {"esc", "geri"}}
 	}
-	return append(h, hint{"w", "izlendi"}, hint{"v", "seç"}, hint{"d", "indir"}, hint{"D", "toplu indir"}, hint{"x", "indirilen bölümü sil"}, hint{"N", "not"}, hint{"t", "fragman"}, hint{"y", "benzerleri"}, hint{"a", "kitaplık"}, hint{"esc", "geri"})
+	return append(h, hint{"w", "izlendi"}, hint{"v", "seç"}, hint{"d", "indir"}, hint{"D", "toplu indir"}, hint{"x", "indirilen bölümü sil"}, hint{"N", "not"}, hint{"t", "fragman"}, hint{"y", "benzerleri"}, hint{"a", "kitaplık"}, hint{"r", "eşleme / kurtarma"}, hint{"esc", "geri"})
 }
 
 func (s *animeScreen) animating(a *App) bool {
@@ -104,13 +139,55 @@ func (s *animeScreen) start(a *App) tea.Cmd {
 			// pick the freshest progress for this one
 			s.wantSeason, s.wantEp = 0, 0
 		}
+		// the best known source is switched off (the switched-on ones rank
+		// first, so none of them is known yet): look on those before
+		// loading anything from it
+		if !s.explicit && !srcOn(a, s.base) && anyOn(a) {
+			s.gate = true
+			s.looking, s.lookKey = true, s.base.Key()
+			var cmds []tea.Cmd
+			if a.cfg.Posters {
+				cmds = append(cmds, a.posters.want(s.an.Poster))
+			}
+			return tea.Batch(append(cmds, a.findAltsIn(s.base, true), a.tick())...)
+		}
 	}
+	return s.load(a)
+}
+
+func (s *animeScreen) load(a *App) tea.Cmd {
 	var cmds []tea.Cmd
 	if a.cfg.Posters {
 		cmds = append(cmds, a.posters.want(s.an.Poster))
 	}
 	cmds = append(cmds, a.fetchDetails(s.base), s.ensure(a), a.tick())
 	return tea.Batch(cmds...)
+}
+
+// passGate ends the switched-on search: open on what it found, or on the
+// switched-off source, said out loud.
+func (s *animeScreen) passGate(a *App, alts []source.Anime) tea.Cmd {
+	s.gate, s.looking, s.looked = false, false, false // s may still search everywhere
+	off := s.base
+	for _, x := range alts {
+		dup := false
+		for _, o := range s.srcs {
+			dup = dup || o.Source == x.Source
+		}
+		if !dup {
+			s.srcs = append(s.srcs, x)
+		}
+	}
+	s.srcs = rankSources(a, s.srcs)
+	if best := s.srcs[0]; srcOn(a, best) {
+		s.srcIdx, s.base, s.an = 0, best, best
+		s.wantSeason, s.wantEp = 0, 0 // ensure takes the freshest progress
+		a.notify("açıldı: "+srcName(best.Source)+" · "+srcName(off.Source)+" ayarlarda kapalı", "ok")
+	} else {
+		s.offSrc = true
+		a.notify("bu anime yalnızca "+srcName(off.Source)+" kaynağında var · ayarlarda kapalı, yine de açıldı", "warn")
+	}
+	return s.load(a)
 }
 
 // ensure initialises once details are known, then loads the chosen season.
@@ -122,9 +199,10 @@ func (s *animeScreen) ensure(a *App) tea.Cmd {
 	if !ok || d.ID == "" {
 		return nil
 	}
-	s.an = merge(s.base, d)
+	s.an = userMal(merge(s.base, d)) // a hand-picked MAL match wins
 	s.an.Title = firstNonEmpty(d.Title, s.base.Title)
 	s.ready = true
+	alignCmd := a.wantAlign(s.an)
 	if len(s.an.Seasons) == 0 {
 		s.an.Seasons = []source.Season{{Number: 1, Name: "Sezon 1"}}
 	}
@@ -138,7 +216,7 @@ func (s *animeScreen) ensure(a *App) tea.Cmd {
 		if ok {
 			s.wantSeason, s.wantEp = max(1, e.Season), e.Episode
 			if e.Watched[store.EpKey(e.Season, e.Episode)] {
-				s.wantEp++
+				s.wantEp = source.NextNumber(s.wantEp)
 			}
 		}
 		// your list (MAL) may be further along than what you played here
@@ -157,7 +235,7 @@ func (s *animeScreen) ensure(a *App) tea.Cmd {
 	if a.cfg.Posters {
 		cmds = append(cmds, a.posters.want(s.an.Poster))
 	}
-	cmds = append(cmds, s.loadSeason(a))
+	cmds = append(cmds, s.loadSeason(a), alignCmd)
 	return tea.Batch(cmds...)
 }
 
@@ -222,11 +300,19 @@ func (s *animeScreen) switchSource(a *App) tea.Cmd {
 		a.notify("bu anime başka bir kaynakta bulunamadı", "warn")
 		return a.tick()
 	}
+	return tea.Batch(s.switchTo(a, (s.srcIdx+1)%len(s.srcs)), look)
+}
+
+// switchTo opens the show on s.srcs[idx], keeping the cursor's episode.
+func (s *animeScreen) switchTo(a *App, idx int) tea.Cmd {
+	if idx < 0 || idx >= len(s.srcs) || idx == s.srcIdx {
+		return nil
+	}
 	season, ep := s.season(), 0
 	if eps := s.episodes(a); s.cur < len(eps) {
 		ep = eps[s.cur].Number
 	}
-	s.srcIdx = (s.srcIdx + 1) % len(s.srcs)
+	s.srcIdx = idx
 	nb := s.srcs[s.srcIdx]
 	// keep the cursor on the same episode on the new source; the lookup
 	// state survives the switch
@@ -238,19 +324,25 @@ func (s *animeScreen) switchSource(a *App) tea.Cmd {
 	if p := source.Get(nb.Source); p != nil {
 		a.notify("kaynak: "+p.Info().Name, "ok")
 	}
-	return tea.Batch(s.start(a), look)
+	return s.start(a)
 }
 
 // findAlts searches every other enabled source for the same anime, matched
 // by MAL id or by folded title (like merged search results).
-func (a *App) findAlts(an source.Anime) tea.Cmd {
+func (a *App) findAlts(an source.Anime) tea.Cmd { return a.findAltsIn(an, false) }
+
+// findAltsIn looks for an on the other sources; onlyOn keeps to the ones
+// switched on in Settings (opening a title known only on an off source).
+func (a *App) findAltsIn(an source.Anime, onlyOn bool) tea.Cmd {
 	var provs []source.Provider
 	for _, p := range source.All() {
 		// asking to switch is explicit: sources switched off for search count
 		// too; only the archive stays behind its own mode
-		if in := p.Info(); in.ID != an.Source && (!in.Legacy || a.cfg.Legacy) {
-			provs = append(provs, p)
+		in := p.Info()
+		if in.ID == an.Source || (in.Legacy && !a.cfg.Legacy) || (onlyOn && !a.cfg.Enabled(in.ID, in.Legacy)) {
+			continue
 		}
+		provs = append(provs, p)
 	}
 	want := map[string]bool{}
 	for _, k := range titleKeys(an) {
@@ -333,6 +425,9 @@ func (s *animeScreen) update(a *App, msg tea.Msg) tea.Cmd {
 		if m.key != s.lookKey || !s.looking {
 			return nil
 		}
+		if s.gate {
+			return s.passGate(a, m.alts)
+		}
 		s.looking, s.looked = false, true
 		var added []string
 		for _, x := range m.alts {
@@ -355,8 +450,8 @@ func (s *animeScreen) update(a *App, msg tea.Msg) tea.Cmd {
 			}
 			return s.switchSource(a)
 		}
-		if len(added) > 0 {
-			a.notify("şurada da var: "+strings.Join(added, ", ")+" · s ile geç", "ok")
+		if len(added) > 0 && (a.drop == nil || a.drop.kind != "sources") { // the open picker shows them itself
+			a.notify("şurada da var: "+strings.Join(added, ", ")+" · s ile seç", "ok")
 			return a.tick()
 		}
 		return nil
@@ -394,7 +489,7 @@ func (s *animeScreen) update(a *App, msg tea.Msg) tea.Cmd {
 				s.cur = len(m.eps) - 1
 				if a.cfg.AutoFallback && !s.looking && !s.looked {
 					s.looking, s.lookKey = true, s.an.Key()
-					a.notify(fmt.Sprintf("%d. bölüm bu kaynakta henüz yok — diğer kaynaklar kontrol ediliyor…", s.wantEp), "warn")
+					a.notify(fmt.Sprintf("%s. bölüm bu kaynakta henüz yok — diğer kaynaklar kontrol ediliyor…", source.EpNum(s.wantEp)), "warn")
 					return tea.Batch(a.tick(), a.findAlts(s.an))
 				}
 			}
@@ -479,7 +574,7 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 		cs := newCharactersScreen(s.an)
 		return tea.Batch(a.push(cs), cs.start(a))
 	case "s":
-		return s.switchSource(a)
+		return s.openSources(a)
 	case "r":
 		if s.detailErr != nil {
 			s.detailErr = nil
@@ -487,6 +582,10 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 		}
 		if s.epErr != nil {
 			return s.loadSeason(a)
+		}
+		if s.ready {
+			a.matchMenu(s)
+			return a.tick()
 		}
 	case "tab", "]", "right", "l":
 		if len(s.an.Seasons) > 1 {
@@ -558,7 +657,7 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 						}
 					})
 				}
-				a.notify(fmt.Sprintf("%d. bölüm izlenmedi olarak işaretlendi", ep.Number), "ok")
+				a.notify(fmt.Sprintf("%s. bölüm izlenmedi olarak işaretlendi", ep.Num()), "ok")
 				return a.tick()
 			}
 			a.flash()
@@ -658,12 +757,12 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 			ep := eps[s.cur]
 			if j, ok := a.dl.LocalFor(s.an, ep.Season, ep.Number); ok {
 				a.dl.Remove(j.ID, true)
-				a.notify(fmt.Sprintf("%s S%d·B%d diskten silindi", s.an.Title, ep.Season, ep.Number), "ok")
+				a.notify(fmt.Sprintf("%s S%d·B%s diskten silindi", s.an.Title, ep.Season, ep.Num()), "ok")
 				return a.tick()
 			}
 			if j, ok := a.dl.ForAnime(s.an, ep.Season, ep.Number); ok && (j.State == download.Queued || j.State == download.Resolving || j.State == download.Running) {
 				a.dl.Cancel(j.ID)
-				a.notify(fmt.Sprintf("S%d·B%d indirmesi iptal edildi", ep.Season, ep.Number), "ok")
+				a.notify(fmt.Sprintf("S%d·B%s indirmesi iptal edildi", ep.Season, ep.Num()), "ok")
 				return a.tick()
 			}
 			a.notify("bu bölüm henüz indirilmemiş", "warn")
@@ -716,8 +815,12 @@ func (s *animeScreen) view(a *App, w, ht int) string {
 			left = append(left, stSub.Render("s ile başka kaynağı dene"))
 		}
 		left = append(left, stMuted.Render("r tekrar dene · esc geri"))
+	case s.gate:
+		left = []string{stWarn.Render("◌ ") + stSub.Render(srcName(s.base.Source)+" ayarlarda kapalı"), "",
+			fg(s.accent(a)).Render(spinner(a.frame/2)) + stMuted.Render(" açık kaynaklarda aranıyor…"),
+			"", stMuted.Render(truncate("bulunursa orada, kaldığın yerden açılır", lw-4))}
 	case !s.ready:
-		left = append(s.sourceBar(a, lw), "", fg(s.accent(a)).Render(spinner(a.frame/2))+stMuted.Render(" yükleniyor…"))
+		left = append(s.sourceLine(a, lw), "", fg(s.accent(a)).Render(spinner(a.frame/2))+stMuted.Render(" yükleniyor…"))
 	default:
 		left = s.episodePane(a, lw-4, h-2)
 	}
@@ -733,33 +836,10 @@ func (s *animeScreen) view(a *App, w, ht int) string {
 	return strings.Join(lines, "\n")
 }
 
-// sourceBar shows which sources carry this anime; the active one is marked.
-func (s *animeScreen) sourceBar(a *App, w int) []string {
-	if len(s.srcs) < 2 {
-		return nil
-	}
-	var parts []string
-	for i, x := range s.srcs {
-		p := source.Get(x.Source)
-		if p == nil {
-			continue
-		}
-		name := p.Info().Name
-		if p.Info().Lang == "en" {
-			name += " en"
-		}
-		if i == s.srcIdx {
-			parts = append(parts, fg(sourceColor(x.Source)).Render("●")+" "+stBold.Render(name))
-		} else {
-			parts = append(parts, stFaint.Render("○")+" "+stMuted.Render(name))
-		}
-	}
-	return []string{row2(strings.Join(parts, "   "), stText.Bold(true).Render("s")+stMuted.Render(" değiştir"), w)}
-}
 
 func (s *animeScreen) episodePane(a *App, w, h int) []string {
 	acc := s.accent(a)
-	out := s.sourceBar(a, w)
+	out := s.sourceLine(a, w)
 	if len(out) > 0 {
 		out = append(out, "")
 	}
@@ -936,7 +1016,7 @@ func (s *animeScreen) episodePane(a *App, w, h int) []string {
 		} else if len(s.selEps) > 0 {
 			leftSpans = append(leftSpans, sp("[ ] ", cFaint))
 		}
-		leftSpans = append(leftSpans, sp(fmt.Sprintf("%0*d  ", numW, ep.Number), nc), span{t: title, c: tc, bold: sel})
+		leftSpans = append(leftSpans, sp(epCell(ep, numW)+"  ", nc), span{t: title, c: tc, bold: sel})
 		line := row(w-1, bg, leftSpans, right)
 		if i == s.cur {
 			line = anchor() + line
@@ -991,7 +1071,7 @@ func (s *animeScreen) openBatchDownloadMenu(a *App, eps []source.Episode) tea.Cm
 		items = append(items, dropItem{
 			icon:  "▸",
 			color: cAccent,
-			label: fmt.Sprintf("Seçili bölümden sona kadar indir (%d. – %d. bölüm)", curEp.Number, lastEp.Number),
+			label: fmt.Sprintf("Seçili bölümden sona kadar indir (%s. – %s. bölüm)", curEp.Num(), lastEp.Num()),
 			note:  fmt.Sprintf("%d bölüm", len(fromHere)),
 			run: func(a *App) tea.Cmd {
 				pk := newPicker(s.an, fromHere[0], eps, false)
@@ -1026,7 +1106,7 @@ func (s *animeScreen) openBatchDownloadMenu(a *App, eps []source.Episode) tea.Cm
 			icon:  "◌",
 			color: cSky,
 			label: fmt.Sprintf("Sadece izlenmeyen bölümleri indir (%d bölüm)", len(unwatched)),
-			note:  fmt.Sprintf("%d. – %d. bölüm", unwatched[0].Number, unwatched[len(unwatched)-1].Number),
+			note:  fmt.Sprintf("%s. – %s. bölüm", unwatched[0].Num(), unwatched[len(unwatched)-1].Num()),
 			run: func(a *App) tea.Cmd {
 				pk := newPicker(s.an, unwatched[0], eps, false)
 				pk.dlMode, pk.dlSeason = 2, unwatched
@@ -1038,7 +1118,7 @@ func (s *animeScreen) openBatchDownloadMenu(a *App, eps []source.Episode) tea.Cm
 	items = append(items, dropItem{
 		icon:  "↓",
 		color: cSub,
-		label: fmt.Sprintf("Tüm sezonu indir (%d. – %d. bölüm)", firstEp.Number, lastEp.Number),
+		label: fmt.Sprintf("Tüm sezonu indir (%s. – %s. bölüm)", firstEp.Num(), lastEp.Num()),
 		note:  fmt.Sprintf("%d bölüm", len(eps)),
 		run: func(a *App) tea.Cmd {
 			pk := newPicker(s.an, eps[0], eps, false)
@@ -1099,4 +1179,13 @@ func parseEpRange(spec string, eps []source.Episode) []source.Episode {
 		}
 	}
 	return out
+}
+
+// epCell is an episode's number in the list's number column: zero-padded
+// for regular episodes (07), as it reads for in-between ones (12,5).
+func epCell(ep source.Episode, w int) string {
+	if ep.Extra() {
+		return fmt.Sprintf("%*s", w, ep.Num())
+	}
+	return fmt.Sprintf("%0*d", w, ep.Number)
 }

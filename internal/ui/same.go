@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"aniclitr/internal/match"
+	"aniclitr/internal/seasons"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
@@ -135,6 +136,14 @@ func (a *App) findLibItem(an source.Anime) (store.Item, bool) {
 // there under another key, the write goes to that item instead of starting
 // a second one. (With a MAL id the library adopts the item by itself.)
 func (a *App) libAnime(an source.Anime) source.Anime {
+	// A title spanning several MAL entries counts only its own entry's
+	// episodes on MAL (Bleach: 366, not the site's 362+50), so a completed
+	// title never sends MAL a count beyond the entry.
+	if al, ok := a.alignment(an); ok && spansEntries(al, an.MalID) {
+		if s, ok := sliceOf(al, an.MalID); ok && s.CanonEps > 0 {
+			an.EpCount = s.CanonEps
+		}
+	}
 	it, ok := a.libItem(an)
 	if !ok || it.Key() == an.Key() || (an.MalID != 0 && it.MalID == an.MalID) {
 		return an
@@ -159,6 +168,11 @@ type watchView struct {
 	upTo   int // episodes 1..upTo of the first season are watched per the list
 	first  int // first season number
 	listed bool
+	// with a season chain: each episode is looked up in the MAL entry it
+	// belongs to (seasonsync.go)
+	al      seasons.Alignment
+	aligned bool
+	mw      map[int]int
 }
 
 func (a *App) watchView(an source.Anime) watchView {
@@ -174,11 +188,22 @@ func (a *App) watchView(an source.Anime) watchView {
 			v.upTo = 1 << 30
 		}
 	}
+	if al, ok := a.alignment(an); ok {
+		v.al, v.aligned, v.mw = al, true, a.malWatched()
+	}
 	return v
 }
 
 func (v watchView) done(ep source.Episode) bool {
-	return v.ent.Watched[store.EpKey(ep.Season, ep.Number)] || (ep.Season == v.first && ep.Number <= v.upTo)
+	if v.ent.Watched[store.EpKey(ep.Season, ep.Number)] {
+		return true
+	}
+	if v.aligned {
+		if c, _, ok := canonical(v.al, ep); ok {
+			return c.Episode <= v.mw[c.MalID]
+		}
+	}
+	return ep.Season == v.first && ep.Number <= v.upTo
 }
 
 // rankSources orders the same show on several sources: sources switched on

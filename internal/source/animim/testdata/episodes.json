@@ -1,0 +1,26 @@
+[
+{
+"_id": "6814bf4a3631a5a5281a23a7",
+"title": "Yolculuğun Sonu",
+"number": 1,
+"seasonNumber": 1
+},
+{
+"_id": "6814c24f3631a5a5281a23b2",
+"title": "İlle De Büyüye Gerek Yok...",
+"number": 2,
+"seasonNumber": 1
+},
+{
+"_id": "6814c4a93631a5a5281a2416",
+"title": "Öldüren Büyü",
+"number": 3,
+"seasonNumber": 1
+},
+{
+"_id": "recap1",
+"title": "Özet",
+"number": 2.5,
+"seasonNumber": 1
+}
+]

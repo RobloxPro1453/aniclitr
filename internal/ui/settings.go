@@ -247,6 +247,23 @@ func newSettings() *settings {
 				a.cfg.HostOrder = order
 			},
 		},
+		setting{
+			label: "Sunucu sırası", desc: "Hızlı oynatmanın sunucuları deneme sırası; istemediğin sunucuyu \"asla\", yalnızca kullanmak istediklerini \"yalnızca\" olarak işaretle.",
+			value: func(a *App) string {
+				var tags []string
+				if n := len(a.cfg.NeverHosts); n > 0 {
+					tags = append(tags, fmt.Sprintf("%d asla", n))
+				}
+				if n := len(a.cfg.OnlyHosts); n > 0 {
+					tags = append(tags, fmt.Sprintf("%d yalnızca", n))
+				}
+				if len(tags) == 0 {
+					return "düzenle"
+				}
+				return strings.Join(tags, " · ")
+			},
+			run: func(a *App) tea.Cmd { return a.push(newHostOrder(a)) },
+		},
 	)
 	// keep the list in display order (grouped), so ↑↓ moves visually
 	sort.SliceStable(s.items, func(i, j int) bool { return settingGroup(s.items[i].label) < settingGroup(s.items[j].label) })
@@ -303,7 +320,7 @@ func settingGroup(label string) int {
 		return 0
 	case strings.HasPrefix(label, "Kaynak:") || label == "Arşiv modu":
 		return 3
-	case label == "OP/ED otomatik atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu":
+	case label == "OP/ED otomatik atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu" || label == "Sunucu sırası":
 		return 2
 	}
 	return 1

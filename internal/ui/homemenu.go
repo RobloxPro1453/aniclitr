@@ -346,7 +346,7 @@ func (h *home) preview(a *App, it mItem, side bool) pane {
 				rv := reveal(h.feedAt, i, a.motion())
 				tc := mix(hex(cFaint), hex(cText), rv).hex()
 				out = append(out, row(w, "", []span{sp(fmt.Sprintf("%-7s", ago(f.Released)), cMuted), mark, sp(f.Anime.Title, tc)},
-					[]span{sp(fmt.Sprintf("%d. bölüm", f.Episode), cSub)}))
+					[]span{sp(source.EpNum(f.Episode)+". bölüm", cSub)}))
 			}
 			return out
 		}}

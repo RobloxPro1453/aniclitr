@@ -20,13 +20,33 @@ var (
 	reHLSAvgBW      = regexp.MustCompile(`AVERAGE-BANDWIDTH=(\d+)`)
 	reHLSBW         = regexp.MustCompile(`(?:^|,)BANDWIDTH=(\d+)`)
 	reHLSCodecs     = regexp.MustCompile(`CODECS="([^"]+)"`)
+	reHLSAudioRef   = regexp.MustCompile(`(?:^|,)AUDIO="([^"]+)"`)
+	reHLSGroupID    = regexp.MustCompile(`GROUP-ID="([^"]+)"`)
 )
+
+// externalAudioGroups returns the AUDIO group ids whose renditions live in
+// their own playlists (#EXT-X-MEDIA:TYPE=AUDIO with a URI). A variant that
+// refers to one of them has no audio of its own.
+func externalAudioGroups(lines []string) map[string]bool {
+	groups := map[string]bool{}
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if !strings.HasPrefix(l, "#EXT-X-MEDIA:") || !strings.Contains(l, "TYPE=AUDIO") || !strings.Contains(l, "URI=") {
+			continue
+		}
+		if m := reHLSGroupID.FindStringSubmatch(l); m != nil {
+			groups[m[1]] = true
+		}
+	}
+	return groups
+}
 
 // Variants parses an HLS master playlist (#EXT-X-STREAM-INF) into sorted
 // source.Quality entries with real resolution, bitrate, and video codec.
 // Adapted from Migurdex's HlsMasterParser (GPL-3.0).
 func Variants(master []byte, base *url.URL) []source.Quality {
 	lines := strings.Split(strings.ReplaceAll(string(master), "\r\n", "\n"), "\n")
+	audio := externalAudioGroups(lines)
 	var out []source.Quality
 	seen := map[string]bool{}
 
@@ -76,6 +96,10 @@ func Variants(master []byte, base *url.URL) []source.Quality {
 			height, _ = strconv.Atoi(m[2])
 		}
 
+		var peak int64 // BANDWIDTH: what players select variants by
+		if m := reHLSBW.FindStringSubmatch(attrs); m != nil {
+			peak, _ = strconv.ParseInt(m[1], 10, 64)
+		}
 		var bw int64
 		if m := reHLSAvgBW.FindStringSubmatch(attrs); m != nil {
 			bw, _ = strconv.ParseInt(m[1], 10, 64)
@@ -96,14 +120,20 @@ func Variants(master []byte, base *url.URL) []source.Quality {
 			lbl = fmt.Sprintf("%dp", height)
 		}
 		seen[resolvedURL] = true
-		out = append(out, source.Quality{
+		q := source.Quality{
 			Label:   lbl,
 			URL:     resolvedURL,
 			Height:  height,
 			Bitrate: bw,
 			Codec:   codec,
 			Probed:  true,
-		})
+		}
+		// The rendition's audio is in a separate group: its own playlist
+		// would play silently, so keep the master and select by bandwidth.
+		if m := reHLSAudioRef.FindStringSubmatch(attrs); m != nil && audio[m[1]] && base != nil && peak > 0 {
+			q.URL, q.HLSBandwidth = base.String(), peak
+		}
+		out = append(out, q)
 	}
 
 	st := source.Stream{Qualities: out}

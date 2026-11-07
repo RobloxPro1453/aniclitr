@@ -1,0 +1,43 @@
+{
+"anime": [
+{
+"_id": "6813f503c8d1ba08dccd7657",
+"title": "Sousou no Frieren",
+"originalTitle": "葬送のフリーレン",
+"type": "TV",
+"episodes": 28,
+"cover": "https://cdn.animim.app/animes/6813f503c8d1ba08dccd7657/cover/138006l.webp",
+"description": "Şeytan Kral'ı yenmek için on yıl süren arayışları sırasında, kahramanın partisinin üyeleri -Himmel'in kendisi, rahip Heiter, cüce savaşçı Eisen ve elf büyücü Frieren- maceralar ve savaşlar aracılığıyla bağlar kurar ve çoğu için unutulmaz değerli anılar oluşturur.\n\nAncak Frieren'in yoldaşlarıyla geçirdiği zaman, bin yıldan fazla süren hayatının sadece bir kısmına eşittir. Zaferlerinin ardından parti dağıldığında, Frieren kıta boyunca büyü toplama “olağan” rutinine rahatça geri döner. Farklı zaman algısı nedeniyle, yaşadığı deneyimlere karşı güçlü duygular beslemiyor gibi görünmektedir.\n\nYıllar geçtikçe, Frieren kahramanın partisinde geçirdiği günlerin onu gerçekten nasıl etkilediğini yavaş yavaş fark eder. Eski yoldaşlarından ikisinin ölümüne tanık olan Frieren, onların varlığını hafife aldığı için pişmanlık duymaya başlar; insanları daha iyi anlamaya ve gerçek kişisel bağlar kurmaya yemin eder. Bir zamanlar unutulmaz olan bu yolculuğun hikayesi çoktan sona ermiş olsa da, yeni bir hikaye başlamak üzere.\n\n[MAL Rewrite tarafından yazıldı]",
+"genres": [
+"Adventure",
+"Drama",
+"Fantasy"
+],
+"status": "Completed",
+"releaseYear": 2023,
+"rating": 9.24,
+"englishTitle": "Frieren: Beyond Journey's End"
+}
+],
+"users": [
+{
+"_id": "69947c8deeeb4c5d03f6402a",
+"username": "frieren34",
+"displayName": "frieren34",
+"avatar": "/avatars/default.jpg",
+"role": "user"
+},
+{
+"_id": "6a2065e865e2a99534183cf4",
+"username": "miremm",
+"displayName": "frierenn",
+"avatar": "/avatars/default.jpg",
+"role": "user"
+}
+],
+"count": {
+"anime": 1,
+"users": 2,
+"total": 3
+}
+}

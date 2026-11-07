@@ -223,6 +223,43 @@ absurd.m3u8
 	}
 }
 
+// AniHub-style master (2026-11-07): audio lives in its own playlists, the
+// video renditions carry none. Picking a rendition's own URL played silently.
+func TestHLSVariantsSeparateAudio(t *testing.T) {
+	master := []byte(`#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="ja",DEFAULT=YES,LANGUAGE="ja",URI="audio/ja/index.m3u8"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="en",DEFAULT=NO,LANGUAGE="en",URI="audio/en/index.m3u8"
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="muxed",NAME="main",DEFAULT=YES
+#EXT-X-STREAM-INF:BANDWIDTH=4675160,AVERAGE-BANDWIDTH=1879581,RESOLUTION=1920x1080,CODECS="hvc1.1.6.L120.90,mp4a.40.2",AUDIO="aud"
+v1080p/index.m3u8?token=t
+#EXT-X-STREAM-INF:BANDWIDTH=1712112,RESOLUTION=1280x720,CODECS="hvc1.1.6.L93.90,mp4a.40.2",AUDIO="aud"
+v720p/index.m3u8?token=t
+#EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=854x480,AUDIO="muxed"
+v480p/index.m3u8
+`)
+	base, _ := url.Parse("https://media.example/ep1/master.m3u8?token=t")
+	qs := Variants(master, base)
+	if len(qs) != 3 {
+		t.Fatalf("want 3 renditions, got %d: %+v", len(qs), qs)
+	}
+	for _, q := range qs[:2] { // 1080p, 720p: audio is external
+		if q.URL != base.String() || q.HLSBandwidth == 0 {
+			t.Fatalf("%s: want master URL + bandwidth, got %+v", q.Label, q)
+		}
+	}
+	if qs[0].HLSBandwidth != 4675160 || qs[1].HLSBandwidth != 1712112 {
+		t.Fatalf("selection must use peak BANDWIDTH: %d, %d", qs[0].HLSBandwidth, qs[1].HLSBandwidth)
+	}
+	if qs[0].Bitrate != 1879581 {
+		t.Fatalf("display bitrate stays the average: %d", qs[0].Bitrate)
+	}
+	// a group without a URI is muxed into the rendition: its own URL is fine
+	if q := qs[2]; q.HLSBandwidth != 0 || q.URL != "https://media.example/ep1/v480p/index.m3u8" {
+		t.Fatalf("480p (muxed audio): want its own URL, got %+v", q)
+	}
+}
+
 func buildFakeMoov(timescale, durationSec, width, height uint32, codecFourCC string) []byte {
 	box := func(typ string, payload []byte) []byte {
 		var b bytes.Buffer
@@ -291,6 +328,58 @@ func TestMP4ProbeAndBrokenMarking(t *testing.T) {
 	}
 }
 
+func TestProbeMP4sStream(t *testing.T) {
+	moov := buildFakeMoov(1000, 1440, 1920, 1080, "avc1")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/good.mp4":
+			w.Header().Set("Content-Range", "bytes 0-131071/754974720")
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(moov)
+		case "/gone.mp4":
+			w.WriteHeader(http.StatusGone)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	// a dead 1080p and a healthy one: the healthy one is sorted first
+	mixed := &source.Stream{Qualities: []source.Quality{
+		{Label: "1080p", Height: 1080, URL: srv.URL + "/missing.mp4"},
+		{Label: "720p", Height: 720, URL: srv.URL + "/good.mp4"},
+		{Label: "auto", URL: srv.URL + "/list.m3u8"}, // HLS: not touched here
+	}}
+	if dead, _ := ProbeMP4s(context.Background(), mixed); dead {
+		t.Fatal("stream with a healthy MP4 reported dead")
+	}
+	if q := mixed.Qualities[0]; q.Broken || !strings.HasSuffix(q.URL, "/good.mp4") {
+		t.Fatalf("healthy quality not first: %+v", mixed.Qualities)
+	}
+	if q := mixed.Qualities[len(mixed.Qualities)-1]; !q.Broken {
+		t.Fatalf("404 quality not last and broken: %+v", mixed.Qualities)
+	}
+
+	// every file refused: dead, and the reason is permanent
+	allDead := &source.Stream{Qualities: []source.Quality{
+		{Label: "1080p", Height: 1080, URL: srv.URL + "/missing.mp4"},
+		{Label: "720p", Height: 720, URL: srv.URL + "/gone.mp4"},
+	}}
+	dead, kind := ProbeMP4s(context.Background(), allDead)
+	if !dead || !kind.Permanent() {
+		t.Fatalf("want dead with a permanent kind, got dead=%v kind=%v", dead, kind)
+	}
+
+	// a network error proves nothing: the quality stays usable
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closedURL := closed.URL + "/x.mp4"
+	closed.Close()
+	unreachable := &source.Stream{Qualities: []source.Quality{{Label: "1080p", Height: 1080, URL: closedURL}}}
+	if dead, _ := ProbeMP4s(context.Background(), unreachable); dead || unreachable.Qualities[0].Broken || unreachable.Qualities[0].Probed {
+		t.Fatalf("network error must not mark broken: %+v", unreachable.Qualities[0])
+	}
+}
+
 func TestOkRuVidmolyAndVoeExtractors(t *testing.T) {
 	// Helper to encode a JSON payload with the reverse of Voe's 6-step decryption pipeline:
 	// Decrypt: rot13 -> pattern->'_' -> strip '_' -> b64dec -> charShift(-3) -> reverse -> b64dec
@@ -341,5 +430,37 @@ func TestOkRuVidmolyAndVoeExtractors(t *testing.T) {
 	stVoe, err := Voe(ctx, srv.URL+"/voe-start")
 	if err != nil || len(stVoe.Qualities) != 1 || stVoe.Qualities[0].URL != "https://cdn.voe.sx/hls/index.m3u8" {
 		t.Fatalf("Voe failed: st=%+v err=%v", stVoe, err)
+	}
+}
+
+// Tau said 500,000,000 bytes for a 627 MB file: the server's Content-Range
+// wins, and the placeholder never reaches the screen on its own.
+func TestRealSizeBeatsReportedSize(t *testing.T) {
+	moov := buildFakeMoov(1000, 1440, 1920, 1080, "avc1")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/video/big":
+			_, _ = w.Write([]byte(`{"urls":[{"label":"1080p","url":"https://cdn.example/1080.mp4","size":500000000},{"label":"720p","url":"https://cdn.example/720.mp4","size":406362416}]}`))
+		default:
+			w.Header().Set("Content-Range", "bytes 0-131071/657484980")
+			w.WriteHeader(http.StatusPartialContent)
+			_, _ = w.Write(moov)
+		}
+	}))
+	defer srv.Close()
+
+	u, _ := url.Parse(srv.URL + "/embed/big")
+	st, err := Tau(context.Background(), u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Qualities[0].Size != 0 || st.Qualities[1].Size != 406362416 {
+		t.Fatalf("placeholder must be dropped, real sizes kept: %+v", st.Qualities)
+	}
+
+	q := source.Quality{Label: "1080p", Height: 1080, URL: srv.URL + "/1080.mp4", Size: 500000000}
+	ProbeQuality(context.Background(), &q, "")
+	if q.Size != 657484980 {
+		t.Fatalf("probed size should win: %d", q.Size)
 	}
 }

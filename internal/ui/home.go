@@ -126,9 +126,9 @@ func (h *home) update(a *App, msg tea.Msg) tea.Cmd {
 		h.news = newEpisodes(a, h.feed)
 		for _, e := range h.news {
 			e := e
-			label := fmt.Sprintf("%s · %d. bölüm çıktı", e.an.Title, e.episode)
+			label := fmt.Sprintf("%s · %s. bölüm çıktı", e.an.Title, source.EpNum(e.episode))
 			if e.season > 1 {
-				label = fmt.Sprintf("%s · S%d %d. bölüm çıktı", e.an.Title, e.season, e.episode)
+				label = fmt.Sprintf("%s · S%d %s. bölüm çıktı", e.an.Title, e.season, source.EpNum(e.episode))
 			}
 			a.addNotice(notice{key: fmt.Sprintf("ep:%s:%d:%d", e.an.Key(), e.season, e.episode), kind: "new", text: label,
 				action: func(a *App) tea.Cmd {

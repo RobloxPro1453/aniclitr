@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -11,9 +12,10 @@ import (
 	"aniclitr/internal/store"
 )
 
-// An archive title opened from the shelf knows no other source: `s` must
-// look it up and move to the live source, keeping the episode (no network:
-// the lookup's result is fed in by hand).
+// An archive title opened from the shelf knows no other source: `s` opens
+// the source picker and looks the show up; a found source joins the list
+// and a digit jumps to it, keeping the episode (no network: the lookup's
+// result is fed in by hand).
 func TestSwitchSourceLooksUpOtherSources(t *testing.T) {
 	a := testApp(t, Graphics{})
 	a.w, a.h = 120, 40
@@ -29,34 +31,48 @@ func TestSwitchSourceLooksUpOtherSources(t *testing.T) {
 	a.episodes[epKey(sc.an, 1)] = eps
 	sc.cur = 4
 
-	if a.Update(key("s")); !sc.looking || !sc.waitSwitch {
-		t.Fatal("s with a single source should start a lookup and wait for it")
+	if a.Update(key("s")); !sc.looking || a.drop == nil || a.drop.kind != "sources" {
+		t.Fatal("s should open the picker and start a lookup")
 	}
 	live := source.Anime{Source: "animecix", ID: "77", Title: "Mouryou no Hako", Kind: "TV"}
 	a.Update(altsMsg{key: arc.Key(), alts: []source.Anime{live}})
-	if sc.base.Key() != live.Key() || len(sc.srcs) != 2 {
-		t.Fatalf("want switch to animecix, got base=%s srcs=%d", sc.base.Key(), len(sc.srcs))
+	if len(sc.srcs) != 2 || sc.base.Key() != arc.Key() {
+		t.Fatalf("found source joins the open picker, nothing moves yet: srcs=%d base=%s", len(sc.srcs), sc.base.Key())
+	}
+	a.Update(key("2"))
+	if sc.base.Key() != live.Key() || a.drop != nil {
+		t.Fatalf("2 should open AnimeciX, got %s", sc.base.Key())
 	}
 	if sc.wantSeason != 1 || sc.wantEp != 5 {
 		t.Fatalf("episode lost on switch: s%d e%d", sc.wantSeason, sc.wantEp)
 	}
 	a.Update(key("s")) // and back again, no second lookup
+	a.Update(key("1"))
 	if sc.base.Key() != arc.Key() || sc.looking || !sc.looked {
-		t.Fatalf("second s should cycle back to the archive, got %s looking=%v", sc.base.Key(), sc.looking)
+		t.Fatalf("1 should go back to the archive without searching again, got %s looking=%v", sc.base.Key(), sc.looking)
 	}
 
-	// nothing elsewhere: say so once, do not search again
+	// nothing elsewhere: the picker says so, and no new search starts
 	other := newAnime(source.Anime{Source: "animedepo", ID: "yok", Title: "Yok Böyle Bir Anime"}, nil, 0, 0)
 	a.stack = append(a.stack, other)
+	a.drop = nil
 	a.Update(key("s"))
 	a.Update(altsMsg{key: other.an.Key()})
-	if other.looking || !other.looked || len(other.srcs) != 1 || a.toastKind != "warn" {
-		t.Fatalf("empty lookup: looking=%v looked=%v srcs=%d toast=%q", other.looking, other.looked, len(other.srcs), a.toastKind)
+	if other.looking || !other.looked || len(other.srcs) != 1 {
+		t.Fatalf("empty lookup: looking=%v looked=%v srcs=%d", other.looking, other.looked, len(other.srcs))
+	}
+	var said bool
+	for _, it := range other.sourceItems(a) {
+		said = said || strings.Contains(it.note, "bulamadı")
+	}
+	if !said {
+		t.Fatal("the picker should say the others do not have it")
 	}
 }
 
-// Two sources known from history: `s` switches at once and still asks the
-// others, so a third source (the primary) is added when it answers.
+// Two sources known from history: the picker lists both at once and still
+// asks the others; a third source (the primary) is added when it answers,
+// without yanking the screen away from the one you picked.
 func TestSwitchSourceKnownPlusLookup(t *testing.T) {
 	a := testApp(t, Graphics{})
 	a.w, a.h = 120, 40
@@ -70,6 +86,7 @@ func TestSwitchSourceKnownPlusLookup(t *testing.T) {
 		t.Fatalf("history sibling should be offered up front: %+v", sc.srcs)
 	}
 	a.Update(key("s"))
+	a.Update(key("2"))
 	if sc.base.Source != "hianime" || !sc.looking || sc.lookKey != tr.Key() {
 		t.Fatalf("switch now, look up in background: base=%s looking=%v key=%s", sc.base.Source, sc.looking, sc.lookKey)
 	}

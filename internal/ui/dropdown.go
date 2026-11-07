@@ -34,6 +34,9 @@ type dropdown struct {
 	gl    glide
 	openT tween
 	empty string
+	// center: a launcher in the middle of the screen (rofi-like) instead of
+	// a panel hanging from the header; 1-9 run the row labelled with it
+	center bool
 }
 
 func (a *App) openDropdown(kind string) {
@@ -167,6 +170,16 @@ func (d *dropdown) update(a *App, k tea.KeyMsg) tea.Cmd {
 			a.closeDropdown()
 			return nil
 		}
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		if d.center {
+			for _, it := range items {
+				if it.run != nil && strings.HasPrefix(it.label, k.String()+" ") {
+					a.closeDropdown()
+					a.flash()
+					return it.run(a)
+				}
+			}
+		}
 	case "up", "k", "shift+tab":
 		d.cur = dropNext(items, d.cur, -1)
 	case "down", "j", "tab":
@@ -217,6 +230,8 @@ func (d *dropdown) draw(a *App, lines []string) []string {
 		w = min(40, a.w-4)
 	case "actions":
 		w = min(52, a.w-4)
+	case "sources":
+		w = min(56, a.w-4)
 	}
 	inner := w - 2
 	bs := fg(mix(hex(cFaint), hex(cAccent), .7).hex())
@@ -268,12 +283,23 @@ func (d *dropdown) draw(a *App, lines []string) []string {
 		box = append(box, bs.Render("│")+row(inner, bg, []span{bar, sp(it.icon+" ", ic), span{t: it.label, c: tc, bold: sel || !it.dim && d.kind == "bell"}}, right)+bs.Render("│"))
 	}
 	foot := stText.Bold(true).Render("↑↓") + stMuted.Render(" seç  ") + stText.Bold(true).Render("enter") + stMuted.Render(" aç  ")
+	if d.center {
+		foot += stText.Bold(true).Render("1-9") + stMuted.Render(" doğrudan  ")
+	}
 	if d.kind == "bell" {
 		foot += stText.Bold(true).Render("x") + stMuted.Render(" sil  ") + stText.Bold(true).Render("c") + stMuted.Render(" temizle  ")
 	}
 	foot += stText.Bold(true).Render("esc") + stMuted.Render(" kapat")
 	box = append(box, bs.Render("│")+" "+fit(foot, inner-1)+bs.Render("│"))
 	box = append(box, bs.Render("╰"+strings.Repeat("─", w-2)+"╯"))
+	if d.center {
+		// a launcher: centred, a little above the middle; rises into place
+		x, y := max(0, (a.w-w)/2), max(1, (len(lines)-len(box))/3)
+		if d.openT.active() {
+			y += int(3 * (1 - easeOutCubic(d.openT.p())))
+		}
+		return overlayAt(lines, box, x, y, a.w)
+	}
 	// slides down from under the header
 	y := 0
 	if d.openT.active() {

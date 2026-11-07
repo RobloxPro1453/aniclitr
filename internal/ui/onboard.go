@@ -15,6 +15,18 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"0.16.0": {
+		"İki yeni Türkçe kaynak: SonAnime (doğrudan MP4, 1080p'ye kadar) ve Animim (fansub seçimi, ayrı Türkçe altyazı)",
+		"Kaynak seçici (s): anime ekranında ortada açılır; istediğin kaynağa 1–9 ile doğrudan geçersin, diğerleri arka planda aranır",
+		"Ayarlarda kapattığın kaynaklara saygı: kapalı bir kaynakta izlediğin seri önce açık kaynaklarda aranır ve kaldığın yerden orada açılır",
+		"Çok sezonlu seriler MAL'de doğru kayda yazılır (ör. Bleach'in 2. sezonu Sennen Kessen-hen'in dört ayrı kaydına); seri başına bir kez sorulur, r menüsünden değiştirilebilir",
+		"Elle MAL eşlemesi: anime ekranında r → MAL eşlemesini düzelt",
+		"Ayarlar → Sunucu sırası: sunucuları sırala, istemediğini asla, istediklerini yalnızca olarak işaretle",
+		"Seçicide her sunucunun geçmiş karnesi (%92 açıldı · 1,4 sn); ölü MP4'ler artık oynatıcıya gitmez, bir sonraki sunucu denenir",
+		"Dosya boyutları doğru: Tau'nun tüm büyük dosyalar için verdiği 477 MB yerine sunucunun gerçek boyutu gösterilir",
+		"AniHub bölümleri artık sesli: ayrı ses kanallı akışlarda hem oynatma hem indirme Japonca sesi alır",
+		"Ara bölümler (12.5) ve HiAnime filler bölümleri listede doğru yerde; AnimeciX fansub adları karmaşık künye satırları yerine grubun adıyla görünür",
+	},
 	"0.15.1": {
 		"Çevrimdışı Kitaplık koruması ve otomatik disk tarama: indirme kuyruğunda c ile 'bitenleri temizle' yapıldığında çevrimdışı kitaplığın boşalması düzeltildi; indirilenler klasöründeki mevcut videolar otomatik taranıp kitaplığa geri yüklenir",
 		"Hızlı diskten silme (x / X): İndirilenler rafında bir serinin üstündeyken x tuşuyla tüm seriyi, içine girince veya normal bölüm listesindeyken x ile tek bölümü diskten silebilirsiniz",

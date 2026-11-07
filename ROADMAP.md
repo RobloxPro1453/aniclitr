@@ -6,6 +6,8 @@ Bu belge planlanan ve değerlendirilen çalışmaları listeler. Öncelikler de�
 
 ## Öncelikli
 
+- **Arayüz yenilemesi:** her ekranın tek bakışta anlaşılması; başlık çubuğunda indirme hız grafiği ve kaynakların ad/simgeyle (açık renkli, kapalı soluk) gösterilmesi; daha zarif bildirimler; her terminal boyutunda uyumlu yerleşim.
+
 - **Depolama alanı göstergesi:** İndirilenler ekranında toplam kullanılan alanı ve diskteki boş alanı gösteren depolama çubuğu.
 - **Torrent desteği:** nyaa.si üzerinden arama; aria2 ya da WebTorrent ile akış ve indirme.
 - **Ek çevrimiçi altyazı sağlayıcıları:** Günlük kota sınırı olmayan ücretsiz Türkçe/İngilizce/Japonca altyazı kaynakları (ör. Subdl, Jimaku) ve yerel `.srt`/`.ass` dosyası seçici.
@@ -23,7 +25,9 @@ Bu belge planlanan ve değerlendirilen çalışmaları listeler. Öncelikler de�
 
 ## Değerlendirilen
 
-- Ek Türkçe kaynak adayları: yalnızca otomatik istemcileri bilinçli olarak engellemeyen ve açık API/HTML sunan kaynaklar eklenir.
+- Ek Türkçe kaynak adayları (ör. Animexe, ÇizgiMax): yalnızca otomatik istemcileri bilinçli olarak engellemeyen ve açık API/HTML sunan kaynaklar eklenir.
+- Kaynakların verdiği açılış/bitiş zamanlarının (SonAnime, Animim) AniSkip'e ek olarak kullanılması.
+- HiAnime'nin filler işaretiyle filler bölümlerini atlama.
 - Yıllık izleme özeti ve başarımlar.
 - Birlikte izleme (Syncplay entegrasyonu).
 - Sezon listelerinde çoklu tür ve puan aralığı filtresi.

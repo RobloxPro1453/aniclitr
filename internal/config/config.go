@@ -37,6 +37,11 @@ type Config struct {
 	ExtraMpvArgs     []string        `json:"extra_mpv_args"`
 	HostOrder        []string        `json:"host_order,omitempty"`          // preferred host priority
 	NeverHosts       []string        `json:"never_hosts,omitempty"`         // hosts skipped by auto-select
+	OnlyHosts        []string        `json:"only_hosts,omitempty"`          // if set, auto-select picks only these hosts (falls back to all when none works)
+	// SeasonSync: per anime key ("source:id"), whether a title whose seasons
+	// are separate MAL entries may write progress to those entries (true), or
+	// only to its own (false). Missing: not asked yet.
+	SeasonSync map[string]bool `json:"season_sync,omitempty"`
 	WaitAfterFirstMs int             `json:"wait_after_first_ms,omitempty"` // grace period after first resolved host (ms)
 	AutoFallback     bool            `json:"auto_fallback"`                 // offer/switch to another source when all hosts fail
 	SpeedGraph       bool            `json:"speed_graph"`                   // show live ASCII speed sparkline on downloads screen

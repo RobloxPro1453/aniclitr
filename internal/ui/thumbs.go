@@ -88,9 +88,9 @@ func (p *playing) nextLabel() string {
 			if i+1 < len(p.eps) {
 				n := p.eps[i+1]
 				if n.Title != "" && !genericTitle(n.Title) {
-					return fmt.Sprintf("%d. bölüm · %s", n.Number, n.Title)
+					return fmt.Sprintf("%s. bölüm · %s", n.Num(), n.Title)
 				}
-				return fmt.Sprintf("%d. bölüm", n.Number)
+				return n.Num() + ". bölüm"
 			}
 		}
 	}

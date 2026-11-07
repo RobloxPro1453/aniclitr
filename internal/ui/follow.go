@@ -64,7 +64,7 @@ func newEpisodes(a *App, feed []source.FeedItem) []newEp {
 			continue // not following it any more
 		}
 		newer := it.Season > e.Season || (it.Season == e.Season && it.Episode > e.Episode)
-		if it.Season == e.Season && it.Episode == e.Episode+1 && !e.Watched[store.EpKey(e.Season, e.Episode)] {
+		if it.Season == e.Season && it.Episode == source.NextNumber(e.Episode) && !e.Watched[store.EpKey(e.Season, e.Episode)] {
 			newer = false // you have not finished the current one yet: not "new" for you
 		}
 		if newer {

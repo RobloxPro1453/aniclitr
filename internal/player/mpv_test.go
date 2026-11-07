@@ -108,3 +108,29 @@ func TestLivePlayback(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildArgsHLSBandwidth(t *testing.T) {
+	st := &source.Stream{}
+	plain := buildArgs(Options{Title: "x", Stream: st, Quality: source.Quality{URL: "https://h/v720.m3u8"}}, "s")
+	if last := lastWith(plain, "--hls-bitrate="); last != "--hls-bitrate=max" {
+		t.Fatalf("default: got %q", last)
+	}
+	master := buildArgs(Options{Title: "x", Stream: st, Quality: source.Quality{URL: "https://h/master.m3u8", HLSBandwidth: 1712112}}, "s")
+	// mpv honours the last occurrence, so the chosen rendition must come after "max"
+	if last := lastWith(master, "--hls-bitrate="); last != "--hls-bitrate=1712112" {
+		t.Fatalf("master: got %q", last)
+	}
+	if master[len(master)-1] != "https://h/master.m3u8" {
+		t.Fatalf("URL must stay last: %v", master)
+	}
+}
+
+func lastWith(args []string, prefix string) string {
+	out := ""
+	for _, a := range args {
+		if strings.HasPrefix(a, prefix) {
+			out = a
+		}
+	}
+	return out
+}

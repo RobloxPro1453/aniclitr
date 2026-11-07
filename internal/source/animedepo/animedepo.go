@@ -191,7 +191,7 @@ func (Provider) Variants(ctx context.Context, a source.Anime, ep source.Episode)
 		if it.URL == "" || strings.HasPrefix(it.Player, "DEAD_") || (it.Alive != nil && !*it.Alive) {
 			continue
 		}
-		out = append(out, source.Variant{Fansub: it.Fansub, Host: prettyHost(it.Player), URL: it.URL})
+		out = append(out, source.Variant{Fansub: it.Fansub, Host: prettyHost(it.Player), URL: it.URL, Kind: "embed", Lang: "tr", Dub: source.IsDubName(it.Fansub)})
 	}
 	if len(out) == 0 {
 		return nil, source.ErrNotFound

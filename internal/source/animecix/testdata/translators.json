@@ -1,0 +1,130 @@
+[
+{
+"name": "ShikiSubs",
+"translator": "ShikiSubs",
+"translator_url": "https://shikisubs.com/",
+"discord": "https://discord.gg/shikisubs"
+},
+{
+"name": "PuzzleSubs",
+"translator": "PuzzleSubs",
+"translator_url": "https://puzzlesubs.com/",
+"discord": null
+},
+{
+"name": "Arcadia",
+"translator": "Arcadia Fansub",
+"translator_url": "https://www.arcadiafansub.tv/",
+"discord": "https://discord.gg/3Cy6XN8"
+},
+{
+"name": "Unmei",
+"translator": "Unmei Çeviri",
+"translator_url": "http://unmeii.com",
+"discord": null
+},
+{
+"name": "AnimeWho",
+"translator": "AnimeWho",
+"translator_url": "https://www.animewho.com/",
+"discord": null
+},
+{
+"name": "AniSekai",
+"translator": "Anisekai Fansub",
+"translator_url": "https://anisekai.com/",
+"discord": null
+},
+{
+"name": "Tempest Fansub",
+"translator": "Tempest Fansub",
+"translator_url": "https://juratempe.st",
+"discord": "https://discord.gg/tempestfansub",
+"isDubbing": false
+},
+{
+"name": "Akira Fansub",
+"translator": "AkiraSubs",
+"translator_url": "https://akirasubs.com",
+"discord": "https://discord.com/invite/2kFttr9R5M",
+"isDubbing": false
+},
+{
+"name": "Hiraishin Fansub",
+"translator": "Hiraishin Fansub",
+"translator_url": "https://hiraishinfs.blogspot.com",
+"discord": "https://discord.com/invite/8u7ATGgsFc"
+},
+{
+"name": "Dantel Entel Çeviriler",
+"translator": "Dantel Entel Çeviriler",
+"translator_url": "https://blog.dantelentel.net/",
+"discord": "https://discord.gg/kPNW9WM8n5"
+},
+{
+"name": "Eksen Çeviri",
+"translator": "Eksen Çeviri",
+"translator_url": "https://eksenceviri.blogspot.com/",
+"discord": "https://discord.com/invite/c2zgrfY"
+},
+{
+"name": "Hiraishin Fansub - BD",
+"translator": "Hiraishin - BD",
+"translator_url": "https://hiraishinfs.blogspot.com",
+"discord": "https://discord.com/invite/8u7ATGgsFc"
+},
+{
+"name": "Lovable",
+"translator": "Lovable Fansub",
+"translator_url": "https://lovablesubs.com/",
+"discord": null
+},
+{
+"name": "Lucifer",
+"translator": "LuciferSubs",
+"translator_url": "https://lucifersubs.com/",
+"discord": null
+},
+{
+"name": "TsukiSubs",
+"translator": "TsukiSubs",
+"translator_url": "https://tsukisubs.online/",
+"discord": null
+},
+{
+"name": "KnavesSubs",
+"translator": "KnavesSubs",
+"translator_url": "https://www.knavesfansub.com/",
+"discord": null
+},
+{
+"name": "YokaiFansub",
+"translator": "YokaiFansub",
+"translator_url": "http://yokaifansub.tk",
+"discord": null
+},
+{
+"name": "AoiSubs",
+"translator": "AoiSubs",
+"translator_url": "https://www.aoifansub.com/",
+"discord": null
+},
+{
+"name": "H?ma ?eviri",
+"translator": "H?ma ?eviri",
+"translator_url": "https://humaceviri.com/",
+"discord": null
+},
+{
+"name": "VictoriaSubs",
+"translator": "VictoriaSubs",
+"translator_url": "https://www.victoriasubs.com/",
+"discord": null
+},
+{
+"name": "Haikurema",
+"translator": "HaikuremaSubs",
+"translator_url": "https://haikuremasubs.blogspot.com",
+"discord": null
+}
+]

@@ -58,13 +58,13 @@ func tonightPicks(a *App, budget int, feed []source.FeedItem) []tonightPick {
 	// 2) new episodes on shows you follow
 	for _, n := range newEpisodes(a, feed) {
 		e, _ := a.hist.Get(n.an.Key())
-		next := e.Episode + 1
+		next := source.NextNumber(e.Episode)
 		if !e.Watched[store.EpKey(e.Season, e.Episode)] {
 			next = e.Episode
 		}
 		cnt := fit(n.episode - next + 1)
 		add(tonightPick{an: n.an, season: n.season, episode: next, count: cnt, minutes: cnt * epMinutes,
-			reason: fmt.Sprintf("yeni bölüm çıktı · %d. bölüm", n.episode), score: 90})
+			reason: fmt.Sprintf("yeni bölüm çıktı · %s. bölüm", source.EpNum(n.episode)), score: 90})
 	}
 	// 3) carry on with what you watch
 	for _, e := range a.recent() {

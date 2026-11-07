@@ -34,9 +34,11 @@ func DefaultRules(prefQuality string) Rules {
 		qo = []string{"480p", "360p", "720p", "1080p"}
 	}
 	return Rules{
-		QualityOrder:     qo,
+		QualityOrder: qo,
+		// No host is excluded by default: Vidmoly, once skipped, has a native
+		// resolver now and sits last in HostOrder, so it is only picked when
+		// nothing better works. Exclusions are the user's (never_hosts).
 		HostOrder:        append([]string(nil), DefaultHosts...),
-		NeverHosts:       []string{"Vidmoly"},
 		WaitAfterFirstMs: 1200,
 	}
 }

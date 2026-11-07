@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"regexp"
 	"sort"
@@ -206,8 +207,73 @@ type Season struct {
 type Episode struct {
 	ID     string
 	Season int
+	// Number is the episode's key and, for a regular episode, its number.
+	// An in-between episode ("12.5", a recap) has a negative Number made by
+	// ExtraNumber: it never collides with episode 12 in history or
+	// downloads, and never counts as progress (MAL counts, "30-100"
+	// ranges only look at positive numbers). Show it with Num().
 	Number int
 	Title  string
+}
+
+// ExtraNumber is the Number of an in-between episode: 12.5 → -1250.
+func ExtraNumber(v float64) int { return -int(math.Round(v * 100)) }
+
+// EpNum is how an episode number reads: 12 → "12", -1250 → "12.5".
+func EpNum(n int) string {
+	if n >= 0 {
+		return strconv.Itoa(n)
+	}
+	return strings.ReplaceAll(strconv.FormatFloat(float64(-n)/100, 'f', -1, 64), ".", ",")
+}
+
+// Num is the episode number as it reads ("12", "12,5").
+func (e Episode) Num() string { return EpNum(e.Number) }
+
+// Extra reports an in-between episode (12.5 and the like).
+func (e Episode) Extra() bool { return e.Number < 0 }
+
+// EpOrder is where an episode number sits in the list: 12.5 between 12 and 13.
+func EpOrder(n int) float64 {
+	if n >= 0 {
+		return float64(n)
+	}
+	return float64(-n) / 100
+}
+
+// NextNumber is the regular episode after n (after 12.5 comes 13).
+func NextNumber(n int) int {
+	if n >= 0 {
+		return n + 1
+	}
+	return int(EpOrder(n)) + 1
+}
+
+// ParseEpisodeNumber reads a site's episode number: "12" → 12; "12.5",
+// "12,5" → ExtraNumber(12.5). ok is false for anything else.
+func ParseEpisodeNumber(s string) (n int, ok bool) {
+	s = strings.TrimSpace(strings.ReplaceAll(s, ",", "."))
+	if i, err := strconv.Atoi(s); err == nil {
+		return i, i > 0
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || f <= 0 || f > 100000 {
+		return 0, false
+	}
+	if f == math.Trunc(f) {
+		return int(f), true
+	}
+	return ExtraNumber(f), true
+}
+
+// SortEpisodes orders episodes by season, then number (12, 12.5, 13).
+func SortEpisodes(eps []Episode) {
+	sort.SliceStable(eps, func(i, j int) bool {
+		if eps[i].Season != eps[j].Season {
+			return eps[i].Season < eps[j].Season
+		}
+		return EpOrder(eps[i].Number) < EpOrder(eps[j].Number)
+	})
 }
 
 // Variant is one way to watch an episode: a fansub/audio track on a host.
@@ -215,7 +281,22 @@ type Variant struct {
 	Fansub string
 	Host   string
 	URL    string
-	Data   map[string]string
+	// Kind is what URL is: "embed" (a host's player page, resolved by an
+	// extractor or the source) or "hls" (a playlist); "" unknown.
+	Kind string
+	// Lang is the language of the translation, subtitles or dub: "tr", "en";
+	// "" for raw or unknown.
+	Lang string
+	// Dub: the audio is dubbed into Lang, not the original with subtitles.
+	Dub  bool
+	Data map[string]string
+}
+
+// IsDubName guesses a dub from a fansub's name, for sources that do not
+// say ("… Dublaj", "TR Dub").
+func IsDubName(name string) bool {
+	n := strings.ToLower(name)
+	return strings.Contains(n, "dublaj") || strings.Contains(n, "dub")
 }
 
 // Quality is one directly playable rendition.
@@ -233,6 +314,12 @@ type Quality struct {
 	// its yt-dlp hook) and yt-dlp open it themselves, keeping the cookies
 	// some hosts (Google Drive) tie their stream links to.
 	Page bool
+	// HLSBandwidth > 0 means URL is the HLS master playlist, not this
+	// rendition's own playlist: the rendition carries no audio (it lives in a
+	// separate #EXT-X-MEDIA group), so opening the rendition alone would be
+	// silent. mpv picks it with --hls-bitrate=HLSBandwidth and adds the audio
+	// group itself; yt-dlp merges bestvideo+bestaudio from the same master.
+	HLSBandwidth int64
 }
 
 // DisplayLabel formats a quality label with probed codec and bitrate if known.

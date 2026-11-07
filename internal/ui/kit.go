@@ -38,7 +38,7 @@ func pageHead(title, sub, meta string, w, h int) []string {
 // sub and meta may come pre-styled; plain text is set in the muted tone.
 func pageHeadIn(title, sub, meta string, inner, h int) []string {
 	quiet := func(s string) string {
-		if strings.Contains(s, "[") {
+		if strings.Contains(s, "\x1b[") {
 			return s
 		}
 		return stMuted.Render(s)

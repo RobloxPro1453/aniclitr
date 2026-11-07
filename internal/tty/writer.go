@@ -346,7 +346,7 @@ func (w *Writer) render(heal bool) bool {
 		w.Written += int64(len(s))
 	}
 	if d := time.Since(t0); w.Slow != nil && d > 50*time.Millisecond {
-		w.Slow(d, len(s), strings.Contains(s, "P"))
+		w.Slow(d, len(s), strings.Contains(s, "\x1bP"))
 	}
 	if w.front != nil && w.front != f {
 		Recycle(w.front) // what the terminal showed before; nobody reads it now

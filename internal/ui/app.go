@@ -160,7 +160,10 @@ type App struct {
 	libRev  int               // library revision libMemo belongs to
 	libMemo map[string]libHit // libItem answers (same.go)
 
-	recentRev  int // history revision recentMemo belongs to
+	aligns     map[string]*alignState // season chains by anime key (seasonsync.go)
+	malWRev    int                    // library revision malWMemo belongs to
+	malWMemo   map[int]int            // MAL id → watched count (seasonsync.go)
+	recentRev  int                    // history revision recentMemo belongs to
 	recentMemo []store.Entry
 	recentOK   bool
 	dl         *download.Manager
@@ -326,6 +329,7 @@ func (a *App) onURLOpen(m urlOpenMsg) tea.Cmd {
 		season, epNum = max(1, m.ep.Season), m.ep.Number
 	}
 	sc := newAnime(m.an, a.siblings(m.an), season, epNum)
+	sc.explicit = true // a pasted link names its source
 	return tea.Batch(a.push(sc), sc.start(a))
 }
 
@@ -551,6 +555,7 @@ func (a *App) selectionRules() choose.Rules {
 	return choose.Rules{
 		HostOrder:        a.cfg.HostOrder,
 		NeverHosts:       a.cfg.NeverHosts,
+		OnlyHosts:        a.cfg.OnlyHosts,
 		WaitAfterFirstMs: a.cfg.WaitAfterFirstMs,
 	}.Effective(a.cfg.Quality)
 }
@@ -565,7 +570,7 @@ func (a *App) pickQuality(st *source.Stream) source.Quality {
 	var h int
 	fmt.Sscanf(want, "%d", &h)
 	for _, c := range st.Qualities {
-		if c.Height > 0 && c.Height <= h {
+		if !c.Broken && c.Height > 0 && c.Height <= h {
 			return c
 		}
 	}
@@ -735,6 +740,13 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		cmds = append(cmds, a.onMalOpen(m))
 	case urlOpenMsg:
 		cmds = append(cmds, a.onURLOpen(m))
+	case alignMsg:
+		a.onAlign(m)
+		if s, ok := a.top().(*animeScreen); ok && s.an.Key() == m.key {
+			a.maybeAskSeasonSync(s.an)
+		}
+	case malCandsMsg:
+		a.onMalCands(m)
 	case similarMsg:
 		a.onSimilar(m)
 	case netMsg:

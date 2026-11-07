@@ -13,7 +13,7 @@
 
 aniclitr; anime arama, çeviri grubu (fansub) seçimi, oynatma, toplu/aralıklı indirme, karakter kadrosu inceleme ve izleme takibini tek bir terminal uygulamasında toplar. Kalınan yer, sıradaki bölüm, çok sezonlu seri hizalaması ve jenerik atlama otomatik olarak yönetilir. Kitaplık MyAnimeList ile iki yönlü eşitlenebilir ve bölümler çevrimdışı izlenmek üzere indirilebilir.
 
-> **English summary.** aniclitr is a keyboard-driven terminal anime player for Turkish-subtitled content. It searches live sources in parallel, resolves streams natively (Tau Video, AniHub HLS, OK.ru, Google Drive, Sibnet, Voe, Vidmoly), lets you pick the fansub, plays through mpv, resumes where you left off, downloads individual episodes or custom episode ranges (`30-100`) for offline viewing, browses characters & voice actors (`Seiyuu`) with Sixel portraits, and syncs your library two-way with MyAnimeList across multi-season chains. The interface and documentation are in Turkish.
+> **English summary.** aniclitr is a keyboard-driven terminal anime player for Turkish-subtitled content. It searches six live sources in parallel (AnimeciX, AnimeTR, AniHub, SonAnime, Animim, HiAnime), resolves streams natively (Tau Video, AniHub HLS, OK.ru, Google Drive, Sibnet, Voe, Vidmoly), lets you pick the fansub, plays through mpv, resumes where you left off, downloads individual episodes or custom episode ranges (`30-100`) for offline viewing, browses characters & voice actors (`Seiyuu`) with Sixel portraits, and syncs your library two-way with MyAnimeList across multi-season chains. The interface and documentation are in Turkish.
 
 ---
 
@@ -42,11 +42,12 @@ aniclitr; anime arama, çeviri grubu (fansub) seçimi, oynatma, toplu/aralıklı
 |---|---|
 | **Arama ve Doğrudan Bağlantı** | Etkin tüm kaynaklarda eşzamanlı arama; farklı kaynaklardaki aynı anime tek sonuçta birleştirilir. Arama kutusuna, komut paletine veya komut satırına yapıştırılan anime/bölüm bağlantıları doğrudan açılır. |
 | **Oynatma** | mpv ile oynatma, saniye hassasiyetinde kalınan yerden devam, AniSkip ile açılış ve bitiş jeneriği atlama, otomatik sonraki bölüm. |
-| **Yerel Çözücüler ve Dayanıklılık** | Tau Video, AniHub HLS, OK.ru, Vidmoly, Voe, Sibnet ve Google Drive bağlantıları yerel Go çözücüleriyle anında açılır; HLS/MP4 akışları oynatılmadan önce doğrulanır. Bir sunucu açılmazsa sıradaki sunucu, çeviri grubu veya diğer kaynak otomatik olarak denenir. |
+| **Yerel Çözücüler ve Dayanıklılık** | Tau Video, AniHub HLS, OK.ru, Vidmoly, Voe, Sibnet ve Google Drive bağlantıları yerel Go çözücüleriyle anında açılır; HLS/MP4 akışları oynatılmadan önce doğrulanır, ölü dosyalar oynatıcıya gitmez. Bir sunucu açılmazsa sıradaki sunucu, çeviri grubu veya diğer kaynak otomatik olarak denenir. Seçicide her sunucunun geçmiş başarı karnesi görünür. |
+| **Kaynak Seçici** | Anime ekranında `s` ortada bir seçici açar: aynı anime hangi kaynaklarda varsa listelenir, `1`–`9` ile doğrudan geçilir. Ayarlarda kapattığın kaynakta izlediğin seri, açık kaynaklarda kaldığın yerden açılır. |
 | **Karakterler ve Seslendirenler** | Anime sayfasında `c` tuşuyla açılan kadro ekranı: Sixel/halfblock karakter ve seiyuu portreleri, ana/yardımcı roller, spoiler korumalı biyografiler (`x`) ve Japonca seslendirme sanatçıları. |
 | **Kitaplık ve İstatistikler** | İzliyor, tamamlandı, planlanan, beklemede ve bırakıldı durumları; 1–10 puan, özel listeler, favoriler ve `i` tuşuyla açılan grafiksel izleme istatistikleri (durum dağılımı, puan histogramı, favori türler). |
 | **Keşfet** | AniList verisiyle haftalık yayın takvimi, bu akşam yayınlananlar, sezon listesi, türe göre listeler, kişisel öneriler ve rastgele öneri. |
-| **MyAnimeList** | Durum, puan, izlenen bölüm sayısı ve listelerin iki yönlü eşitlenmesi (OAuth PKCE). AniList `PREQUEL`/`SEQUEL` zinciriyle çok sezonlu serilerde otomatik sezon ve bölüm hizalaması. |
+| **MyAnimeList** | Durum, puan, izlenen bölüm sayısı ve listelerin iki yönlü eşitlenmesi (OAuth PKCE). AniList `PREQUEL`/`SEQUEL` zinciriyle çok sezonlu serilerde her bölüm MAL'deki kendi kaydına yazılır (seri başına bir kez onayla); eşleme elle düzeltilebilir. |
 | **Esnek ve Toplu İndirme** | Seçilen çeviri grubuyla tek bölüm (`d`), çoklu bölüm seçimi (`v`), özel aralık (`30-100`), seçili bölümden sona kadar veya tüm sezon (`D`) indirme; canlı hız grafiği (`▁▂▃▅▆▇`), aria2c, yt-dlp veya dahili indirici. |
 | **Görünüm** | Hazır ve özel temalar, kapak görsellerine göre renklenen arayüz, Sixel destekli yüksek çözünürlüklü kapak ve portreler, isteğe bağlı animasyonlar. |
 | **Güncelleme** | Kurulu kopya GitHub Releases üzerinden kendini günceller; her dosya SHA-256 ile doğrulanır. |
@@ -143,7 +144,7 @@ Arayüz adım adım ilerler: **menü → liste → öğe → eylem**. `esc` her 
 | **Kitaplık** | `ctrl+b` | Durumlar, özel listeler, puanlar ve `◈ istatistikler` (`i`); liste ya da kapak duvarı görünümü (`v`). |
 | **Keşfet** | `ctrl+e` | Önce bölüm seçilir (takvim, bu akşam, bu sezon, türler, öneriler, rastgele), ardından içerik kendi sayfasında açılır. Türler bölümünde önce tür ve sıralama seçilir. |
 | **İndirilenler** | `ctrl+d` | Kapaklı çevrimdışı kitaplık; `v` canlı hız grafikli indirme kuyruğunu gösterir. |
-| **Ayarlar** | `ctrl+o` | Genel, görünüm, oynatma ve kaynak ayarları (`←` / `→` ile seçenekler arasında iki yönlü geçiş). |
+| **Ayarlar** | `ctrl+o` | Genel, görünüm, oynatma ve kaynak ayarları (`←` / `→` ile seçenekler arasında iki yönlü geçiş); **Sunucu sırası** ekranı. |
 
 Başlık çubuğunun sağında indirme durumu, kaynak sağlığı, bildirimler (`◆`, `alt+n`) ve tüm ekranları içeren menü (`≡`, `alt+m`) bulunur.
 
@@ -190,8 +191,8 @@ Tüm kısayollar `?` (İşlemler) menüsünde de listelenir.
 | `a` | Kitaplık: durum, puan, listeler |
 | `t` | Fragman |
 | `y` | Benzer animeler |
-| `s` | Başka bir kaynakta aç (kalınan bölüm korunur) |
-| `r` | Kurtarma menüsü (diğer kaynaklarda ara / eşlemeyi sıfırla) |
+| `s` | Kaynak seçici: aynı animeyi başka bir kaynakta aç, `1`–`9` ile doğrudan (kalınan bölüm korunur) |
+| `r` | Eşleme ve kurtarma: MAL eşlemesini düzelt, eşlemeyi sıfırla, sezon eşitlemesini aç/kapat |
 
 ### Karakterler ekranı (`c`)
 
@@ -219,6 +220,8 @@ mpv penceresinde de geçerlidir: `n` sonraki bölüm, `b` önceki bölüm, `spac
 | **AnimeciX** | Birincil kaynak, Türkçe | JSON API → Tau Video → doğrudan MP4 (HTTP Range doğrulamalı) |
 | **AnimeTR** | Ek kaynak, Türkçe (anime ve donghua) | Arama JSON'u ve bölüm sayfası → yerel OK.ru, Vidmoly, Voe, Google Drive çözücüleri |
 | **AniHub** | Ek kaynak, Türkçe | REST API (`anihub.com.tr`) → belirteç imzalı doğrudan HLS akışı |
+| **SonAnime** | Ek kaynak, Türkçe | JSON API (`api.sonanime.com`) → bölüm başına doğrudan MP4 (1080p/720p/480p); MAL kimliği hazır |
+| **Animim** | Ek kaynak, Türkçe | JSON API (`animim.app`) → fansub seçimi, doğrudan MP4 ve ayrı Türkçe altyazı (`.ass`) |
 | **HiAnime** | Ek kaynak, İngilizce (altyazılı / dublajlı) | HTML ve gömülü oynatıcı → HLS ve altyazı |
 | **TürkAnime arşivi** | Eski seriler, `alt+a` ile etkinleşir | AnimeDepo dizini → üçüncü taraf sunucular |
 
@@ -235,7 +238,8 @@ mpv penceresinde de geçerlidir: `n` sonraki bölüm, `b` önceki bölüm, `spac
 Hesap bağlandığında kitaplık, MyAnimeList listesinin yansıması olur:
 
 - Durum, puan, izlenen bölüm sayısı ve listeler iki yönlü eşitlenir. Listeler MyAnimeList'te etiket olarak saklanır.
-- **Çok sezonlu seri hizalaması:** AnimeciX sezonları tek başlık altında toplarken MyAnimeList her sezon için ayrı kayıt tutar. aniclitr, AniList `PREQUEL`/`SEQUEL` zincirini kullanarak izlenen sezonu ve bölümü ilgili MyAnimeList sezon kimliğiyle eşleştirir.
+- **Çok sezonlu seri hizalaması:** AnimeciX sezonları tek başlık altında toplarken MyAnimeList her sezon için ayrı kayıt tutar. aniclitr, AniList `PREQUEL`/`SEQUEL` zincirini kullanarak izlenen bölümü ait olduğu MyAnimeList kaydına yazar; örneğin AnimeciX'teki Bleach 2. sezon 30. bölüm, MAL'de *Sennen Kessen-hen* 3. kısmın 4. bölümü olur. Başlığın kendi kaydı dışındaki kayıtlara yazmadan önce seri başına bir kez sorulur; emin olunmayan durumlarda (site MAL'den fazla bölüm verirse) hiçbir şey yazılmaz.
+- **Elle eşleme:** Yanlış eşleşen bir seri için anime ekranında `r` → **MAL eşlemesini düzelt** ile AniList adaylarından doğrusu seçilir; seçim kalıcıdır.
 - **Tutarlı ilerleme ve tamamlanma:** MyAnimeList'te veya yerel kitaplıkta `Tamamlandı` olan bir serinin bölüm ilerlemesi otomatik olarak toplam bölüm sayısıyla uzlaştırılır; henüz tüm bölümleri yüklenmemiş güncel bir sezonda son mevcut bölümü bitirmek seriyi erken `Tamamlandı` durumuna geçirmez.
 - Kitaplıktaki durum değişiklikleri `ctrl+z` ile geri alınabilir; geri alma işlemi MyAnimeList'e de gönderilir.
 - Çevrimdışıyken yapılan değişiklikler bağlantı kurulduğunda gönderilir.
@@ -289,9 +293,11 @@ Ayarların tamamı uygulama içinden (`ctrl+o`) değiştirilebilir ve `%APPDATA%
 | `theme`, `theme_bg`, `cover_theme` | Tema, terminal arka planını boyama, kapaktan tema |
 | `ambient`, `intro`, `motion`, `sounds` | Arka plan efekti, logo efekti, animasyonlar, ses düzeyi |
 | `posters`, `graphics`, `speed_graph` | Kapak görselleri (`auto`, `sixel`, `blocks`), indirme hız grafiği |
-| `quality`, `preferred_host` | Kalite (`best`, `1080p`, `720p`, `480p`) ve tercih edilen sunucu (`auto`, `Tau Video`, `OK.ru`, `Google Drive`, `Sibnet`, `Voe`, `Vidmoly`) |
+| `quality` | Kalite: `best`, `1080p`, `720p`, `480p` |
 | `auto_skip`, `auto_next`, `fullscreen`, `cross_source_fallback` | Oynatma davranışı ve kaynaklar arası otomatik yedekleme |
-| `sources`, `legacy` | Etkin kaynaklar (`animecix`, `animetr`, `anihub`, `hianime`, `animedepo`), arşiv modu |
+| `sources`, `legacy` | Etkin kaynaklar (`animecix`, `animetr`, `anihub`, `sonanime`, `animim`, `hianime`, `animedepo`), arşiv modu. Ayarlarda kapalı bir kaynakta izlenen bir seri açılırsa önce açık kaynaklarda aranır; yalnızca orada varsa işaretlenerek açılır. |
+| `host_order`, `never_hosts`, `only_hosts` | Sunucu sırası ve otomatik seçim kuralları (**Ayarlar → Sunucu sırası**); `asla`/`yalnızca` uygun sunucu açılmazsa diğerlerine dönülür |
+| `season_sync` | Seri başına MAL sezon eşitlemesi kararı |
 | `mal_client_id` | MyAnimeList uygulama kimliği |
 | `opensubtitles_api_key` | Çevrimiçi altyazı (opensubtitles.com → profil → API consumers) |
 | `download_dir` | İndirme klasörü |

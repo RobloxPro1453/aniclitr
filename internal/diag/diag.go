@@ -63,10 +63,38 @@ var (
 	loadedDir string
 	data      = map[string]map[string]Op{}
 	lastSave  time.Time
+	// hours: provider → hour ("2006-01-02T15", UTC) → all its ops summed.
+	// The running totals in data never forget; these answer "lately".
+	hours = map[string]map[string]Op{}
+	now   = time.Now // tests move the clock
 )
+
+// keepHours bounds the hourly buckets (a day plus a margin).
+const keepHours = 48
+
+const hourKey = "2006-01-02T15"
 
 func filePath() string {
 	return filepath.Join(config.CacheDir(), "blame.json")
+}
+
+func hoursPath() string {
+	return filepath.Join(config.CacheDir(), "blame-saatlik.json")
+}
+
+// pruneHoursLocked drops buckets older than keepHours.
+func pruneHoursLocked() {
+	cut := now().UTC().Add(-keepHours * time.Hour).Format(hourKey)
+	for p, hs := range hours {
+		for h := range hs {
+			if h < cut {
+				delete(hs, h)
+			}
+		}
+		if len(hs) == 0 {
+			delete(hours, p)
+		}
+	}
 }
 
 func ensureLoadedLocked() {
@@ -82,6 +110,32 @@ func ensureLoadedLocked() {
 		if data == nil {
 			data = map[string]map[string]Op{}
 		}
+	}
+	hours = map[string]map[string]Op{}
+	if b, err := os.ReadFile(hoursPath()); err == nil {
+		_ = json.Unmarshal(b, &hours)
+		if hours == nil {
+			hours = map[string]map[string]Op{}
+		}
+	}
+	pruneHoursLocked()
+}
+
+// add folds one call into an Op.
+func (o *Op) add(ms int64, at time.Time, outcome Outcome) {
+	o.Calls++
+	o.TotalMs += ms
+	if ms > o.MaxMs {
+		o.MaxMs = ms
+	}
+	o.Last = at
+	switch outcome {
+	case Empty:
+		o.Empty++
+	case Error:
+		o.Errors++
+	case Timeout:
+		o.Timeouts++
 	}
 }
 
@@ -102,22 +156,23 @@ func Record(provider, op string, d time.Duration, outcome Outcome) {
 		ops = map[string]Op{}
 		data[provider] = ops
 	}
+	at := now().UTC()
 	cur := ops[op]
-	cur.Calls++
-	cur.TotalMs += ms
-	if ms > cur.MaxMs {
-		cur.MaxMs = ms
-	}
-	cur.Last = time.Now().UTC()
-	switch outcome {
-	case Empty:
-		cur.Empty++
-	case Error:
-		cur.Errors++
-	case Timeout:
-		cur.Timeouts++
-	}
+	cur.add(ms, at, outcome)
 	ops[op] = cur
+
+	hk := at.Format(hourKey)
+	if _, seen := hours[provider][hk]; !seen {
+		pruneHoursLocked() // a new hour: let the oldest go (before taking hs)
+	}
+	hs := hours[provider]
+	if hs == nil {
+		hs = map[string]Op{}
+		hours[provider] = hs
+	}
+	h := hs[hk]
+	h.add(ms, at, outcome)
+	hs[hk] = h
 
 	if time.Since(lastSave) >= 5*time.Second {
 		saveLocked()
@@ -130,7 +185,36 @@ func saveLocked() {
 		return
 	}
 	_ = config.WriteAtomic(filePath(), b)
+	if hb, err := json.Marshal(hours); err == nil {
+		_ = config.WriteAtomic(hoursPath(), hb)
+	}
 	lastSave = time.Now()
+}
+
+// Recent sums a provider's calls over the last `within` (hour resolution).
+func Recent(provider string, within time.Duration) Op {
+	mu.Lock()
+	defer mu.Unlock()
+	ensureLoadedLocked()
+	cut := now().UTC().Add(-within).Format(hourKey)
+	var sum Op
+	for h, o := range hours[provider] {
+		if h < cut {
+			continue
+		}
+		sum.Calls += o.Calls
+		sum.Errors += o.Errors
+		sum.Empty += o.Empty
+		sum.Timeouts += o.Timeouts
+		sum.TotalMs += o.TotalMs
+		if o.MaxMs > sum.MaxMs {
+			sum.MaxMs = o.MaxMs
+		}
+		if o.Last.After(sum.Last) {
+			sum.Last = o.Last
+		}
+	}
+	return sum
 }
 
 // Flush immediately persists the current blame snapshot to CacheDir/blame.json.
@@ -165,34 +249,20 @@ func Reset() {
 	loaded = true
 	loadedDir = config.CacheDir()
 	data = map[string]map[string]Op{}
+	hours = map[string]map[string]Op{}
 	saveLocked()
 }
 
 // SummaryLine returns a compact Turkish summary for a provider (for the health screen).
 func SummaryLine(provider string) string {
-	snap := Snapshot()
-	ops := snap[provider]
-	if len(ops) == 0 {
+	o := Recent(provider, 24*time.Hour)
+	if o.Calls == 0 {
 		return ""
 	}
-	var calls, errs, empty, timeouts int
-	var totalMs int64
-	for _, o := range ops {
-		calls += o.Calls
-		errs += o.Errors
-		empty += o.Empty
-		timeouts += o.Timeouts
-		totalMs += o.TotalMs
+	if pct := o.FailPct(); pct > 0 {
+		return fmt.Sprintf("son 24 sa: %d çağrı · %%%d hata/boş · ort. %s", o.Calls, pct, fmtMs(o.AvgMs()))
 	}
-	if calls == 0 {
-		return ""
-	}
-	avg := totalMs / int64(calls)
-	badPct := ((errs + empty + timeouts) * 100) / calls
-	if badPct > 0 {
-		return fmt.Sprintf("%d çağrı · %%%d hata/boş · ort. %d ms", calls, badPct, avg)
-	}
-	return fmt.Sprintf("%d çağrı · ort. %d ms", calls, avg)
+	return fmt.Sprintf("son 24 sa: %d çağrı · ort. %s", o.Calls, fmtMs(o.AvgMs()))
 }
 
 // FormatReport renders a human-readable Turkish table for `aniclitr doctor --blame`.
