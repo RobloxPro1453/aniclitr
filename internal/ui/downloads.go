@@ -119,6 +119,11 @@ type downloads struct {
 	speedHist  []float64
 	jobSpeeds  map[int][]float64
 	lastSample time.Time
+
+	diskFree  int64
+	diskTotal int64
+	diskOK    bool
+	diskAt    time.Time
 }
 
 func newDownloads() *downloads { return &downloads{confirm: -1, jobSpeeds: map[int][]float64{}} }
@@ -284,7 +289,16 @@ func (d *downloads) view(a *App, w, h int) string {
 		tools = append(tools, stOK.Render("●")+stMuted.Render(" yt-dlp"))
 	}
 	foot := stMuted.Render("klasör ") + stSub.Render(truncate(a.dl.Dir(), inner/2)) + stFaint.Render("   ") + strings.Join(tools, "  ")
-	bodyH := h - len(out) - 1
+	d.refreshDisk(a.dl.Dir())
+	storageLine := ""
+	if h >= 18 && d.diskOK && d.diskTotal > 0 {
+		storageLine = formatStorageBar(bytes, d.diskFree, d.diskTotal, inner, a.nova())
+	}
+	extra := 1
+	if storageLine != "" {
+		extra++
+	}
+	bodyH := max(5, h-len(out)-extra)
 	var body []string
 	iw := inner - 4
 	qjobs := a.dl.QueueJobs()
@@ -307,11 +321,95 @@ func (d *downloads) view(a *App, w, h int) string {
 		title := ic("library") + " çevrimdışı kitaplık"
 		out = append(out, panel(title, d.libView(a, inner-4, bodyH-2), inner, bodyH, true, cAccent, fmt.Sprintf("%d anime · v: sıra", len(offlineShelf(a))))...)
 	}
+	if storageLine != "" {
+		out = append(out, storageLine)
+	}
 	out = append(out, foot)
 	for i := range out {
 		out[i] = strings.Repeat(" ", pad) + out[i]
 	}
 	return strings.Join(out, "\n")
+}
+
+// refreshDisk queries volume free/total space at most once every 2 seconds.
+func (d *downloads) refreshDisk(dir string) {
+	if time.Since(d.diskAt) < 2*time.Second && !d.diskAt.IsZero() {
+		return
+	}
+	d.diskFree, d.diskTotal, d.diskOK = download.DiskSpace(dir)
+	d.diskAt = time.Now()
+}
+
+// formatStorageBar renders a single-line disk usage bar showing aniclitr's
+// downloads (accent), other files on disk (muted), and remaining free space.
+func formatStorageBar(appBytes, free, total int64, w int, nova bool) string {
+	if total <= 0 || w < 30 {
+		return ""
+	}
+	if free < 0 {
+		free = 0
+	}
+	if free > total {
+		free = total
+	}
+	if appBytes < 0 {
+		appBytes = 0
+	}
+	usedTotal := total - free
+	otherUsed := usedTotal - appBytes
+	if otherUsed < 0 {
+		otherUsed = 0
+	}
+
+	barW := clamp(w/4, 12, 28)
+	appCells := int(float64(appBytes) / float64(total) * float64(barW))
+	if appBytes > 0 && appCells == 0 {
+		appCells = 1
+	}
+	if appCells > barW {
+		appCells = barW
+	}
+	otherCells := int(float64(otherUsed) / float64(total) * float64(barW))
+	if appCells+otherCells > barW {
+		otherCells = barW - appCells
+	}
+	freeCells := barW - appCells - otherCells
+
+	bar := fg(cAccent).Render(strings.Repeat("━", appCells)) +
+		fg(cMuted).Render(strings.Repeat("━", otherCells)) +
+		stFaint.Render(strings.Repeat("─", freeCells))
+
+	freeColor := cSub
+	switch {
+	case free < 2<<30:
+		freeColor = cErr
+	case free < 10<<30 || float64(free)/float64(total) < 0.10:
+		freeColor = cWarn
+	}
+
+	lbl := stMuted.Render("depolama")
+	if nova {
+		lbl = fg(cSub).Bold(true).Render("depolama")
+	}
+	left := lbl + "  " + bar
+
+	appText := "0 B"
+	if appBytes > 0 {
+		appText = humanSize(appBytes)
+	}
+	var right string
+	if w >= 92 {
+		right = fg(cAccent).Bold(appBytes > 0).Render(appText) +
+			stMuted.Render(" aniclitr") +
+			stFaint.Render("  ·  ") +
+			fg(freeColor).Bold(freeColor != cSub).Render(humanSize(free)+" boş") +
+			stFaint.Render(" / "+humanSize(total))
+	} else {
+		right = fg(cAccent).Bold(appBytes > 0).Render(appText) +
+			stFaint.Render(" · ") +
+			fg(freeColor).Bold(freeColor != cSub).Render(humanSize(free)+" boş")
+	}
+	return row2(left, right, w)
 }
 
 // item: two lines + a spacer: what / where it is, then the progress bar.

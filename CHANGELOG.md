@@ -2,6 +2,11 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [Yayınlanmamış]
+
+### Eklenenler
+- **İndirilenler depolama alanı göstergesi:** İndirilenler ekranında (`ctrl+d`) hem `aniclitr`'in diskte kapladığı alanı hem de sürücüdeki kalan boş alanı renkli bir çubukla gösterir (düşük disk alanında uyarı rengiyle); Windows, Linux ve macOS uyumludur.
+
 ## [0.16.1]
 
 ### Eklenenler
