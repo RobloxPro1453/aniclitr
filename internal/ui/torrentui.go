@@ -155,6 +155,7 @@ func (s *torrentScreen) search(a *App, q string) tea.Cmd {
 	s.busy = true
 	s.err = nil
 	s.queried = q
+	a.syncBrowseDiscord()
 	s.cur, s.off = 0, 0
 	t := torrentTabs[s.tab]
 	flt := t.filter

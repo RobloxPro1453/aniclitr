@@ -104,6 +104,7 @@ type playing struct {
 	lastSyncPos     float64
 	lastSyncPaused  bool
 	lastRPCAt       time.Time
+	lastRPCPos      float64
 	lastRPCPaused   bool
 	rpcDurSet       bool
 }
@@ -370,11 +371,17 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 			p.lastSave = time.Now()
 			p.save(a, false)
 		}
-		// Refresh Discord Rich Presence immediately on pause/resume toggle (never
-		// dropping presence while paused!), or when duration first arrives.
+		// Refresh Discord Rich Presence immediately on pause/resume toggle,
+		// when duration first arrives, or after any seek/OP-ED jump (>4s drift).
 		pauseChanged := ev.Paused != p.lastRPCPaused
-		durArrived := !p.rpcDurSet && ev.Dur > 0 && time.Since(p.lastRPCAt) > 2*time.Second
-		if a.rpc != nil && (pauseChanged || durArrived) {
+		durArrived := !p.rpcDurSet && ev.Dur > 0 && time.Since(p.lastRPCAt) > 1500*time.Millisecond
+		sp := a.playSpeed
+		if sp <= 0 {
+			sp = 1.0
+		}
+		expectedPos := p.lastRPCPos + time.Since(p.lastRPCAt).Seconds()*sp
+		seeked := !ev.Paused && !p.lastRPCAt.IsZero() && ev.Dur > 0 && math.Abs(ev.Pos-expectedPos) > 4.0 && time.Since(p.lastRPCAt) > 2*time.Second
+		if a.rpc != nil && (pauseChanged || durArrived || seeked) {
 			p.updateDiscord(a, false)
 		}
 		// Sleep timer (time-based expiration)
@@ -549,14 +556,21 @@ func (p *playing) updateDiscord(a *App, initial bool) {
 		p.rpcDurSet = true
 	}
 	p.lastRPCAt = now
+	p.lastRPCPos = p.pos
 	p.lastRPCPaused = p.paused
 	_ = initial
 	a.lastRPCKey = "" // allow browse RPC to refresh cleanly once playback closes
+	largeImg, smallImg, smallTxt := p.an.Poster, discord.DefaultIconURL, "aniclitr"
+	if largeImg == "" {
+		largeImg, smallImg, smallTxt = discord.DefaultIconURL, "", ""
+	}
 	a.rpc.SetActivity(discord.Activity{
 		Details:    p.an.Title,
 		State:      state,
-		LargeImage: p.an.Poster,
-		LargeText:  "aniclitr",
+		LargeImage: largeImg,
+		LargeText:  p.an.Title,
+		SmallImage: smallImg,
+		SmallText:  smallTxt,
 		Start:      start,
 		End:        end,
 		Paused:     p.paused,

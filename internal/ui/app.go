@@ -500,21 +500,39 @@ func (a *App) browseDiscordActivity() (string, discord.Activity, bool) {
 	case *playing:
 		return "", discord.Activity{}, false // playing owns Discord presence
 	case *animeScreen:
-		key := "anime:" + s.an.Key()
+		img := s.an.Poster
+		if img == "" {
+			if d, ok := a.details[s.an.Key()]; ok && d.Poster != "" {
+				img = d.Poster
+			}
+		}
+		largeImg, smallImg, smallTxt := img, discord.DefaultIconURL, "aniclitr"
+		if largeImg == "" {
+			largeImg, smallImg, smallTxt = discord.DefaultIconURL, "", ""
+		}
+		key := "anime:" + s.an.Key() + ":" + largeImg
 		return key, discord.Activity{
 			Details:    s.an.Title,
 			State:      "Bölümlere göz atıyor",
-			LargeImage: s.an.Poster,
-			LargeText:  "aniclitr",
+			LargeImage: largeImg,
+			LargeText:  s.an.Title,
+			SmallImage: smallImg,
+			SmallText:  smallTxt,
 			Start:      a.rpcBootAt,
 		}, true
 	case *picker:
+		largeImg, smallImg, smallTxt := s.an.Poster, discord.DefaultIconURL, "aniclitr"
+		if largeImg == "" {
+			largeImg, smallImg, smallTxt = discord.DefaultIconURL, "", ""
+		}
 		key := fmt.Sprintf("pick:%s:%d:%d", s.an.Key(), s.ep.Season, s.ep.Number)
 		return key, discord.Activity{
 			Details:    s.an.Title,
 			State:      fmt.Sprintf("Bölüm %s · kaynak seçiyor", s.ep.Num()),
-			LargeImage: s.an.Poster,
-			LargeText:  "aniclitr",
+			LargeImage: largeImg,
+			LargeText:  s.an.Title,
+			SmallImage: smallImg,
+			SmallText:  smallTxt,
 			Start:      a.rpcBootAt,
 		}, true
 	case *results:
@@ -524,10 +542,11 @@ func (a *App) browseDiscordActivity() (string, discord.Activity, bool) {
 			st = fmt.Sprintf("“%s” arıyor", q)
 		}
 		return "results:" + q, discord.Activity{
-			Details:   "aniclitr",
-			State:     st,
-			LargeText: "aniclitr",
-			Start:     a.rpcBootAt,
+			Details:    "aniclitr",
+			State:      st,
+			LargeImage: discord.DefaultIconURL,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
 		}, true
 	case *torrentScreen:
 		st := "Nyaa.si · torrent arıyor"
@@ -535,54 +554,98 @@ func (a *App) browseDiscordActivity() (string, discord.Activity, bool) {
 			st = fmt.Sprintf("Torrent · “%s”", q)
 		}
 		return "torrent:" + st, discord.Activity{
-			Details:   "aniclitr",
-			State:     st,
-			LargeText: "aniclitr",
-			Start:     a.rpcBootAt,
+			Details:    "aniclitr",
+			State:      st,
+			LargeImage: discord.DefaultIconURL,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
 		}, true
 	case *discover:
 		return "discover", discord.Activity{
-			Details:   "aniclitr",
-			State:     "Keşfet · yeni anime arıyor",
-			LargeText: "aniclitr",
-			Start:     a.rpcBootAt,
+			Details:    "aniclitr",
+			State:      "Keşfet · yeni anime arıyor",
+			LargeImage: discord.DefaultIconURL,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
+		}, true
+	case *feedScreen:
+		return "feed", discord.Activity{
+			Details:    "aniclitr",
+			State:      "Yeni çıkan bölümlere bakıyor",
+			LargeImage: discord.DefaultIconURL,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
 		}, true
 	case *library:
 		st := fmt.Sprintf("Kitaplığına bakıyor (%d seri)", len(a.lib.All()))
 		return "library:" + st, discord.Activity{
-			Details:   "aniclitr",
-			State:     st,
-			LargeText: "aniclitr",
-			Start:     a.rpcBootAt,
+			Details:    "aniclitr",
+			State:      st,
+			LargeImage: discord.DefaultIconURL,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
 		}, true
 	case *downloads:
 		return "downloads", discord.Activity{
-			Details:   "aniclitr",
-			State:     "Çevrimdışı indirilenlere bakıyor",
-			LargeText: "aniclitr",
-			Start:     a.rpcBootAt,
+			Details:    "aniclitr",
+			State:      "Çevrimdışı indirilenlere bakıyor",
+			LargeImage: discord.DefaultIconURL,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
 		}, true
 	case *wrappedScreen:
 		return "wrapped", discord.Activity{
-			Details:   "aniclitr",
-			State:     "Anime Özetine bakıyor",
-			LargeText: "aniclitr",
-			Start:     a.rpcBootAt,
+			Details:    "aniclitr",
+			State:      "Anime Özetine bakıyor",
+			LargeImage: discord.DefaultIconURL,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
+		}, true
+	case *settings:
+		return "settings", discord.Activity{
+			Details:    "aniclitr",
+			State:      "Ayarları düzenliyor",
+			LargeImage: discord.DefaultIconURL,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
+		}, true
+	case *partyScreen:
+		return "party", discord.Activity{
+			Details:    "aniclitr",
+			State:      "Birlikte İzle odasında",
+			LargeImage: discord.DefaultIconURL,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
+		}, true
+	case *malScreen, *aniListScreen:
+		return "sync", discord.Activity{
+			Details:    "aniclitr",
+			State:      "Hesap eşitliyor",
+			LargeImage: discord.DefaultIconURL,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
 		}, true
 	case *charactersScreen:
+		largeImg, smallImg, smallTxt := s.an.Poster, discord.DefaultIconURL, "aniclitr"
+		if largeImg == "" {
+			largeImg, smallImg, smallTxt = discord.DefaultIconURL, "", ""
+		}
 		return "chars:" + s.an.Key(), discord.Activity{
 			Details:    s.an.Title,
 			State:      "Karakterler ve kadroya bakıyor",
-			LargeImage: s.an.Poster,
-			LargeText:  "aniclitr",
+			LargeImage: largeImg,
+			LargeText:  s.an.Title,
+			SmallImage: smallImg,
+			SmallText:  smallTxt,
 			Start:      a.rpcBootAt,
 		}, true
 	default:
 		return "home", discord.Activity{
-			Details:   "aniclitr",
-			State:     "Ana sayfada geziniyor",
-			LargeText: "aniclitr",
-			Start:     a.rpcBootAt,
+			Details:    "aniclitr",
+			State:      "Ana sayfada geziniyor",
+			LargeImage: discord.DefaultIconURL,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
 		}, true
 	}
 }
@@ -1150,6 +1213,9 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			delete(a.details, m.key)
 		} else {
 			a.details[m.key] = m.anime
+			if _, ok := a.top().(*animeScreen); ok {
+				a.syncBrowseDiscord()
+			}
 		}
 	case episodesMsg:
 		if m.err != nil {

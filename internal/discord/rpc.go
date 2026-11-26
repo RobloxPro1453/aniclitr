@@ -1,6 +1,10 @@
 // Package discord provides zero-dependency Discord Rich Presence over the
 // local Discord IPC socket/named pipe. When Discord is not running or RPC is
 // disabled, every call is a fast silent no-op.
+//
+// Updates are serialized on a single worker goroutine with latest-wins
+// coalescing so rapid navigation or pause toggles can never arrive out of
+// order, and dropped pipes automatically reconnect once.
 package discord
 
 import (
@@ -12,15 +16,20 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"aniclitr/internal/logx"
 )
 
-// DefaultAppID is a registered public Discord Application ID for mpv playback
-// so Rich Presence works out-of-the-box with zero user configuration.
-// Override via ANICLITR_DISCORD_APP_ID to use a custom Discord application.
+// DefaultAppID is a registered public Discord Application ID so Rich Presence
+// works out-of-the-box with zero user configuration.
+// Override via ANICLITR_DISCORD_APP_ID or config.json ("discord_app_id").
 const DefaultAppID = "448016723057049601"
+
+// DefaultIconURL is the hosted aniclitr emblem used on browse screens (and as
+// the corner small badge alongside anime covers while watching).
+const DefaultIconURL = "https://raw.githubusercontent.com/RobloxPro1453/aniclitr/main/docs/media/icon.png"
 
 const (
 	opHandshake = 0
@@ -30,29 +39,47 @@ const (
 	opPong      = 4
 )
 
-// Activity describes the currently playing anime shown in Discord.
+// Activity describes the currently playing anime or browsing screen shown in Discord.
 type Activity struct {
 	Details    string
 	State      string
 	LargeImage string
 	LargeText  string
+	SmallImage string
+	SmallText  string
 	Start      time.Time
 	End        time.Time
 	Paused     bool
 }
 
-// Client manages a lazy local IPC connection to Discord.
+// Client manages a lazy, strictly-ordered local IPC connection to Discord.
+// conn is owned exclusively by the single worker goroutine (zero lock contention
+// or Close deadlocks during blocking pipe I/O).
 type Client struct {
 	mu      sync.Mutex
 	enabled bool
 	appID   string
-	conn    net.Conn
 	lastErr string
+
+	// conn is touched only by loop()
+	conn net.Conn
+
+	// Serialized latest-wins worker state (guarded by mu)
+	wake      chan struct{}
+	done      chan struct{}
+	started   bool
+	closed    bool
+	pending   *Activity
+	wantClear bool
 }
 
 // New creates a Discord RPC client (does not connect until SetActivity is called).
 // Optional customAppID overrides the built-in public ID (ANICLITR_DISCORD_APP_ID wins).
+// Under `go test`, real IPC dialing stays disabled so tests never spam a live Discord client.
 func New(enabled bool, customAppID ...string) *Client {
+	if testing.Testing() {
+		enabled = false
+	}
 	id := strings.TrimSpace(os.Getenv("ANICLITR_DISCORD_APP_ID"))
 	if id == "" && len(customAppID) > 0 {
 		id = strings.TrimSpace(customAppID[0])
@@ -60,7 +87,27 @@ func New(enabled bool, customAppID ...string) *Client {
 	if id == "" {
 		id = DefaultAppID
 	}
-	return &Client{enabled: enabled, appID: id}
+	return &Client{
+		enabled: enabled,
+		appID:   id,
+		wake:    make(chan struct{}, 1),
+		done:    make(chan struct{}),
+	}
+}
+
+func (c *Client) ensureWorkerLocked() {
+	if c.started || c.closed {
+		return
+	}
+	c.started = true
+	go c.loop()
+}
+
+func (c *Client) signalLocked() {
+	select {
+	case c.wake <- struct{}{}:
+	default:
+	}
 }
 
 // LastError returns the most recent IPC error (empty when connected cleanly).
@@ -70,96 +117,182 @@ func (c *Client) LastError() string {
 	return c.lastErr
 }
 
+func (c *Client) setLastErr(s string) {
+	c.mu.Lock()
+	c.lastErr = s
+	c.mu.Unlock()
+}
+
 // SetEnabled toggles Discord Rich Presence; turning it off clears any active presence.
 func (c *Client) SetEnabled(on bool) {
+	if testing.Testing() {
+		on = false
+	}
 	c.mu.Lock()
 	was := c.enabled
 	c.enabled = on
-	c.mu.Unlock()
 	if was && !on {
-		c.Clear()
+		c.pending = nil
+		c.wantClear = true
+		c.ensureWorkerLocked()
+		c.signalLocked()
 	}
+	c.mu.Unlock()
 }
 
-// SetActivity updates the user's Discord presence asynchronously.
-// Automatically reconnects & retries once if the existing IPC pipe dropped so
-// presence never vanishes on pause or screen transitions.
+// SetActivity queues the latest Discord presence update (non-blocking, strictly ordered).
 func (c *Client) SetActivity(act Activity) {
-	go func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		if !c.enabled {
-			return
-		}
-		payload := buildActivityFrame(os.Getpid(), act, fmt.Sprintf("aniclitr-%d", time.Now().UnixNano()))
-		for attempt := 0; attempt < 2; attempt++ {
-			if err := c.ensureConnectedLocked(); err != nil {
-				c.lastErr = err.Error()
-				if attempt == 1 {
-					logx.Errorf("discord rpc bağlanamadı: %v", err)
-				}
-				return
-			}
-			if err := writePacket(c.conn, opFrame, payload); err != nil {
-				c.lastErr = err.Error()
-				c.closeLocked()
-				continue
-			}
-			op, reply, err := readPacket(c.conn)
-			if err != nil {
-				c.lastErr = err.Error()
-				c.closeLocked()
-				continue
-			}
-			if op == opClose || isDiscordError(reply) {
-				c.lastErr = strings.TrimSpace(string(reply))
-				logx.Errorf("discord rpc etkinlik reddedildi (op=%d): %s", op, c.lastErr)
-				if op == opClose {
-					c.closeLocked()
-					continue
-				}
-				return
-			}
-			c.lastErr = ""
-			return
-		}
-	}()
+	c.mu.Lock()
+	if !c.enabled || c.closed {
+		c.mu.Unlock()
+		return
+	}
+	cp := act
+	c.pending = &cp
+	c.wantClear = false
+	c.ensureWorkerLocked()
+	c.signalLocked()
+	c.mu.Unlock()
 }
 
 // Clear removes the Rich Presence activity from Discord.
 func (c *Client) Clear() {
-	go func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		if c.conn == nil {
-			return
-		}
-		frame := map[string]any{
-			"cmd":   "SET_ACTIVITY",
-			"args":  map[string]any{"pid": os.Getpid()},
-			"nonce": fmt.Sprintf("aniclitr-clear-%d", time.Now().UnixNano()),
-		}
-		b, _ := json.Marshal(frame)
-		_ = writePacket(c.conn, opFrame, b)
-		c.closeLocked()
-	}()
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return
+	}
+	c.pending = nil
+	c.wantClear = true
+	if c.started {
+		c.signalLocked()
+	}
+	c.mu.Unlock()
 }
 
-// Close closes the IPC connection cleanly.
+// Close clears any active presence and stops the worker cleanly (bounded wait, deadlock-free).
 func (c *Client) Close() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.closeLocked()
+	if c.closed {
+		c.mu.Unlock()
+		return
+	}
+	c.closed = true
+	c.pending = nil
+	c.wantClear = true
+	wasStarted := c.started
+	c.signalLocked()
+	c.mu.Unlock()
+
+	if wasStarted {
+		select {
+		case <-c.done:
+		case <-time.After(450 * time.Millisecond):
+		}
+	}
 }
 
-func (c *Client) closeLocked() {
+func (c *Client) loop() {
+	defer close(c.done)
+	for {
+		<-c.wake
+		for {
+			c.mu.Lock()
+			act := c.pending
+			clearReq := c.wantClear
+			closed := c.closed
+			enabled := c.enabled
+			c.pending = nil
+			c.wantClear = false
+			c.mu.Unlock()
+
+			if clearReq {
+				c.doClear()
+			} else if act != nil && enabled && !closed {
+				c.doSet(*act)
+			}
+			if closed {
+				c.closeConn()
+				return
+			}
+
+			c.mu.Lock()
+			more := c.pending != nil || c.wantClear || c.closed
+			c.mu.Unlock()
+			if !more {
+				break
+			}
+		}
+	}
+}
+
+func (c *Client) doSet(act Activity) {
+	payload := buildActivityFrame(os.Getpid(), act, fmt.Sprintf("aniclitr-%d", time.Now().UnixNano()))
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := c.ensureConnected(); err != nil {
+			c.setLastErr(err.Error())
+			if attempt == 1 {
+				logx.Errorf("discord rpc bağlanamadı: %v", err)
+			}
+			return
+		}
+		if err := writePacket(c.conn, opFrame, payload); err != nil {
+			c.setLastErr(err.Error())
+			c.closeConn()
+			continue
+		}
+		op, reply, err := readPacket(c.conn)
+		if err != nil {
+			c.setLastErr(err.Error())
+			c.closeConn()
+			continue
+		}
+		if op == opPing {
+			_ = writePacket(c.conn, opPong, reply)
+			op, reply, err = readPacket(c.conn)
+			if err != nil {
+				c.setLastErr(err.Error())
+				c.closeConn()
+				continue
+			}
+		}
+		if op == opClose || isDiscordError(reply) {
+			msg := strings.TrimSpace(string(reply))
+			c.setLastErr(msg)
+			logx.Errorf("discord rpc etkinlik reddedildi (op=%d): %s", op, msg)
+			if op == opClose {
+				c.closeConn()
+				continue
+			}
+			return
+		}
+		c.setLastErr("")
+		return
+	}
+}
+
+func (c *Client) doClear() {
+	if c.conn == nil {
+		return
+	}
+	frame := map[string]any{
+		"cmd":   "SET_ACTIVITY",
+		"args":  map[string]any{"pid": os.Getpid()},
+		"nonce": fmt.Sprintf("aniclitr-clear-%d", time.Now().UnixNano()),
+	}
+	b, _ := json.Marshal(frame)
+	_ = writePacket(c.conn, opFrame, b)
+	c.closeConn()
+}
+
+func (c *Client) closeConn() {
 	if c.conn != nil {
 		_ = c.conn.Close()
 		c.conn = nil
 	}
 }
 
-func (c *Client) ensureConnectedLocked() error {
+func (c *Client) ensureConnected() error {
 	if c.conn != nil {
 		return nil
 	}
@@ -237,6 +370,13 @@ func buildActivityFrame(pid int, act Activity, nonce string) []byte {
 	}
 	if txt := strings.TrimSpace(act.LargeText); txt != "" {
 		assets["large_text"] = clampDiscordStr(txt, 2, 128)
+	}
+	simg := strings.TrimSpace(act.SmallImage)
+	if strings.HasPrefix(simg, "https://") || strings.HasPrefix(simg, "http://") {
+		assets["small_image"] = simg
+		if stxt := strings.TrimSpace(act.SmallText); stxt != "" {
+			assets["small_text"] = clampDiscordStr(stxt, 2, 128)
+		}
 	}
 	if len(assets) > 0 {
 		body["assets"] = assets

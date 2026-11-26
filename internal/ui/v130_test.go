@@ -101,8 +101,12 @@ func TestBrowseDiscordPresenceCoversScreens(t *testing.T) {
 		t.Fatalf("unexpected search browse activity: ok=%v act=%+v", ok, act)
 	}
 	a.stack = append(a.stack, newAnime(source.Anime{Source: "animecix", ID: "1", Title: "Another", Poster: "https://example.com/a.jpg"}, nil, 1, 0))
-	if _, act, ok := a.browseDiscordActivity(); !ok || act.Details != "Another" || act.LargeImage != "https://example.com/a.jpg" {
+	if _, act, ok := a.browseDiscordActivity(); !ok || act.Details != "Another" || act.LargeImage != "https://example.com/a.jpg" || act.SmallImage == "" {
 		t.Fatalf("unexpected anime browse activity: ok=%v act=%+v", ok, act)
+	}
+	a.stack = append(a.stack, newSettings())
+	if _, act, ok := a.browseDiscordActivity(); !ok || !strings.Contains(act.State, "Ayarları") || act.LargeImage == "" {
+		t.Fatalf("unexpected settings browse activity: ok=%v act=%+v", ok, act)
 	}
 }
 

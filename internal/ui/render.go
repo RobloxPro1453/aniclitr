@@ -34,8 +34,11 @@ func (a *App) selfPaintSync(w io.Writer) {
 	a.pt = &painter{sync: w}
 }
 
-// Close flushes the last frame and stops the writer.
+// Close flushes the last frame, stops the writer, and clears Discord RPC cleanly.
 func (a *App) Close() {
+	if a.rpc != nil {
+		a.rpc.Close()
+	}
 	if a.pt != nil && a.pt.tw != nil {
 		a.pt.tw.Close()
 	}

@@ -135,6 +135,10 @@ func newSettings() *settings {
 				a.cfg.DiscordRPC = !a.cfg.DiscordRPC
 				if a.rpc != nil {
 					a.rpc.SetEnabled(a.cfg.DiscordRPC)
+					if a.cfg.DiscordRPC {
+						a.lastRPCKey = ""
+						a.syncBrowseDiscord()
+					}
 				}
 			},
 		},
