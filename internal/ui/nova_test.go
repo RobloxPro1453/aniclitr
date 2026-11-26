@@ -3,6 +3,8 @@ package ui
 import (
 	"image"
 	"image/color"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -185,5 +187,75 @@ func TestNovaBandPlain(t *testing.T) {
 	}
 	if fmtWatch(45*60) != "45 dk" || fmtWatch(130*60) != "2 sa 10 dk" {
 		t.Fatal("watch time wording")
+	}
+}
+
+func TestNovaAnimeWideAndCompact(t *testing.T) {
+	a := novaApp(t)
+	an := source.Anime{
+		Source:      "animecix",
+		ID:          "100",
+		Title:       "Sousou no Frieren",
+		AltTitle:    "Frieren: Beyond Journey's End",
+		Kind:        "TV",
+		Year:        2023,
+		Genres:      []string{"Macera", "Dram", "Fantastik"},
+		Description: "Büyücü Frieren uzun bir yolculuğa çıkar ve insanları tanımaya çalışır.",
+		MalID:       52991,
+	}
+	a.details[an.Key()] = an
+	a.lib.Set(an, func(it *store.Item) {
+		it.Status = store.Watching
+		it.Score = 10
+		it.Lists = []string{"favoriler"}
+	})
+	a.hist.Update(an, func(e *store.Entry) {
+		e.Season, e.Episode = 1, 2
+		e.Watched[store.EpKey(1, 1)] = true
+		e.Progress[store.EpKey(1, 2)] = 45
+		e.Notes = map[string]string{store.EpKey(1, 2): "Harika bölüm notu"}
+	})
+	ep1File := filepath.Join(t.TempDir(), "S01E01.mp4")
+	if err := os.WriteFile(ep1File, []byte("video"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a.dl.Preview(download.Job{
+		ID: 42, Source: "animecix", AnimeID: "100", Title: an.Title,
+		Season: 1, Episode: 1, State: download.Done, Total: 300 << 20, Path: ep1File,
+	})
+	eps := []source.Episode{
+		{ID: "1", Season: 1, Number: 1, Title: "Yolculuğun Sonu"},
+		{ID: "2", Season: 1, Number: 2, Title: "Büyü Olmasına Gerek Yoktu"},
+		{ID: "3", Season: 1, Number: 3, Title: "Öldürme Büyüsü"},
+	}
+	sc := newAnime(an, nil, 1, 2)
+	sc.ensure(a)
+	a.episodes[epKey(sc.an, 1)] = eps
+	sc.cur = 1
+
+	// Wide layout: showcase card + episode stage + badges + note.
+	wide := sc.view(a, 140, 36)
+	linesW := strings.Split(wide, "\n")
+	if len(linesW) != 36 {
+		t.Fatalf("wide nova anime: got %d lines, want 36", len(linesW))
+	}
+	plainW := ansi.Strip(wide)
+	for _, want := range []string{"Sousou no Frieren", "izliyor", "Kadro", "1/3 izlendi", "↓1", "kaldığın yer", "Harika bölüm notu"} {
+		if !strings.Contains(plainW, want) {
+			t.Errorf("wide nova anime missing %q:\n%s", want, plainW)
+		}
+	}
+
+	// Compact layout (80x24): folds cleanly into 2-line hero + episode stage.
+	narrow := sc.view(a, 80, 21)
+	linesN := strings.Split(narrow, "\n")
+	if len(linesN) != 21 {
+		t.Fatalf("compact nova anime: got %d lines, want 21", len(linesN))
+	}
+	plainN := ansi.Strip(narrow)
+	for _, want := range []string{"Sousou no Frieren", "1/3 izlendi", "Yolculuğun Sonu"} {
+		if !strings.Contains(plainN, want) {
+			t.Errorf("compact nova anime missing %q:\n%s", want, plainN)
+		}
 	}
 }

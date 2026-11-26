@@ -786,6 +786,9 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 }
 
 func (s *animeScreen) view(a *App, w, ht int) string {
+	if a.nova() {
+		return s.novaView(a, w, ht)
+	}
 	pad := 2
 	inner := w - pad*2
 	var meta []string

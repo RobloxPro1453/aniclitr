@@ -5,6 +5,7 @@ Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları 
 ## [Yayınlanmamış]
 
 ### Eklenenler
+- **Nova Anime ekranı:** Yeni arayüzde (`Ayarlar → Görünüm → Arayüz → yeni`) anime sayfası sol vitrin kartı (kapak, kitaplık durumu, türler, tuş kapaklı hızlı işlemler ve özet) ile sağ odaklı bölüm sahnesine ayrılır; dar terminallerde iki satırlı özet başlığa katlanır.
 - **İndirilenler depolama alanı göstergesi:** İndirilenler ekranında (`ctrl+d`) hem `aniclitr`'in diskte kapladığı alanı hem de sürücüdeki kalan boş alanı renkli bir çubukla gösterir (düşük disk alanında uyarı rengiyle); Windows, Linux ve macOS uyumludur.
 
 ## [0.16.1]
