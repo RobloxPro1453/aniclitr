@@ -38,37 +38,52 @@ const (
 	EvEnded
 )
 
+// Chapter is an MKV/MP4 chapter marker reported by mpv.
+type Chapter struct {
+	Title string
+	Start float64
+}
+
 // Event is sent to the UI.
 type Event struct {
-	Kind     EventKind
-	Pos      float64
-	Dur      float64
-	Speed    float64
-	SubDelay float64
-	VideoH   int
-	Volume   int
-	Muted    bool
-	Paused   bool
-	Text     string // skipped segment label
-	Action   string // EvEnded: "next", "prev"; EvAction: live in-mpv command
-	EOF      bool   // file played to the end
-	Err      error
+	Kind       EventKind
+	Pos        float64
+	Dur        float64
+	Speed      float64
+	SubDelay   float64
+	VideoH     int
+	BitrateBps int64
+	Buffering  bool
+	Volume     int
+	Muted      bool
+	Paused     bool
+	Text       string // skipped segment label
+	Action     string // EvEnded: "next", "prev"; EvAction: live in-mpv command
+	EOF        bool   // file played to the end
+	Err        error
 }
 
 // Options configure one playback.
 type Options struct {
-	Title      string
-	Stream     *source.Stream
-	Quality    source.Quality
-	Start      float64
-	Speed      float64
-	Fullscreen bool
-	UpscaleRes string // "", "kapalı", "otomatik", "1080p", "2k", "4k" (non-AI AMD FSR)
-	Anime4K    string // "", "kapalı", "hızlı", "cam", "sinema" (Anime4K v4 CNN)
-	FrameGen   string // "", "kapalı", "akıcı", "60fps" (mpv GPU smooth motion)
-	Segments   []aniskip.Segment
-	ExtraArgs  []string
-	MpvPath    string
+	Title           string
+	Stream          *source.Stream
+	Quality         source.Quality
+	Start           float64
+	Speed           float64
+	Fullscreen      bool
+	UpscaleRes      string // "", "kapalı", "otomatik", "1080p", "2k", "4k" (non-AI AMD FSR)
+	Anime4K         string // "", "kapalı", "hızlı", "cam", "sinema" (Anime4K v4 CNN)
+	FrameGen        string // "", "kapalı", "akıcı", "60fps" (mpv GPU smooth motion)
+	AudioProfile    string // "", "referans", "gece", "kulaklık"
+	SubFont         string
+	SubFontSize     int
+	SubPos          int
+	SubBorder       float64
+	SubColor        string
+	InteractiveSkip bool // true: show interactive "Opening atlansın mı? [Enter]" card; false: auto-skip binge
+	Segments        []aniskip.Segment
+	ExtraArgs       []string
+	MpvPath         string
 	// NextLabel ("6. bölüm") enables the end card: when the ending starts
 	// (AniSkip ED time, else 90 s before the end) mpv shows what is next.
 	NextLabel string
@@ -82,15 +97,16 @@ type Session struct {
 	Events <-chan Event
 	events chan Event
 
-	initSpeed float64
-	nextLabel string
-	thumb     string
-	cmd       *exec.Cmd
-	conn      net.Conn
-	wmu       sync.Mutex
-	action    atomic.Value
-	subMu     sync.Mutex
-	subDelay  float64
+	initSpeed       float64
+	interactiveSkip bool
+	nextLabel       string
+	thumb           string
+	cmd             *exec.Cmd
+	conn            net.Conn
+	wmu             sync.Mutex
+	action          atomic.Value
+	subMu           sync.Mutex
+	subDelay        float64
 }
 
 var counter atomic.Int64
@@ -128,7 +144,7 @@ func Start(o Options) (*Session, error) {
 		return nil, fmt.Errorf("mpv başlatılamadı: %w", err)
 	}
 	ch := make(chan Event, 64)
-	s := &Session{Events: ch, events: ch, cmd: cmd, initSpeed: o.Speed}
+	s := &Session{Events: ch, events: ch, cmd: cmd, initSpeed: o.Speed, interactiveSkip: o.InteractiveSkip}
 	s.action.Store("")
 	s.nextLabel, s.thumb = o.NextLabel, o.Thumb
 	go s.run(sock, o.Segments)
@@ -185,6 +201,24 @@ func buildArgs(o Options, sock string) []string {
 		FrameGen: o.FrameGen,
 	}); len(pipeArgs) > 0 {
 		args = append(args, pipeArgs...)
+	}
+	if af := AudioProfileFilter(o.AudioProfile); af != "" {
+		args = append(args, "--af="+af)
+	}
+	if o.SubFont != "" {
+		args = append(args, "--sub-font="+o.SubFont)
+	}
+	if o.SubFontSize > 0 {
+		args = append(args, fmt.Sprintf("--sub-font-size=%d", o.SubFontSize))
+	}
+	if o.SubPos > 0 {
+		args = append(args, fmt.Sprintf("--sub-pos=%d", o.SubPos))
+	}
+	if o.SubBorder > 0 {
+		args = append(args, fmt.Sprintf("--sub-border-size=%.1f", o.SubBorder))
+	}
+	if o.SubColor != "" {
+		args = append(args, "--sub-color="+o.SubColor)
 	}
 	if o.Quality.HLSBandwidth > 0 {
 		// URL is the master playlist (the rendition's audio is a separate
@@ -448,6 +482,224 @@ func (s *Session) HideQuickMenu() {
 	})
 }
 
+// SwitchStream performs a serverless mid-playback failover directly via mpv
+// IPC, loading backupURL at startSec without launching any local HTTP server
+// or restarting the mpv window.
+func (s *Session) SwitchStream(rawURL, referer, ua string, startSec float64) {
+	if rawURL == "" {
+		return
+	}
+	if referer != "" {
+		s.send("set_property", "referrer", referer)
+	}
+	if ua != "" {
+		s.send("set_property", "user-agent", ua)
+	}
+	opts := ""
+	if startSec > 2 {
+		opts = fmt.Sprintf("start=%.1f", startSec)
+	}
+	if opts != "" {
+		s.send("loadfile", rawURL, "replace", -1, opts)
+	} else {
+		s.send("loadfile", rawURL, "replace")
+	}
+	s.send("show-text", "⚡ Yedek kaynağa geçildi (kaldığın yerden devam)", 2800)
+}
+
+// AudioProfileFilter returns the mpv --af filter chain for a named Audio Studio
+// profile ("referans", "gece", "kulaklık").
+func AudioProfileFilter(profile string) string {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case "gece", "night":
+		// Dynamic range compression + low-end tame + dialogue presence lift
+		return "lavfi=[dynaudnorm=f=150:g=15:p=0.92:m=10,equalizer=f=100:t=h:w=80:g=-3,equalizer=f=2800:t=q:w=1.2:g=3]"
+	case "kulaklık", "kulaklik", "bs2b", "headphone":
+		// Bauer stereophonic-to-binaural crossfeed for natural headphone soundstage
+		return "lavfi=[bs2b=profile=jmeier]"
+	default:
+		return ""
+	}
+}
+
+// AudioProfileLabel returns the Turkish display label for an audio profile.
+func AudioProfileLabel(profile string) string {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case "gece", "night":
+		return "Gece Modu (Diyalog Net)"
+	case "kulaklık", "kulaklik", "bs2b", "headphone":
+		return "Kulaklık Sahne (BS2B)"
+	default:
+		return "Stüdyo Referans"
+	}
+}
+
+// SetAudioProfile switches the live mpv Audio Studio filter chain without restart.
+func (s *Session) SetAudioProfile(profile string, silent bool) {
+	af := AudioProfileFilter(profile)
+	s.send("set_property", "af", af)
+	if !silent {
+		s.send("show-text", "Ses Stüdyosu: "+AudioProfileLabel(profile), 2400)
+	}
+}
+
+// SetSubStyle updates live subtitle typography directly inside mpv.
+func (s *Session) SetSubStyle(font string, size, pos int, border float64, color string, silent bool) {
+	if font != "" {
+		s.send("set_property", "sub-font", font)
+	}
+	if size > 0 {
+		s.send("set_property", "sub-font-size", size)
+	}
+	if pos > 0 && pos <= 100 {
+		s.send("set_property", "sub-pos", pos)
+	}
+	if border >= 0 {
+		s.send("set_property", "sub-border-size", border)
+	}
+	if color != "" {
+		s.send("set_property", "sub-color", color)
+	}
+	if !silent {
+		s.send("show-text", fmt.Sprintf("Altyazı Stili · %d pt · konum %%%d", size, pos), 2000)
+	}
+}
+
+// CaptureFrame saves the current video frame to path. When withSubs is false,
+// captures a clean subtitle-free full-resolution video frame.
+func (s *Session) CaptureFrame(path string, withSubs bool) {
+	mode := "video"
+	if withSubs {
+		mode = "subtitles"
+	}
+	s.send("screenshot-to-file", path, mode)
+}
+
+// ShowSkipCard displays the interactive Tokyo Studio OP/ED confirmation pill
+// ("Opening atlansın mı? [Enter]") without jumping abruptly.
+func (s *Session) ShowSkipCard(label string) {
+	s.send("enable-section", "aniclitr-skip", "default")
+	ass := BuildSkipCardASS(label)
+	s.sendNamed(map[string]any{
+		"name":   "osd-overlay",
+		"id":     79,
+		"format": "ass-events",
+		"data":   ass,
+		"res_x":  1280,
+		"res_y":  720,
+	})
+}
+
+// HideSkipCard hides the interactive OP/ED confirmation card and releases Enter.
+func (s *Session) HideSkipCard() {
+	s.send("disable-section", "aniclitr-skip")
+	s.sendNamed(map[string]any{
+		"name":   "osd-overlay",
+		"id":     79,
+		"format": "none",
+		"data":   "",
+	})
+}
+
+// BuildSkipCardASS constructs the bottom-right interactive skip prompt ASS.
+func BuildSkipCardASS(label string) string {
+	if label == "" {
+		label = "Jenerik"
+	}
+	// Clean rounded Tokyo Studio dark glass card at bottom-right (1280x720)
+	x, y, w, h := 870, 598, 366, 62
+	bg := fmt.Sprintf(`{\an7\pos(%d,%d)\bord1.5\shad0\1c&H1A1513&\1a&H28&\3c&HA268FF&\3a&H30&\p1}m 12 0 l %d 0 b %d 0 %d 0 %d 12 l %d %d b %d %d %d %d %d %d l 12 %d b 0 %d 0 %d 0 %d l 0 12 b 0 0 0 0 12 0{\p0}`,
+		x, y, w-12, w, w, w, w, h-12, w, h, w, h, w-12, h, h, h, h, h-12)
+	txt := fmt.Sprintf(`{\an4\pos(%d,%d)\fnSegoe UI\fs21\b1\bord0\shad0\1c&HFFFFFF&}%s atlansın mı?   {\1c&HA268FF&}[Enter]{\1c&H999999&\fs16}  Esc`,
+		x+20, y+h/2, label)
+	return bg + "\n" + txt
+}
+
+// ShowChatOverlay displays the toggleable Watch Party 2.0 ASS chat feed.
+func (s *Session) ShowChatOverlay(ass string) {
+	s.sendNamed(map[string]any{
+		"name":   "osd-overlay",
+		"id":     80,
+		"format": "ass-events",
+		"data":   ass,
+		"res_x":  1280,
+		"res_y":  720,
+	})
+}
+
+// HideChatOverlay clears the Watch Party 2.0 ASS chat feed.
+func (s *Session) HideChatOverlay() {
+	s.sendNamed(map[string]any{
+		"name":   "osd-overlay",
+		"id":     80,
+		"format": "none",
+		"data":   "",
+	})
+}
+
+// ChaptersToSegments converts MKV/MP4 chapter markers (Opening, Ending, Recap,
+// Preview) into skip segments so Nyaa.si torrents and local MKVs get full
+// interactive skip cards even without AniSkip coverage.
+func ChaptersToSegments(chapters []Chapter, dur float64) []aniskip.Segment {
+	if len(chapters) == 0 {
+		return nil
+	}
+	var out []aniskip.Segment
+	for i, ch := range chapters {
+		kind := classifyChapterTitle(ch.Title)
+		if kind == "" {
+			continue
+		}
+		end := dur
+		if i+1 < len(chapters) && chapters[i+1].Start > ch.Start {
+			end = chapters[i+1].Start
+		}
+		length := end - ch.Start
+		if length < 15 || length > 210 {
+			continue
+		}
+		out = append(out, aniskip.Segment{
+			Kind:  kind,
+			Start: ch.Start,
+			End:   end,
+			EpLen: dur,
+		})
+	}
+	return out
+}
+
+func classifyChapterTitle(title string) string {
+	t := strings.ToLower(strings.TrimSpace(title))
+	switch {
+	case t == "op" || strings.Contains(t, "opening") || strings.Contains(t, "açılış") || strings.Contains(t, "intro"):
+		return "op"
+	case t == "ed" || strings.Contains(t, "ending") || strings.Contains(t, "bitiş") || strings.Contains(t, "outro") || strings.Contains(t, "credits"):
+		return "ed"
+	case strings.Contains(t, "recap") || strings.Contains(t, "özet"):
+		return "recap"
+	case strings.Contains(t, "preview") || strings.Contains(t, "önizleme") || strings.Contains(t, "next episode"):
+		return "preview"
+	}
+	return ""
+}
+
+// MergeSegments combines AniSkip segments with MKV chapter segments without
+// duplicating overlapping kinds.
+func MergeSegments(primary, extra []aniskip.Segment) []aniskip.Segment {
+	out := append([]aniskip.Segment(nil), primary...)
+	hasKind := map[string]bool{}
+	for _, s := range out {
+		hasKind[s.Kind] = true
+	}
+	for _, s := range extra {
+		if !hasKind[s.Kind] {
+			hasKind[s.Kind] = true
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func (s *Session) run(sock string, segs []aniskip.Segment) {
 	// This goroutine lives outside Bubble Tea's panic protection: a panic
 	// here would kill the process with the terminal still in raw/alt mode.
@@ -490,8 +742,9 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 	if speed <= 0 {
 		speed = 1.0
 	}
-	var paused, eof, muted bool
+	var paused, eof, muted, buffering bool
 	videoH := 0
+	var bitrateBps int64
 	volume := 100
 	if s.conn != nil {
 		s.send("observe_property", 1, "time-pos")
@@ -502,10 +755,19 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 		s.send("observe_property", 6, "video-params/h")
 		s.send("observe_property", 7, "volume")
 		s.send("observe_property", 8, "mute")
+		s.send("observe_property", 9, "video-bitrate")
+		s.send("observe_property", 10, "paused-for-cache")
+		s.send("observe_property", 11, "chapter-list")
 		s.send("keybind", "n", "script-message aniclitr-next")
 		s.send("keybind", "N", "script-message aniclitr-next")
 		s.send("keybind", "b", "script-message aniclitr-prev")
-		s.send("keybind", "B", "script-message aniclitr-prev")
+		// Shift+B / Ctrl+b saves a scene bookmark at the current timestamp
+		s.send("keybind", "B", "script-message aniclitr-bookmark")
+		s.send("keybind", "Ctrl+b", "script-message aniclitr-bookmark")
+		// Alt+c saves a clip/GIF; Alt+f saves a clean subtitle-free 4K frame; Alt+h toggles Watch Party chat
+		s.send("keybind", "Alt+c", "script-message aniclitr-clip")
+		s.send("keybind", "Alt+f", "script-message aniclitr-frame4k")
+		s.send("keybind", "Alt+h", "script-message aniclitr-chat-toggle")
 		// y opens the in-mpv AniSub overlay (never clashes with mpv's built-in u)
 		s.send("keybind", "y", "script-message aniclitr-subs")
 		// Subtitle sync fine-tuning directly in mpv: z/x ±0.1s, Z/X ±0.5s, Alt+0 reset
@@ -519,6 +781,12 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 		s.send("keybind", "TAB", "script-message aniclitr-menu")
 		s.send("keybind", "Alt+4", "script-message aniclitr-menu")
 		s.send("keybind", "Alt+s", "script-message aniclitr-sleep")
+		skipSection := strings.Join([]string{
+			"ENTER script-message aniclitr-skip-now",
+			"KP_ENTER script-message aniclitr-skip-now",
+			"ESC script-message aniclitr-skip-dismiss",
+		}, "\n")
+		s.send("define-section", "aniclitr-skip", skipSection, "default")
 		menuSection := strings.Join([]string{
 			"UP repeatable script-message aniclitr-menu-up",
 			"DOWN repeatable script-message aniclitr-menu-down",
@@ -577,7 +845,10 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 
 		all := segs
 		segs = nil // armed once the real duration is known
+		var mkvChaps []Chapter
 		skipped := map[string]bool{}
+		dismissed := map[string]bool{}
+		var activePrompt *aniskip.Segment
 		var lastEmit time.Time
 		endAt, cardShown := 0.0, false
 		lastShot := -1000.0
@@ -609,18 +880,36 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 						lastShot = pos
 						s.send("screenshot-to-file", s.thumb, "video")
 					}
-					for _, sg := range segs {
-						if !skipped[sg.Label()] && pos >= sg.Start && pos < sg.End-1.5 {
-							skipped[sg.Label()] = true
-							s.send("seek", sg.End, "absolute")
-							s.send("show-text", "» "+sg.Label()+" atlandı", 1800)
-							s.events <- Event{Kind: EvSkipped, Text: sg.Label(), Pos: pos, Dur: dur, Speed: speed}
+					var inSeg *aniskip.Segment
+					for i := range segs {
+						sg := &segs[i]
+						if pos >= sg.Start && pos < sg.End-1.5 {
+							inSeg = sg
+							break
 						}
+					}
+					if inSeg != nil {
+						lbl := inSeg.Label()
+						if s.interactiveSkip {
+							if !skipped[lbl] && !dismissed[lbl] && (activePrompt == nil || activePrompt.Label() != lbl) {
+								cp := *inSeg
+								activePrompt = &cp
+								s.ShowSkipCard(lbl)
+							}
+						} else if !skipped[lbl] {
+							skipped[lbl] = true
+							s.send("seek", inSeg.End, "absolute")
+							s.send("show-text", "» "+lbl+" atlandı", 1800)
+							s.events <- Event{Kind: EvSkipped, Text: lbl, Pos: pos, Dur: dur, Speed: speed}
+						}
+					} else if activePrompt != nil {
+						activePrompt = nil
+						s.HideSkipCard()
 					}
 				case "duration":
 					_ = json.Unmarshal(m.Data, &dur)
 					if segs == nil && dur > 0 {
-						segs = aniskip.ForDuration(all, dur)
+						segs = MergeSegments(aniskip.ForDuration(all, dur), ChaptersToSegments(mkvChaps, dur))
 						for _, sg := range segs {
 							if sg.Kind == "ed" || sg.Kind == "mixed-ed" {
 								endAt = sg.Start
@@ -628,6 +917,20 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 						}
 						if endAt == 0 && dur > 600 {
 							endAt = dur - 90
+						}
+					}
+				case "chapter-list":
+					var rawCh []struct {
+						Title string  `json:"title"`
+						Time  float64 `json:"time"`
+					}
+					if json.Unmarshal(m.Data, &rawCh) == nil && len(rawCh) > 0 {
+						mkvChaps = make([]Chapter, 0, len(rawCh))
+						for _, rc := range rawCh {
+							mkvChaps = append(mkvChaps, Chapter{Title: rc.Title, Start: rc.Time})
+						}
+						if dur > 0 {
+							segs = MergeSegments(segs, ChaptersToSegments(mkvChaps, dur))
 						}
 					}
 				case "pause":
@@ -649,6 +952,13 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 					if json.Unmarshal(m.Data, &vh) == nil && vh > 0 {
 						videoH = int(math.Round(vh))
 					}
+				case "video-bitrate":
+					var br float64
+					if json.Unmarshal(m.Data, &br) == nil && br > 0 {
+						bitrateBps = int64(math.Round(br))
+					}
+				case "paused-for-cache":
+					_ = json.Unmarshal(m.Data, &buffering)
 				case "volume":
 					var vv float64
 					if json.Unmarshal(m.Data, &vv) == nil {
@@ -663,13 +973,29 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 					sd := s.subDelay
 					s.subMu.Unlock()
 					select {
-					case s.events <- Event{Kind: EvProgress, Pos: pos, Dur: dur, Speed: speed, SubDelay: sd, VideoH: videoH, Volume: volume, Muted: muted, Paused: paused}:
+					case s.events <- Event{Kind: EvProgress, Pos: pos, Dur: dur, Speed: speed, SubDelay: sd, VideoH: videoH, BitrateBps: bitrateBps, Buffering: buffering, Volume: volume, Muted: muted, Paused: paused}:
 					default: // UI busy; drop a frame rather than block mpv
 					}
 				}
 			case "client-message":
 				if len(m.Args) > 0 {
 					switch m.Args[0] {
+					case "aniclitr-skip-now":
+						if activePrompt != nil {
+							sg := *activePrompt
+							activePrompt = nil
+							skipped[sg.Label()] = true
+							s.HideSkipCard()
+							s.send("seek", sg.End, "absolute")
+							s.send("show-text", "» "+sg.Label()+" atlandı", 1800)
+							s.events <- Event{Kind: EvSkipped, Text: sg.Label(), Pos: pos, Dur: dur, Speed: speed}
+						}
+					case "aniclitr-skip-dismiss":
+						if activePrompt != nil {
+							dismissed[activePrompt.Label()] = true
+							activePrompt = nil
+							s.HideSkipCard()
+						}
 					case "aniclitr-next":
 						s.action.Store("next")
 						s.send("quit")
@@ -699,9 +1025,10 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 						}
 					case "aniclitr-subs", "aniclitr-sub-up", "aniclitr-sub-down", "aniclitr-sub-pick", "aniclitr-sub-close",
 						"aniclitr-menu", "aniclitr-menu-up", "aniclitr-menu-down", "aniclitr-menu-left", "aniclitr-menu-right", "aniclitr-menu-pick", "aniclitr-menu-back", "aniclitr-menu-close",
-						"aniclitr-anime4k", "aniclitr-sleep":
+						"aniclitr-anime4k", "aniclitr-sleep",
+						"aniclitr-bookmark", "aniclitr-clip", "aniclitr-frame4k", "aniclitr-chat-toggle":
 						select {
-						case s.events <- Event{Kind: EvAction, Action: m.Args[0]}:
+						case s.events <- Event{Kind: EvAction, Action: m.Args[0], Pos: pos, Dur: dur}:
 						default:
 						}
 					case "aniclitr-sub-num":

@@ -72,6 +72,8 @@ func (s Segment) Label() string {
 		return "Ending"
 	case "recap":
 		return "Özet"
+	case "preview":
+		return "Önizleme"
 	}
 	return s.Kind
 }

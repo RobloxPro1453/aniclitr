@@ -134,3 +134,59 @@ func lastWith(args []string, prefix string) string {
 	}
 	return out
 }
+
+func TestV2PlayerHelpers(t *testing.T) {
+	// MKV chapters -> skip segments
+	chaps := []Chapter{
+		{Title: "Prologue", Start: 0},
+		{Title: "Opening", Start: 95},
+		{Title: "Part A", Start: 185},
+		{Title: "Ending", Start: 1320},
+		{Title: "Next Episode Preview", Start: 1410},
+	}
+	segs := ChaptersToSegments(chaps, 1440)
+	if len(segs) != 3 {
+		t.Fatalf("expected 3 segments (OP/ED/Preview), got %d: %+v", len(segs), segs)
+	}
+	if segs[0].Kind != "op" || segs[1].Kind != "ed" || segs[2].Kind != "preview" {
+		t.Fatalf("unexpected chapter kinds: %+v", segs)
+	}
+	merged := MergeSegments([]aniskip.Segment{{Kind: "op", Start: 90, End: 180}}, segs)
+	if len(merged) != 3 {
+		t.Fatalf("MergeSegments should keep primary OP and add ED+Preview, got %d", len(merged))
+	}
+
+	// Audio Studio profiles
+	if AudioProfileFilter("referans") != "" {
+		t.Fatalf("referans must clear audio filters")
+	}
+	if !strings.Contains(AudioProfileFilter("gece"), "dynaudnorm") {
+		t.Fatalf("gece profile missing dynaudnorm")
+	}
+	if !strings.Contains(AudioProfileFilter("kulaklık"), "bs2b") {
+		t.Fatalf("kulaklık profile missing bs2b")
+	}
+
+	// Interactive skip card ASS
+	ass := BuildSkipCardASS("Açılış")
+	if !strings.Contains(ass, "Açılış atlansın mı?") || !strings.Contains(ass, "[Enter]") {
+		t.Fatalf("skip card ASS malformed: %s", ass)
+	}
+
+	// Audio + subtitle typography flags
+	args := strings.Join(buildArgs(Options{
+		Title:        "Test",
+		Quality:      source.Quality{URL: "https://cdn/1.mp4"},
+		AudioProfile: "gece",
+		SubFont:      "Segoe UI",
+		SubFontSize:  52,
+		SubPos:       94,
+		SubBorder:    2.5,
+		SubColor:     "#FFF8E0",
+	}, "s"), " ")
+	for _, want := range []string{"--af=lavfi=[dynaudnorm", "--sub-font=Segoe UI", "--sub-font-size=52", "--sub-pos=94", "--sub-border-size=2.5", "--sub-color=#FFF8E0"} {
+		if !strings.Contains(args, want) {
+			t.Fatalf("missing arg %q in %s", want, args)
+		}
+	}
+}

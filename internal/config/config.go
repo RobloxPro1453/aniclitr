@@ -55,6 +55,27 @@ type Config struct {
 	WaitAfterFirstMs int             `json:"wait_after_first_ms,omitempty"` // grace period after first resolved host (ms)
 	AutoFallback     bool            `json:"auto_fallback"`                 // offer/switch to another source when all hosts fail
 	SpeedGraph       bool            `json:"speed_graph"`                   // show live ASCII speed sparkline on downloads screen
+
+	// v2.0 features (all opt-in / serverless / zero developer API keys)
+	LocalDirs        []string `json:"local_dirs,omitempty"`         // extra local/external disk anime folders (serverless hybrid library)
+	PreloadNext      bool     `json:"preload_next,omitempty"`       // lightweight predictive pre-resolve for #1 continue episode
+	AutoSkipBinge    bool     `json:"auto_skip_binge,omitempty"`    // false = interactive mpv OP/ED card; true = auto-skip binge mode
+	AudioProfile     string   `json:"audio_profile,omitempty"`      // "referans" | "gece" | "kulaklık"
+	CinemaSuggest    bool     `json:"cinema_suggest,omitempty"`     // suggest (never force) cinema/upscale profile based on stream
+	SubFont          string   `json:"sub_font,omitempty"`           // mpv subtitle typography studio font
+	SubFontSize      int      `json:"sub_font_size,omitempty"`      // mpv subtitle font size (default 48)
+	SubPos           int      `json:"sub_pos,omitempty"`            // mpv subtitle vertical position 0..100 (default 96)
+	SubBorder        float64  `json:"sub_border,omitempty"`         // mpv subtitle outline width (default 2.4)
+	SubColor         string   `json:"sub_color,omitempty"`          // mpv subtitle hex color (default "#FFFFFF")
+	SceneSearchURL   string   `json:"scene_search_url,omitempty"`   // optional user-supplied trace.moe/custom endpoint (never hardcoded developer key)
+	SceneSearchKey   string   `json:"scene_search_key,omitempty"`   // optional user-supplied API key
+	SmartLists       []SmartList `json:"smart_lists,omitempty"`     // saved dynamic query engine smart playlists
+}
+
+// SmartList is a saved ctrl+k 2.0 dynamic query playlist.
+type SmartList struct {
+	Name  string `json:"name"`
+	Query string `json:"query"`
 }
 
 func defaults() Config {

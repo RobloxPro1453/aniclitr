@@ -4,9 +4,12 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +17,15 @@ import (
 	"aniclitr/internal/logx"
 	"aniclitr/internal/source"
 )
+
+// Bookmark is a saved timestamped scene marker inside an episode.
+type Bookmark struct {
+	Season    int       `json:"season"`
+	Episode   int       `json:"episode"`
+	Pos       float64   `json:"pos"`
+	Note      string    `json:"note,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
 
 // Entry is the history of one anime.
 type Entry struct {
@@ -31,9 +43,11 @@ type Entry struct {
 	Fansub    string            `json:"fansub,omitempty"`
 	Host      string            `json:"host,omitempty"`
 	Quality   string            `json:"quality,omitempty"`
-	Watched   map[string]bool   `json:"watched,omitempty"`  // "s:e" -> done
-	Progress  map[string]int    `json:"progress,omitempty"` // "s:e" -> percent for partial eps
-	Notes     map[string]string `json:"notes,omitempty"`    // "s:e" -> your note on that episode
+	Watched   map[string]bool   `json:"watched,omitempty"`   // "s:e" -> done
+	Progress  map[string]int    `json:"progress,omitempty"`  // "s:e" -> percent for partial eps
+	Notes     map[string]string `json:"notes,omitempty"`     // "s:e" -> your note on that episode
+	EpScores  map[string]int    `json:"ep_scores,omitempty"` // "s:e" -> 1..10 episode rating
+	Bookmarks []Bookmark        `json:"bookmarks,omitempty"` // scene bookmarks
 	UpdatedAt time.Time         `json:"updated_at"`
 }
 
@@ -227,4 +241,139 @@ func (h *History) Restore(e Entry) {
 	if err == nil {
 		_ = config.WriteAtomic(h.path, b)
 	}
+}
+
+// SetEpisodeScore stores a 1..10 rating for (season, ep). Score <= 0 removes it.
+func (h *History) SetEpisodeScore(a source.Anime, season, ep, score int) {
+	if score > 10 {
+		score = 10
+	}
+	h.Update(a, func(e *Entry) {
+		if e.EpScores == nil {
+			e.EpScores = map[string]int{}
+		}
+		k := EpKey(season, ep)
+		if score <= 0 {
+			delete(e.EpScores, k)
+		} else {
+			e.EpScores[k] = score
+		}
+	})
+}
+
+// EpisodeScoreStats returns the mean episode rating (e.g. 8.6), rated episode
+// count, and nearest MAL/AniList integer score (1..10) for series-score suggestion.
+func (h *History) EpisodeScoreStats(key string) (avg float64, count int, suggested int) {
+	e, ok := h.Get(key)
+	if !ok || len(e.EpScores) == 0 {
+		return 0, 0, 0
+	}
+	sum := 0
+	for _, sc := range e.EpScores {
+		if sc >= 1 && sc <= 10 {
+			sum += sc
+			count++
+		}
+	}
+	if count == 0 {
+		return 0, 0, 0
+	}
+	avg = math.Round((float64(sum)/float64(count))*10) / 10
+	suggested = int(math.Round(float64(sum) / float64(count)))
+	if suggested < 1 {
+		suggested = 1
+	}
+	if suggested > 10 {
+		suggested = 10
+	}
+	return avg, count, suggested
+}
+
+// EpRatingPoint is one point on a series' episode rating wave chart.
+type EpRatingPoint struct {
+	Season  int
+	Episode int
+	Score   int
+}
+
+// EpisodeWave returns rated episodes of key sorted chronologically.
+func (h *History) EpisodeWave(key string) []EpRatingPoint {
+	e, ok := h.Get(key)
+	if !ok || len(e.EpScores) == 0 {
+		return nil
+	}
+	var out []EpRatingPoint
+	for k, sc := range e.EpScores {
+		if sc < 1 || sc > 10 {
+			continue
+		}
+		parts := strings.SplitN(k, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		sn, err1 := strconv.Atoi(parts[0])
+		ep, err2 := strconv.Atoi(parts[1])
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		out = append(out, EpRatingPoint{Season: sn, Episode: ep, Score: sc})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Season != out[j].Season {
+			return out[i].Season < out[j].Season
+		}
+		return out[i].Episode < out[j].Episode
+	})
+	return out
+}
+
+// AddBookmark saves a timestamped scene bookmark atomically.
+func (h *History) AddBookmark(a source.Anime, bm Bookmark) {
+	if bm.CreatedAt.IsZero() {
+		bm.CreatedAt = time.Now()
+	}
+	h.Update(a, func(e *Entry) {
+		e.Bookmarks = append(e.Bookmarks, bm)
+	})
+}
+
+// DeleteBookmark removes the bookmark at index idx for key.
+func (h *History) DeleteBookmark(a source.Anime, idx int) {
+	h.Update(a, func(e *Entry) {
+		if idx >= 0 && idx < len(e.Bookmarks) {
+			e.Bookmarks = append(e.Bookmarks[:idx], e.Bookmarks[idx+1:]...)
+		}
+	})
+}
+
+// DayCell is one day in the 365-day GitHub-style watching intensity heatmap.
+type DayCell struct {
+	Date  string  // "2006-01-02"
+	Secs  float64
+	Level int // 0 (none) .. 4 (marathon)
+}
+
+// Heatmap365 returns the last 365 days ending at now (oldest first).
+func (h *History) Heatmap365(now time.Time) []DayCell {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]DayCell, 365)
+	for i := 0; i < 365; i++ {
+		d := now.AddDate(0, 0, -(364 - i))
+		k := DayKey(d)
+		s := h.Activity[k]
+		lvl := 0
+		switch {
+		case s >= 7200: // 2h+
+			lvl = 4
+		case s >= 3600: // 1h+
+			lvl = 3
+		case s >= 1200: // 20m+ (1 ep)
+			lvl = 2
+		case s >= 180: // 3m+
+			lvl = 1
+		}
+		out[i] = DayCell{Date: k, Secs: s, Level: lvl}
+	}
+	return out
 }
