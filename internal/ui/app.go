@@ -21,6 +21,7 @@ import (
 	"aniclitr/internal/choose"
 	"aniclitr/internal/config"
 	"aniclitr/internal/diag"
+	"aniclitr/internal/discord"
 	"aniclitr/internal/download"
 	"aniclitr/internal/extract"
 	"aniclitr/internal/logx"
@@ -173,6 +174,11 @@ type App struct {
 	mal        *mal.Client
 	msync      *malsync.Syncer
 	malErr     string
+	al         *anilist.AuthClient
+	alsync     *anilist.Syncer
+	alErr      string
+	rpc        *discord.Client
+	keys       config.KeyMap
 
 	schedule []anilist.Airing // this week's airing (AniList)
 	coverAt  string           // poster the cover theme currently follows
@@ -216,6 +222,7 @@ type App struct {
 	initContinue bool
 	initQuery    string
 	initEp       int
+	initDLRange  string
 	forward      []screen // screen history for alt+left / alt+right
 
 	// screensaver
@@ -262,6 +269,13 @@ func New(cfg config.Config, g Graphics) *App {
 	if a.mal.Connected() {
 		a.msync.Start()
 	}
+	a.al = anilist.OpenAuth(cfg.AniListClientID)
+	a.alsync = anilist.NewSyncer(a.al, a.lib)
+	if a.al.Connected() {
+		a.alsync.Start()
+	}
+	a.rpc = discord.New(cfg.DiscordRPC)
+	a.keys = config.LoadKeys()
 	for _, j := range a.dl.Jobs() {
 		a.dlSeen[j.ID] = j.State
 	}
@@ -295,7 +309,7 @@ func (a *App) applyGraphics() {
 func (a *App) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		a.tick(), a.loadFeed(), a.loadSchedule(), a.checkHealth(),
-		probeNet(), a.waitDL(), a.waitMal(), tea.SetWindowTitle("aniclitr"),
+		probeNet(), a.waitDL(), a.waitMal(), a.waitAniList(), tea.SetWindowTitle("aniclitr"),
 		a.migratePath(), a.checkUpdate(false),
 	}
 	if a.initURL != "" {
@@ -309,7 +323,9 @@ func (a *App) Init() tea.Cmd {
 	} else if a.initQuery != "" {
 		res := newResults(a.initQuery)
 		cmds = append(cmds, a.push(res), res.start(a))
-		if a.initEp > 0 {
+		if a.initDLRange != "" {
+			a.notify(fmt.Sprintf("%s · indirme aralığı: %s (animeyi açıp D'ye bas)", a.initQuery, a.initDLRange), "info")
+		} else if a.initEp > 0 {
 			a.notify(fmt.Sprintf("%s · %d. bölüm aranıyor…", a.initQuery, a.initEp), "info")
 		}
 	}
@@ -330,6 +346,12 @@ func (a *App) SetInitialContinue() {
 func (a *App) SetInitialWatch(query string, ep int) {
 	a.initQuery = strings.TrimSpace(query)
 	a.initEp = ep
+}
+
+// SetInitialDownload launches directly into searching for query with a download range hint.
+func (a *App) SetInitialDownload(query, epRange string) {
+	a.initQuery = strings.TrimSpace(query)
+	a.initDLRange = strings.TrimSpace(epRange)
 }
 
 func (a *App) openURL(raw string) tea.Cmd {
@@ -739,6 +761,9 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			if pl, ok := a.top().(*playing); ok && pl.sess != nil {
 				pl.sess.Quit()
 			}
+			if a.rpc != nil {
+				a.rpc.Close()
+			}
 			return a, tea.Quit
 		}
 		if a.saver {
@@ -770,49 +795,72 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 				playSound(a, sndTick)
 			}
 		}
-		if m.Type == tea.KeyF1 || (m.String() == "?" && !typing) {
+		act, hasAct := a.keys.Action(m.String())
+		if !hasAct {
+			// Fixed function-key aliases remain active even when ctrl+* keys are customized.
+			switch m.String() {
+			case "f1":
+				act, hasAct = "actions", true
+			case "f2":
+				act, hasAct = "library", true
+			case "f3":
+				act, hasAct = "downloads", true
+			case "f4":
+				act, hasAct = "discover", true
+			case "f9":
+				act, hasAct = "bell", true
+			case "f10":
+				act, hasAct = "menu", true
+			}
+		}
+		if (hasAct && act == "actions") || (m.String() == "?" && !typing) {
 			a.openActions()
 			return a, a.tick()
 		}
-		switch m.String() {
-		case "ctrl+k":
-			a.openPalette("")
-			return a, a.tick()
-		case "ctrl+t":
-			a.openPalette("tema ")
-			return a, a.tick()
-		case "ctrl+b", "f2":
-			return a, a.openLibrary("")
-		case "ctrl+d", "f3":
-			return a, a.openDownloads()
-		case "ctrl+e", "f4":
-			if a.offline {
-				a.notify("keşfet internet ister — şu an çevrimdışısın", "warn")
+		if hasAct {
+			switch act {
+			case "palette":
+				a.openPalette("")
 				return a, a.tick()
-			}
-			return a, a.openDiscover()
-		case "ctrl+z":
-			return a, a.undoLast()
-		case "alt+m", "f10":
-			a.openDropdown("menu")
-			return a, a.tick()
-		case "alt+n", "f9":
-			a.openDropdown("bell")
-			return a, a.tick()
-		case "alt+left":
-			if _, pl := a.top().(*playing); !pl && len(a.stack) > 1 {
-				a.goBack()
+			case "themes":
+				a.openPalette("tema ")
 				return a, a.tick()
-			}
-		case "alt+right":
-			if _, pl := a.top().(*playing); !pl && len(a.forward) > 0 {
-				a.goForward()
+			case "library":
+				return a, a.openLibrary("")
+			case "downloads":
+				return a, a.openDownloads()
+			case "discover":
+				if a.offline {
+					a.notify("keşfet internet ister — şu an çevrimdışısın", "warn")
+					return a, a.tick()
+				}
+				return a, a.openDiscover()
+			case "torrent":
+				ts := newTorrentScreen("")
+				return a, a.push(ts)
+			case "undo":
+				return a, a.undoLast()
+			case "menu":
+				a.openDropdown("menu")
 				return a, a.tick()
+			case "bell":
+				a.openDropdown("bell")
+				return a, a.tick()
+			case "back":
+				if _, pl := a.top().(*playing); !pl && len(a.stack) > 1 {
+					a.goBack()
+					return a, a.tick()
+				}
+			case "forward":
+				if _, pl := a.top().(*playing); !pl && len(a.forward) > 0 {
+					a.goForward()
+					return a, a.tick()
+				}
+			case "redraw":
+				a.redraw() // repaint the whole terminal from scratch
+				a.gfx.invalidate()
+				return a, nil
 			}
-		case "ctrl+l":
-			a.redraw() // repaint the whole terminal from scratch
-			a.gfx.invalidate()
-			return a, nil
 		}
 	case searchMsg:
 		if m.err != nil && extract.KindOf(m.err) == extract.KindBlocked {
@@ -858,6 +906,9 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	case malMsg:
 		a.onMal()
 		cmds = append(cmds, a.waitMal())
+	case aniListMsg:
+		a.onAniList()
+		cmds = append(cmds, a.waitAniList())
 	case malOpenMsg:
 		cmds = append(cmds, a.onMalOpen(m))
 	case urlOpenMsg:

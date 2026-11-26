@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"aniclitr/internal/notify"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
@@ -130,11 +131,14 @@ func (h *home) update(a *App, msg tea.Msg) tea.Cmd {
 			if e.season > 1 {
 				label = fmt.Sprintf("%s · S%d %s. bölüm çıktı", e.an.Title, e.season, source.EpNum(e.episode))
 			}
-			a.addNotice(notice{key: fmt.Sprintf("ep:%s:%d:%d", e.an.Key(), e.season, e.episode), kind: "new", text: label,
+			nkey := fmt.Sprintf("ep:%s:%d:%d", e.an.Key(), e.season, e.episode)
+			if a.addNotice(notice{key: nkey, kind: "new", text: label,
 				action: func(a *App) tea.Cmd {
 					sc := newAnime(e.an, nil, e.season, e.episode)
 					return tea.Batch(a.push(sc), sc.start(a))
-				}})
+				}}) && a.cfg.DesktopNotify && !m.cached {
+				notify.SendOnce(nkey, "aniclitr · Yeni bölüm", label)
+			}
 		}
 		var cmds []tea.Cmd
 		for i, it := range h.feed {

@@ -104,6 +104,27 @@ func newSettings() *settings {
 			act: func(a *App, _ int) { a.stack = append(a.stack, newMalScreen(a)) },
 		},
 		setting{
+			label: "AniList", desc: "Kitaplığı AniList hesabınızla OAuth üzerinden iki yönlü eşitler: durum, puan, bölüm ilerlemesi ve özel listeler.",
+			value: func(a *App) string {
+				if a.al != nil && a.al.Connected() {
+					return "bağlı · " + a.al.User()
+				}
+				return "bağlı değil"
+			},
+			act: func(a *App, _ int) { a.stack = append(a.stack, newAniListScreen(a)) },
+		},
+		setting{
+			label: "Discord Rich Presence", desc: "İzlediğin animeyi, bölümü ve kapak görselini yerel Discord istemcisinde profil etkinliği olarak gösterir (Discord açık değilse sessizce pas geçer).",
+			on:    func(a *App) bool { return a.cfg.DiscordRPC },
+			act: func(a *App, _ int) {
+				a.cfg.DiscordRPC = !a.cfg.DiscordRPC
+				if a.rpc != nil {
+					a.rpc.SetEnabled(a.cfg.DiscordRPC)
+				}
+			},
+		},
+		toggle("Masaüstü bildirimleri", "Takip ettiğin serilerin yeni bölümü çıktığında veya indirme tamamlandığında işletim sistemi bildirimi gönderir.", func(a *App) *bool { return &a.cfg.DesktopNotify }),
+		setting{
 			label: "Kapaktan tema", desc: "Bir anime açıldığında arayüz kapak görselinin renklerini alır; çıkınca seçili temaya döner.",
 			on:  func(a *App) bool { return a.cfg.CoverTheme },
 			act: func(a *App, _ int) { a.cfg.CoverTheme = !a.cfg.CoverTheme },
@@ -129,14 +150,14 @@ func newSettings() *settings {
 				playSound(a, sndSelect)
 			},
 		},
-		cycle("Arayüz", "klasik: alışık olduğun görünüm. yeni: deneme aşamasındaki yeni arayüz (Nova); üst çubukta indirme dalgası ve adlı kaynak işaretleri, tuş kapakları, renkli bildirimler. İstediğin zaman geri dönebilirsin.",
-			[]string{"klasik", "yeni"}, func(a *App) *string {
+		cycle("Arayüz", "yeni (varsayılan): Nova arayüzü; üst çubukta indirme dalgası, adlı kaynak işaretleri, 3 sütunlu Keşfet, tuş kapakları ve renkli bildirimler. klasik: sade metin tabanlı yedek görünüm.",
+			[]string{"yeni", "klasik"}, func(a *App) *string {
 				if a.cfg.UI == "" {
-					a.cfg.UI = "klasik"
+					a.cfg.UI = "yeni"
 				}
 				return &a.cfg.UI
 			}, func(a *App) {
-				if a.cfg.UI == "klasik" {
+				if a.cfg.UI == "yeni" {
 					a.cfg.UI = "" // the default stays out of config.json
 				}
 			}),
@@ -342,7 +363,7 @@ func (s *settings) update(a *App, msg tea.Msg) tea.Cmd {
 // settingGroup files a setting under a heading.
 func settingGroup(label string) int {
 	switch {
-	case label == "MyAnimeList" || label == "Tanıtım turu" || label == "Terminalden aç" || label == "Otomatik güncelle" || label == "Güncellemeleri denetle" || label == "Verileri yedekle":
+	case label == "MyAnimeList" || label == "AniList" || label == "Discord Rich Presence" || label == "Masaüstü bildirimleri" || label == "Tanıtım turu" || label == "Terminalden aç" || label == "Otomatik güncelle" || label == "Güncellemeleri denetle" || label == "Verileri yedekle":
 		return 0
 	case strings.HasPrefix(label, "Kaynak:") || label == "Arşiv modu":
 		return 3

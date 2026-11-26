@@ -1,33 +1,22 @@
 # Yol haritası
 
-Bu belge planlanan ve değerlendirilen çalışmaları listeler. Öncelikler değişebilir; buradaki maddeler bir taahhüt değildir. Tamamlanan çalışmalar [CHANGELOG.md](CHANGELOG.md) dosyasında yer alır.
+Bu belge `aniclitr`'in tamamlanan temel kilometre taşlarını ve `v1.0.0` sonrası değerlendirilen çalışmaları listeler. Sürüm ayrıntıları [CHANGELOG.md](CHANGELOG.md) dosyasındadır.
 
 **Ürün ilkesi:** Tüm işlevler klavyeyle kullanılabilir olmalıdır. Fareye bağımlı özellikler geliştirilmez.
 
-## Öncelikli
+## v1.0.0 ile Tamamlananlar
 
-- **Arayüz yenilemesi:** her ekranın tek bakışta anlaşılması; başlık çubuğunda indirme hız grafiği ve kaynakların ad/simgeyle (açık renkli, kapalı soluk) gösterilmesi; daha zarif bildirimler; her terminal boyutunda uyumlu yerleşim.
+- **Nova varsayılan arayüz:** Tüm ana ekranlar Nova tasarımında (3 sütunlu Keşfet, üst çubukta indirme dalgası, Sixel katman kararlılığı, tuş kapakları); klasik görünüm ayarlardan seçilebilir.
+- **Canlı altyazı & senkron ince ayarı:** `mpv` içi ASS OSD seçici (`y`), API anahtarsız [AniSub](https://anisub.co/) + OpenSubtitles, yerel `.srt`/`.ass`/`.vtt` yükleme (`l`) ve `z`/`x`/`Z`/`X`/`Alt+0` canlı zamanlama ayarı.
+- **İki yönlü MyAnimeList & AniList OAuth eşitleme:** Durum, puan, bölüm ilerlemesi, özel listeler, çok sezonlu seri hizalaması ve her iki hesaptan ana sayfa "Devam et" köprüsü.
+- **Nyaa.si torrent desteği:** Açık RSS araması (`alt+t`, anime ekranında `T` ve `aniclitr torrent` CLI), Türkçe/Güvenilir filtreleri, `aria2c` indirme ve `webtorrent`/magnet açma.
+- **İndirme ve depolama:** Çoklu seçim (`v`), özel aralık (`30-100`), canlı hız kıvılcım grafiği (`▁▂▃▅▆▇`) ve sürücü depolama çubuğu.
+- **Hızlı CLI & taşınabilirlik:** `devam`, `ara`, `izle`, `indir`, `torrent`, tek dosya güvenli `yedekle`/`geri-yukle`, `keys.json` özel kısayollar ve ekran geçmişi (`alt+←`/`alt+→`).
+- **Ekosistem:** Discord Rich Presence (sıfır bağımlılık yerel IPC), işletim sistemi masaüstü bildirimleri, kaynak OP/ED zamanları, HiAnime `filler` rozeti ve otomatik atlama.
 
-- **Depolama alanı göstergesi:** İndirilenler ekranında toplam kullanılan alanı ve diskteki boş alanı gösteren depolama çubuğu.
-- **Torrent desteği:** nyaa.si üzerinden arama; aria2 ya da WebTorrent ile akış ve indirme.
-- **Ek çevrimiçi altyazı sağlayıcıları:** Günlük kota sınırı olmayan ücretsiz Türkçe/İngilizce/Japonca altyazı kaynakları (ör. Subdl, Jimaku) ve yerel `.srt`/`.ass` dosyası seçici.
-- **AniList hesap eşitlemesi:** MyAnimeList'e alternatif olarak AniList OAuth entegrasyonu (özel listeleri ve çok sezonlu yapıyı doğrudan destekler).
+## v1.1+ için Değerlendirilenler
 
-## Planlanan
-
-- "Devam et" bölümünde, MyAnimeList'te izlenen ancak aniclitr'de henüz açılmamış serilerin de doğrudan gösterilmesi.
-- Seri bazında kalite, ses, çeviri grubu ve altyazı tercihlerinin ayrı ayrı hatırlanması.
-- Hızlı komut satırı alt komutları: `aniclitr ara`, `izle`, `indir`, `devam`.
-- Kullanıcı tanımlı kısayollar (`keys.json`) ve vim modu.
-- Ekran geçmişinde geri ve ileri gitme (`alt+←`, `alt+→`).
-- Verilerin tek dosyada dışa ve içe aktarılması (taşınabilir yedek).
-- Yeni bölümler için işletim sistemi bildirimleri.
-
-## Değerlendirilen
-
-- Ek Türkçe kaynak adayları (ör. Animexe, ÇizgiMax): yalnızca otomatik istemcileri bilinçli olarak engellemeyen ve açık API/HTML sunan kaynaklar eklenir.
-- Kaynakların verdiği açılış/bitiş zamanlarının (SonAnime, Animim) AniSkip'e ek olarak kullanılması.
-- HiAnime'nin filler işaretiyle filler bölümlerini atlama.
-- Yıllık izleme özeti ve başarımlar.
-- Birlikte izleme (Syncplay entegrasyonu).
-- Sezon listelerinde çoklu tür ve puan aralığı filtresi.
+- **Birlikte izleme:** Syncplay entegrasyonu.
+- **Sezon & Keşfet gelişmiş filtreleri:** Çoklu tür kesişimi, yıl ve puan aralığı süzgeci.
+- **Yıllık izleme özeti:** Yıl sonu istatistik kartları ve izleme alışkanlıkları.
+- **Ek açık kaynak sağlayıcıları:** Bot koruması ve Cloudflare engeli olmayan açık API/HTML sunan yeni Türkçe kaynaklar.

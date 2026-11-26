@@ -47,16 +47,24 @@ func (h *home) items(a *App) []mItem {
 			pos := fmt.Sprintf("S%d · B%d", e.Season, e.Episode)
 			if strings.EqualFold(e.Kind, "film") {
 				pos = "film"
-			} else if e.Source == "mal" {
+			} else if e.Source == "mal" || e.Source == "anilist" {
+				tag := "MAL"
+				if e.Source == "anilist" {
+					tag = "AniList"
+				}
 				if e.Watched[store.EpKey(e.Season, e.Episode)] {
-					pos = fmt.Sprintf("MAL · B%d", e.Episode)
+					pos = fmt.Sprintf("%s · B%d", tag, e.Episode)
 				} else {
-					pos = "MAL · izliyor"
+					pos = tag + " · izliyor"
 				}
 			}
 			meta, mc := fmt.Sprintf("%%%d", e.Percent()), cMuted
-			if e.Source == "mal" && !e.Watched[store.EpKey(e.Season, e.Episode)] {
-				meta, mc = "MAL", cSky
+			if (e.Source == "mal" || e.Source == "anilist") && !e.Watched[store.EpKey(e.Season, e.Episode)] {
+				if e.Source == "anilist" {
+					meta, mc = "AniList", cSky
+				} else {
+					meta, mc = "MAL", cSky
+				}
 			} else if e.Watched[store.EpKey(e.Season, e.Episode)] {
 				meta, mc = "sıradaki", cOK
 			}
@@ -134,9 +142,9 @@ func countDone(a *App) int {
 	return n
 }
 
-// continueEntry opens a history (or MAL watching) entry where it was left.
+// continueEntry opens a history (or MAL/AniList watching) entry where it was left.
 func continueEntry(a *App, e store.Entry) tea.Cmd {
-	if e.Source == "mal" {
+	if e.Source == "mal" || e.Source == "anilist" {
 		if it, ok := a.lib.Get(e.Anime().Key()); ok {
 			return a.openItem(it)
 		}
@@ -554,7 +562,7 @@ func (h *home) prefetchShelf(a *App) tea.Cmd {
 			cmds = append(cmds, a.posters.want(an.Poster))
 		} else if d, ok := a.details[an.Key()]; ok && d.Poster != "" {
 			cmds = append(cmds, a.posters.want(d.Poster))
-		} else if an.Source != "mal" {
+		} else if an.Source != "mal" && an.Source != "anilist" {
 			cmds = append(cmds, a.fetchDetails(an))
 		}
 	}

@@ -26,12 +26,18 @@ func novaApp(t *testing.T) *App {
 	return a
 }
 
-// Classic stays the default: nothing changes until the setting says so.
-func TestNovaIsOptIn(t *testing.T) {
+// Nova is the default since v1.0.0; classic stays cleanly selectable via cfg.UI="klasik".
+func TestNovaIsDefaultAndClassicSelectable(t *testing.T) {
 	a := testApp(t, Graphics{})
 	a.notify("merhaba", "ok")
+	if !a.nova() || len(a.cards) == 0 {
+		t.Fatal("Nova must be the default interface")
+	}
+	a.cfg.UI = "klasik"
+	a.cards = nil
+	a.notify("klasik", "ok")
 	if a.nova() || len(a.cards) != 0 {
-		t.Fatal("the classic interface must stay the default")
+		t.Fatal("setting ui=klasik must restore the classic interface")
 	}
 }
 

@@ -27,8 +27,9 @@ import (
 	"aniclitr/internal/source"
 )
 
-// nova reports whether the new interface is on.
-func (a *App) nova() bool { return a.cfg.UI == "yeni" }
+// nova reports whether the modern Nova interface is on (default since v1.0.0;
+// users can switch back to "klasik" in Settings → Görünüm → Arayüz).
+func (a *App) nova() bool { return a.cfg.UI != "klasik" }
 
 // ---- download pulse: an app-wide speed history for the top bar ----
 

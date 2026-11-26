@@ -573,6 +573,10 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 		a.flash()
 		cs := newCharactersScreen(s.an)
 		return tea.Batch(a.push(cs), cs.start(a))
+	case "T":
+		a.flash()
+		ts := newTorrentScreen(s.an.Title)
+		return tea.Batch(a.push(ts), ts.start(a))
 	case "s":
 		return s.openSources(a)
 	case "r":

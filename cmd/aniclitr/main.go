@@ -18,6 +18,7 @@ import (
 	"aniclitr/internal/config"
 	"aniclitr/internal/doctor"
 	"aniclitr/internal/logx"
+	"aniclitr/internal/nyaa"
 	"aniclitr/internal/pathx"
 	"aniclitr/internal/source"
 	_ "aniclitr/internal/source/anihub"
@@ -42,6 +43,7 @@ func main() {
 	var initialContinue bool
 	var initialQuery string
 	var initialEp int
+	var initialDLRange string
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "doctor":
@@ -81,6 +83,47 @@ func main() {
 				os.Exit(2)
 			}
 			initialQuery, initialEp = q, ep
+		case "indir", "download":
+			q, rng := cli.ParseDownloadArgs(os.Args[2:])
+			if q == "" {
+				fmt.Fprintln(os.Stderr, "kullanım: aniclitr indir <anime adı> [aralık, örn: 1-12]")
+				os.Exit(2)
+			}
+			initialQuery, initialDLRange = q, rng
+		case "torrent", "nyaa":
+			args := os.Args[2:]
+			magnetIdx := 0
+			var qParts []string
+			for i := 0; i < len(args); i++ {
+				if args[i] == "--magnet" && i+1 < len(args) {
+					fmt.Sscanf(args[i+1], "%d", &magnetIdx)
+					i++
+					continue
+				}
+				qParts = append(qParts, args[i])
+			}
+			q := strings.TrimSpace(strings.Join(qParts, " "))
+			if q == "" {
+				fmt.Fprintln(os.Stderr, "kullanım: aniclitr torrent <sorgu> [--magnet N]")
+				os.Exit(2)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			items, err := nyaa.Search(ctx, q, nyaa.CatAll, nyaa.FilterAll)
+			cancel()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "nyaa.si hatası:", err)
+				os.Exit(1)
+			}
+			if magnetIdx > 0 {
+				if magnetIdx > len(items) {
+					fmt.Fprintf(os.Stderr, "geçersiz sıra: %d (toplam %d sonuç)\n", magnetIdx, len(items))
+					os.Exit(1)
+				}
+				fmt.Println(items[magnetIdx-1].Magnet)
+				return
+			}
+			cli.PrintTorrents(os.Stdout, q, items)
+			return
 		case "yedekle", "backup":
 			dst := ""
 			if len(os.Args) > 2 {
@@ -102,17 +145,19 @@ func main() {
 			}
 			return
 		case "-h", "--help", "help":
-			fmt.Println(`aniclitr                        arayüzü başlat
-aniclitr <url>                  anime veya bölüm adresini doğrudan aç
-aniclitr devam [--list]         son izlenen animeye devam et (--list: düz metin)
-aniclitr ara <ad>               kaynaklarda hızlı CLI araması yap
-aniclitr izle <ad> [bölüm]      doğrudan ilgili animeyi ara ve aç
-aniclitr yedekle [dosya.json]   ayar, geçmiş ve kitaplığı tek dosyaya yedekle
-aniclitr geri-yukle <dosya>     yedekten güvenli geri yükle (ön-yedek alır)
-aniclitr doctor [q]             kaynakları ve bağımlılıkları canlı test et
-aniclitr doctor --blame         kaynak ve sunucu hata dökümü
-aniclitr update                 son sürümü GitHub'dan kur
-aniclitr --version              sürüm`)
+			fmt.Println(`aniclitr                          arayüzü başlat
+aniclitr <url>                    anime veya bölüm adresini doğrudan aç
+aniclitr devam [--list]           son izlenen animeye devam et (--list: düz metin)
+aniclitr ara <ad>                 kaynaklarda hızlı CLI araması yap
+aniclitr izle <ad> [bölüm]        doğrudan ilgili animeyi ara ve aç
+aniclitr indir <ad> [aralık]      doğrudan indirme için animeyi ara (örn: 1-12)
+aniclitr torrent <ad> [--magnet]  Nyaa.si torrent ara (--magnet N: magnet yazdır)
+aniclitr yedekle [dosya.json]     ayar, geçmiş ve kitaplığı tek dosyaya yedekle
+aniclitr geri-yukle <dosya>       yedekten güvenli geri yükle (ön-yedek alır)
+aniclitr doctor [q]               kaynakları ve bağımlılıkları canlı test et
+aniclitr doctor --blame           kaynak ve sunucu hata dökümü
+aniclitr update                   son sürümü GitHub'dan kur
+aniclitr --version                sürüm`)
 			return
 		default:
 			if source.IsURL(os.Args[1]) {
@@ -152,6 +197,8 @@ aniclitr --version              sürüm`)
 		app.SetInitialURL(initialURL)
 	case initialContinue:
 		app.SetInitialContinue()
+	case initialDLRange != "":
+		app.SetInitialDownload(initialQuery, initialDLRange)
 	case initialQuery != "":
 		app.SetInitialWatch(initialQuery, initialEp)
 	}

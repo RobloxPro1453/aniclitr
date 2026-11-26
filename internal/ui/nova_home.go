@@ -125,6 +125,11 @@ func (h *home) novaStatus(a *App) string {
 	if u := a.mal.User(); u != "" {
 		parts = append(parts, stMuted.Render("MAL · "+u))
 	}
+	if a.al != nil {
+		if u := a.al.User(); u != "" {
+			parts = append(parts, stMuted.Render("AniList · "+u))
+		}
+	}
 	return strings.Join(parts, stFaint.Render("  ·  "))
 }
 
@@ -375,11 +380,15 @@ func (h *home) novaResume(a *App, e store.Entry, w, ht int) []string {
 		line = "Film"
 	}
 	txt = append(txt, stText.Render(line), "")
-	if e.Source == "mal" {
+	if e.Source == "mal" || e.Source == "anilist" {
+		tag := "MAL"
+		if e.Source == "anilist" {
+			tag = "AniList"
+		}
 		if e.Watched[store.EpKey(e.Season, e.Episode)] {
-			txt = append(txt, fg(cSky).Render("MAL · izliyor"), stMuted.Render(fmt.Sprintf("sıradaki: %d. bölüm", e.Episode+1)))
+			txt = append(txt, fg(cSky).Render(tag+" · izliyor"), stMuted.Render(fmt.Sprintf("sıradaki: %d. bölüm", e.Episode+1)))
 		} else {
-			txt = append(txt, fg(cSky).Render("MAL · izliyor"), stMuted.Render("enter kaynakta açar"))
+			txt = append(txt, fg(cSky).Render(tag+" · izliyor"), stMuted.Render("enter kaynakta açar"))
 		}
 	} else if e.Watched[store.EpKey(e.Season, e.Episode)] {
 		txt = append(txt, stOK.Render("✓ bitti"), stMuted.Render("enter sıradakini açar"))

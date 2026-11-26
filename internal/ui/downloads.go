@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"aniclitr/internal/download"
+	"aniclitr/internal/notify"
 	"aniclitr/internal/source"
 )
 
@@ -40,6 +41,9 @@ func (a *App) onDL() {
 			a.addNotice(notice{key: fmt.Sprintf("dl:%d:done", j.ID), kind: "ok", text: "indirildi: " + label,
 				action: func(a *App) tea.Cmd { return a.playLocal(jj, nil) }})
 			a.notify("↓ indirildi: "+label, "ok")
+			if a.cfg.DesktopNotify {
+				notify.SendOnce(fmt.Sprintf("dl:%d:done", j.ID), "aniclitr · İndirme tamamlandı", label)
+			}
 			a.anchorOK = false
 			if a.motion() {
 				a.fx.sparks(float64(a.w-20), float64(a.h-4), 14, []string{cOK, cSky, cAccent}, j.ID)

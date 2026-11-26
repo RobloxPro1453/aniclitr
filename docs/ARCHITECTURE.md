@@ -17,14 +17,15 @@ aniclitr is a keyboard-driven terminal anime player, aimed at Turkish
 viewers. It is a Go program with these parts:
 
 - **UI:** Bubble Tea for the event loop, plus its own cell renderer
-  (`internal/tty`).
-- **Sources:** live scrapers and APIs (AnimeciX primary, HiAnime English,
-  TürkAnime archive as legacy).
-- **Playback:** mpv, controlled over JSON IPC.
-- **Downloads:** aria2c / yt-dlp, with a built-in fallback.
-- **Accounts:** MyAnimeList sync (OAuth PKCE).
+  (`internal/tty`). Nova is the default interface since v1.0.0 (`klasik` stays available in Settings).
+- **Sources:** live scrapers and APIs (AnimeciX primary, AnimeTR, AniHub, SonAnime, Animim, HiAnime English, TürkAnime archive as legacy) plus Nyaa.si public RSS torrent search (`internal/nyaa`).
+- **Playback:** mpv, controlled over JSON IPC (live in-mpv ASS OSD subtitle menu `y`, live `sub-delay` sync fine-tuning `z`/`x`/`Z`/`X`/`Alt+0`, OP/ED skip).
+- **Subtitles:** AniSub (`anisub.co`, no API key) + optional OpenSubtitles + local `.srt`/`.ass`/`.vtt` loader (`internal/subs`).
+- **Downloads:** aria2c / yt-dlp, with a built-in fallback and cross-platform disk space bar.
+- **Accounts:** MyAnimeList (OAuth PKCE) and AniList (OAuth2) two-way sync.
+- **Ecosystem:** zero-dependency Discord Rich Presence (`internal/discord`), OS desktop notifications (`internal/notify`), single-file portable backup (`internal/backup`), quick CLI (`internal/cli`), and custom `keys.json`.
 - **Metadata:** AniList for discovery (schedule, seasons, recommendations,
-  trailers).
+  trailers, characters & seiyuu).
 
 **Product rules:**
 
@@ -45,16 +46,23 @@ viewers. It is a Go program with these parts:
 ## 2. Repository layout
 
 ```
-cmd/aniclitr/main.go      entry: flags, TTY check, logging, graphics probe, renderer choice
+cmd/aniclitr/main.go      entry: CLI subcommands (devam/ara/izle/indir/torrent/yedekle/geri-yukle/doctor/update), TTY check, graphics probe
 internal/
-  config/                 Config (JSON), Dir()/CacheDir(), WriteAtomic
+  config/                 Config (JSON), keys.json custom bindings, Dir()/CacheDir(), WriteAtomic
+  backup/                 versioned single-file export/import with pre-restore safety snapshot
+  cli/                    fast non-TUI CLI commands (search, continue list, torrent list, backup/restore)
+  discord/                zero-dependency Discord Rich Presence over local IPC pipe/socket
+  notify/                 zero-dependency OS desktop notifications (Windows WinRT, notify-send, osascript)
+  nyaa/                   public Nyaa.si RSS torrent search, magnet builder, aria2c/webtorrent launchers
   logx/                   rotating log at %APPDATA%\aniclitr\aniclitr.log, Panic() with stack
   netx/                   shared HTTP client (Chrome UA, cookie jar, retries)
   source/                 provider contract, registry, health probe, URLOpener
     animecix/             primary: JSON API + tau-video
     animetr/              Turkish: search JSON + per-episode player JSON (OK.ru, Drive, Vidmoly, Voe)
     anihub/               Turkish: REST API + token-signed HLS streams
-    hianime/              English: HTML + embed decoder (HLS)
+    sonanime/             Turkish: JSON API + direct MP4 with MAL ID
+    animim/               Turkish: JSON API + fansub choice + direct MP4 + .ass subs + OP/ED
+    hianime/              English: HTML + embed decoder (HLS, filler flag, OP/ED)
     animedepo/            legacy archive (GitLab index, mostly dead links)
   extract/                self-registering host resolvers: tau, sibnet, Google Drive, OK.ru, Vidmoly, Voe, HLS/MP4 prober, typed errors, yt-dlp fallback
   match/                  unified title folding, Sorensen-Dice fuzzy scoring, persistent mappings.json cache
@@ -62,13 +70,13 @@ internal/
   choose/                 rule-based host & quality selector (preferred host, permanent error skip)
   diag/                   persistent source & host reliability telemetry (diag.json, doctor --blame)
   aniskip/                OP/ED timestamps (AniSkip v2)
-  player/                 mpv launcher + JSON IPC (named pipe on Windows)
-  store/                  history.json (progress, notes, activity), library.json (shelf, MAL mirror)
-  download/               download manager (queue, aria2c / yt-dlp / native)
-  anilist/                AniList GraphQL (schedule, season, genres, recs, trailers, MAL-id mapping)
+  player/                 mpv launcher + JSON IPC (named pipe on Windows, ASS OSD subtitle menu, sub-delay)
+  store/                  history.json (progress, quality memory, notes, activity), library.json (shelf, MAL/AniList mirror)
+  download/               download manager (queue, aria2c / yt-dlp / native, cross-platform disk stats)
+  anilist/                AniList GraphQL (schedule, season, genres, recs, trailers, characters, OAuth2 two-way sync)
   mal/                    MyAnimeList API v2 client + OAuth PKCE login
   malsync/                two-way library <-> MAL sync loop
-  subs/                   external subtitles (OpenSubtitles; provider interface)
+  subs/                   external subtitles (AniSub anisub.co + optional OpenSubtitles + Multi aggregator)
   sound/                  tiny UI sounds synthesised in memory (winmm on Windows)
   tty/                    the cell renderer: Frame, Diff, Writer, test Emulator
   doctor/                 `aniclitr doctor`: live probe of every source

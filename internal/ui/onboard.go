@@ -15,6 +15,12 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"1.0.0": {
+		"aniclitr 1.0.0! Modern Nova arayüzü artık varsayılan (klasik görünüm Ayarlar → Arayüz'de yedek kalır)",
+		"AniList iki yönlü OAuth eşitleme: Ayarlar → AniList ile listeni, puanlarını ve izlediğin bölümleri eşitle; 'Devam et' kartlarında da görünür",
+		"Nyaa.si torrent desteği: alt+t (veya anime ekranında T / aniclitr torrent) ile ara, d ile aria2c'ye indir veya magnet/webtorrent ile aç",
+		"Discord Rich Presence + OS masaüstü bildirimleri + keys.json kişisel kısayollar + aniclitr indir CLI eklendi",
+	},
 	"0.20.0": {
 		"mpv içi OSD altyazı seçici (y): video izlerken Alt-Tab yapmadan y tuşuna basıp videonun üstünde AniSub altyazılarını seçip yükleyebilirsin (u çakışması kaldırıldı)",
 		"Altyazı senkron ince ayarı: mpv'de ve terminalde z/x (±0,1s), Z/X (±0,5s), Alt+0/0 (sıfırla) ile kaymış altyazıları anında hizala",

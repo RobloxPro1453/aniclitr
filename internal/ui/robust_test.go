@@ -334,8 +334,8 @@ func TestSelfPaintNoBlink(t *testing.T) {
 			t.Fatalf("cursor move %d re-sent the poster (blink)", i)
 		}
 	}
-	// overlay hides it; closing brings it back
-	a.Update(tea.KeyMsg{Type: tea.KeyF1}) // işlemler panel
+	// full-screen modal (command palette) hides the poster; closing brings it back
+	a.Update(tea.KeyMsg{Type: tea.KeyCtrlK})
 	out.Reset()
 	a.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if !strings.Contains(out.String(), "\x1bP") {

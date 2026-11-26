@@ -207,7 +207,11 @@ func (a *App) libAnime(an source.Anime) source.Anime {
 }
 
 func (a *App) libSet(an source.Anime, fn func(it *store.Item)) store.Item {
-	return a.lib.Set(a.libAnime(an), fn)
+	it := a.lib.Set(a.libAnime(an), fn)
+	if a.alsync != nil {
+		a.alsync.Push(it)
+	}
+	return it
 }
 
 // watchView answers "have I seen this episode?" from both what you played

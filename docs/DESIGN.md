@@ -21,7 +21,7 @@ aniclitr takes the web app's *manners* instead of its layout:
 | A sidebar of destinations | The home screen is one vertical menu |
 | Hover previews | The selected item is previewed beside the list |
 | Pages with a title and a lede | `pageHead`: title plus one sentence on what the page is for |
-| A "⋯" menu per item | `?` opens **işlemler**: everything this screen can do |
+| A "⋯" menu per item | `F1` (or `?`) opens **işlemler**: everything this screen can do |
 | Breadcrumbs | The header: `aniclitr ╱ keşfet › bu sezon` |
 | Cards | Every region is a rounded panel with its name in the border |
 
@@ -45,7 +45,7 @@ It moves the way classic CLI tools do, one step at a time:
    | `↑↓` | select |
    | `enter` | open or do |
    | `esc` | back one step |
-   | `?` | işlemler |
+   | `F1` (`?`) | işlemler |
 
    - The footer shows at most three more keys, the most important first.
    - Every other action is in işlemler, with its shortcut next to it, so

@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"aniclitr/internal/aniskip"
+	"aniclitr/internal/discord"
 	"aniclitr/internal/extract"
 	"aniclitr/internal/player"
 	"aniclitr/internal/source"
@@ -302,6 +303,19 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 	switch ev.Kind {
 	case player.EvStarted:
 		p.started = true
+		if a.rpc != nil {
+			state := fmt.Sprintf("Sezon %d · Bölüm %s", p.ep.Season, p.ep.Num())
+			if p.an.IsMovie() {
+				state = "Film"
+			}
+			a.rpc.SetActivity(discord.Activity{
+				Details:    p.an.Title,
+				State:      state,
+				LargeImage: p.an.Poster,
+				LargeText:  "aniclitr",
+				Start:      time.Now(),
+			})
+		}
 	case player.EvProgress:
 		if !p.started || p.savedPos == 0 {
 			p.savedPos, p.savedAt = ev.Pos, time.Now()
@@ -318,6 +332,9 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 		return p.onMpvAction(a, ev.Action)
 	case player.EvEnded:
 		p.started = true
+		if a.rpc != nil {
+			a.rpc.Clear()
+		}
 		if ev.Err != nil {
 			p.err = ev.Err
 			if k := extract.KindOf(ev.Err); k.Permanent() {

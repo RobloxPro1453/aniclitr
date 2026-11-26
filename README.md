@@ -55,7 +55,7 @@
 
 Kalınan saniye, seri bazlı çözünürlük tercihi, çok sezonlu seri hizalaması ve açılış/bitiş (OP/ED) jenerik atlama otomatik yönetilir; oynatma sırasında terminal boşa çekilir ve işlemci kullanmaz.
 
-> **English summary.** `aniclitr` is an open-source (GPL-3.0), keyboard-driven Go terminal anime player built for Turkish-subtitled content. It searches six live sources in parallel (AnimeciX, AnimeTR, AniHub, SonAnime, Animim, HiAnime), resolves streams natively in Go (Tau Video, AniHub HLS, OK.ru, Google Drive, Sibnet, Voe, Vidmoly), plays via `mpv`, loads Turkish subtitles on the fly from [AniSub](https://anisub.co/) directly inside mpv's OSD or from local `.srt`/`.ass`/`.vtt` files with live sync fine-tuning, skips OP/ED via AniSkip & source timestamps, supports batch/range offline downloads with a live speed sparkline & disk-usage bar, renders Sixel/half-block artwork, offers quick CLI commands & single-file backup/restore, and syncs two-way with MyAnimeList across multi-season chains.
+> **English summary.** `aniclitr` v1.0 is an open-source (GPL-3.0), keyboard-driven Go terminal anime player built for Turkish-subtitled content. It searches six live sources in parallel (AnimeciX, AnimeTR, AniHub, SonAnime, Animim, HiAnime) plus Nyaa.si torrents, resolves streams natively in Go (Tau Video, AniHub HLS, OK.ru, Google Drive, Sibnet, Voe, Vidmoly), plays via `mpv` with Discord Rich Presence, loads Turkish subtitles on the fly from [AniSub](https://anisub.co/) directly inside mpv's OSD or from local `.srt`/`.ass`/`.vtt` files with live sync fine-tuning, skips OP/ED via AniSkip & source timestamps, supports batch/range offline downloads with a live speed sparkline & disk-usage bar, renders Sixel/half-block artwork in the default Nova UI, offers quick CLI commands (`devam`, `ara`, `izle`, `indir`, `torrent`, `yedekle`, `geri-yukle`) & custom `keys.json`, sends desktop notifications, and syncs two-way with both MyAnimeList and AniList.
 
 ### Kullanılan Teknolojiler
 
@@ -108,8 +108,11 @@ Kalınan saniye, seri bazlı çözünürlük tercihi, çok sezonlu seri hizalama
 | **Akıllı Oynatma (`mpv`)** | Saniye hassasiyetinde kaldığın yerden devam, **seri bazında kalite hafızası**, AniSkip + kaynak OP/ED otomatik atlama, otomatik sonraki bölüm ve isteğe bağlı **filler bölüm atlama**. |
 | **Canlı Türkçe Altyazı (`y`) & Senkron** | Alt-Tab yapmadan doğrudan `mpv` penceresi içinde `y` ile açılan **[AniSub](https://anisub.co/)** OSD altyazı seçici (API anahtarsız!); `z`/`x` (`±0,1s`), `Z`/`X` (`±0,5s`), `Alt+0` (sıfırla) ile canlı senkron ince ayarı; terminalde `l` ile yerel `.srt`/`.ass`/`.vtt` yükleme. |
 | **Yerel Çözücüler & Otomatik Kurtarma** | Tau Video, AniHub HLS, OK.ru, Vidmoly, Voe, Sibnet ve Google Drive doğrudan Go içinde çözülür; akışlar oynatılmadan doğrulanır. Bir sunucu açılmazsa sıradaki sunucu, fansub veya diğer açık kaynak otomatik denenir. |
-| **Nova & Klasik Arayüz** | Özel hücre-diff çizici (`internal/tty`) ile sıfır titreme; tüm ana ekranlarda Nova tasarımı (kapaktan renkli paneller, tuş kapakları, 3 sütunlu Keşfet) ve ayarlardan tek tuşla klasik arayüze dönüş. |
-| **MyAnimeList Köprüsü** | OAuth PKCE ile iki yönlü durum/puan/bölüm/liste eşitleme, AniList `PREQUEL`/`SEQUEL` zinciriyle çok sezonlu hizalama ve MAL'de `izliyor` olan serilerin doğrudan ana sayfadaki **Devam et** kartlarında görünmesi. |
+| **Nova Varsayılan Arayüz** | Özel hücre-diff çizici (`internal/tty`) ile sıfır titreme; tüm ana ekranlarda Nova tasarımı varsayılan olarak gelir (kapaktan renkli paneller, tuş kapakları, 3 sütunlu Keşfet); klasik görünüm ayarlardan her zaman seçilebilir. |
+| **MyAnimeList & AniList Eşitleme** | OAuth ile **iki yönlü** durum/puan/bölüm/özel liste eşitleme, AniList `PREQUEL`/`SEQUEL` zinciriyle çok sezonlu hizalama ve her iki hesapta `izliyor` olan serilerin doğrudan ana sayfadaki **Devam et** kartlarında görünmesi. |
+| **Nyaa.si Torrent Desteği (`alt+t` / `T`)** | Resmi Nyaa.si RSS akışı üzerinden hızlı anime torrent araması (Türkçe/Güvenilir filtreleri, seed sıralaması), `aria2c` ile tek tuşla indirme (`d`), `webtorrent --mpv` veya sistem istemcisiyle anında açma (`enter`) ve `aniclitr torrent` CLI. |
+| **Discord Rich Presence & Bildirimler** | İzlediğin anime, bölüm ve kapak görselini yerel Discord istemcisinde gösterme (sıfır bağımlılık) + takip ettiğin serilerin yeni bölümü çıkınca / indirme bitince masaüstü bildirimi. |
+| **Hızlı CLI, Yedekleme & `keys.json`** | `devam`, `ara`, `izle`, `indir`, `torrent`, tek dosya güvenli `yedekle`/`geri-yukle`, ekran geçmişi (`alt+←`/`→`) ve kişiselleştirilebilir `keys.json` kısayol dosyası. |
 | **Esnek Toplu İndirme & Depolama** | Tek bölüm (`d`), çoklu seçim (`v`), özel aralık (`30-100`), buradan sona veya tüm sezon (`D`); canlı hız kıvılcım grafiği (`▁▂▃▅▆▇`), disk/depolama çubuğu, `aria2c` / `yt-dlp` / dahili indirici. |
 | **Karakterler ve Seslendirenler (`c`)** | Sixel/half-block karakter & seiyuu portreleri, ana/yardımcı roller ve spoiler korumalı biyografiler (`x`). |
 | **Kitaplık, İstatistikler & Keşfet** | Durumlar, 1–10 puan, özel listeler, `i` ile grafiksel izleme istatistikleri; 3 sütunlu **Keşfet** (takvim, bu akşam süre hapları, sezon, 2 sütunlu tür ızgarası, kişisel öneriler, rastgele). |
@@ -160,16 +163,18 @@ go build -o bin/aniclitr ./cmd/aniclitr
 ### Komut Satırı
 
 ```text
-aniclitr                        Arayüzü başlatır
-aniclitr <url>                  Verilen anime veya bölüm bağlantısını doğrudan açar
-aniclitr devam [--list]         Son izlenen animeye devam eder (--list: düz metin liste)
-aniclitr ara <ad>               Etkin kaynaklarda hızlı CLI araması yapar
-aniclitr izle <ad> [bölüm]      Doğrudan ilgili animeyi arayıp açar
-aniclitr yedekle [dosya.json]   Ayar, geçmiş, kitaplık ve eşlemeleri tek dosyaya yedekler
-aniclitr geri-yukle <dosya>     Yedekten güvenli geri yükler (önce otomatik ön-yedek alır)
-aniclitr doctor [--blame]       Tüm kaynakları canlı test eder (--blame: yerel hata karnesi)
-aniclitr update                 Son sürümü indirir ve doğrular
-aniclitr --version              Sürümü gösterir
+aniclitr                          Arayüzü başlatır
+aniclitr <url>                    Verilen anime veya bölüm bağlantısını doğrudan açar
+aniclitr devam [--list]           Son izlenen animeye devam eder (--list: düz metin liste)
+aniclitr ara <ad>                 Etkin kaynaklarda hızlı CLI araması yapar
+aniclitr izle <ad> [bölüm]        Doğrudan ilgili animeyi arayıp açar
+aniclitr indir <ad> [aralık]      Doğrudan indirme için animeyi arar (örn: 1-12)
+aniclitr torrent <ad> [--magnet]  Nyaa.si torrent arar (--magnet N: magnet bağlantısını yazdırır)
+aniclitr yedekle [dosya.json]     Ayar, geçmiş, kitaplık ve eşlemeleri tek dosyaya yedekler
+aniclitr geri-yukle <dosya>       Yedekten güvenli geri yükler (önce otomatik ön-yedek alır)
+aniclitr doctor [--blame]         Tüm kaynakları canlı test eder (--blame: yerel hata karnesi)
+aniclitr update                   Son sürümü indirir ve doğrular
+aniclitr --version                Sürümü gösterir
 ```
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
@@ -203,7 +208,8 @@ Arayüz öngörülebilir katmanlarla ilerler: **menü → liste → öğe → ey
 | **Kitaplık** | `ctrl+b` / `F2` | Durumlar, özel listeler, puanlar, kapak duvarı (`v`) ve grafiksel izleme istatistikleri (`i`). |
 | **Keşfet** | `ctrl+e` / `F4` | 3 sütunlu yerleşim: solda 6 bölümlük şerit (Takvim, Bu akşam, Bu sezon, Türler, Öneriler, Rastgele), ortada odak sahnesi, sağda kapaklı ayrıntı kartı. |
 | **İndirilenler** | `ctrl+d` / `F3` | Kapaklı çevrimdışı kitaplık, canlı hız grafikli indirme sırası (`v`) ve renkli disk depolama çubuğu. |
-| **Ayarlar** | `ctrl+o` | Genel, görünüm, oynatma, kaynaklar ve **Sunucu sırası** ekranı. |
+| **Torrent (Nyaa.si)** | `alt+t` / Anime'de `T` | Nyaa.si torrent araması, Türkçe/Güvenilir filtreleri (`1`–`4`), `aria2c` indirme (`d`) ve magnet/webtorrent akışı (`enter`). |
+| **Ayarlar** | `ctrl+o` | Genel (MAL, AniList, Discord RPC, Masaüstü bildirimleri, Yedekleme), görünüm, oynatma, kaynaklar ve **Sunucu sırası**. |
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
 
@@ -223,6 +229,7 @@ Arayüz öngörülebilir katmanlarla ilerler: **menü → liste → öğe → ey
 | `ctrl+b` · `F2` | Kitaplık |
 | `ctrl+d` · `F3` | İndirilenler |
 | `ctrl+e` · `F4` | Keşfet |
+| `alt+t` | Torrent · Nyaa.si araması |
 | `ctrl+o` · `ctrl+t` | Ayarlar · Canlı tema seçici |
 | `ctrl+z` | Son silme/değişikliği geri al (2 dk içinde) |
 | `alt+←` · `alt+→` | Ekran geçmişinde geri / ileri |
@@ -237,7 +244,7 @@ Arayüz öngörülebilir katmanlarla ilerler: **menü → liste → öğe → ey
 | `tab` · `[` `]` | Sezon değiştir |
 | `w` · `N` | İzlendi işaretle · Bölüme not ekle |
 | `v` / `V` · `d` / `D` · `x` | Çoklu seçim · Tekil / toplu-aralıklı indirme · Diskten sil / iptal |
-| `s` · `r` | Kaynak seçici (`1`–`9`) · MAL eşleme ve kurtarma menüsü |
+| `s` · `r` · `T` | Kaynak seçici (`1`–`9`) · MAL eşleme ve kurtarma · Nyaa.si'de torrent ara |
 
 ### Oynatma Sırasında (`mpv` + Terminal)
 
@@ -293,16 +300,20 @@ Oynatma sırasında **doğrudan `mpv` penceresindeyken** (veya terminalde) `y` t
 
 ---
 
-## MyAnimeList Entegrasyonu
+## MyAnimeList & AniList Entegrasyonu
 
-Hesabınız bağlandığında kitaplığınız MyAnimeList ile iki yönlü eşitlenir:
+Hesaplarınız bağlandığında kitaplığınız **MyAnimeList** ve/veya **AniList** ile iki yönlü eşitlenir:
 
-- Durum, puan, izlenen bölüm sayısı ve özel listeler (etiket olarak) senkronize edilir.
-- **MAL "Devam et" köprüsü:** MAL listenizde `izliyor` olan ama `aniclitr`'de henüz açmadığınız seriler ana sayfadaki **Devam et** kartlarında görünür ve `enter` ile doğrudan açık kaynaklarda aranıp kaldığınız bölümden açılır.
+- Durum, puan, izlenen bölüm sayısı ve özel listeler senkronize edilir.
+- **"Devam et" köprüsü:** MAL veya AniList listenizde `izliyor` olan ama `aniclitr`'de henüz açmadığınız seriler ana sayfadaki **Devam et** kartlarında görünür ve `enter` ile doğrudan açık kaynaklarda aranıp kaldığınız bölümden açılır.
 - **Çok sezonlu seri hizalaması:** AniList `PREQUEL`/`SEQUEL` zinciri sayesinde çok sezonlu serilerde her bölüm MAL'deki gerçek sezon kaydına yazılır; gerekirse `r` tuşuyla eşleme elle düzeltilebilir.
 - Çevrimdışı değişiklikler bağlantı kurulduğunda kuyruktan gönderilir; `ctrl+z` geri alımları MAL'e de yansır.
 
-**Tek seferlik kurulum:** [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig) adresinden `App Type: other` ve `Redirect URL: http://localhost:47615/callback` ile bir **Client ID** oluşturup **Ayarlar → MyAnimeList** ekranına yapıştırın (OAuth PKCE — parolanız uygulamaya hiç iletilmez).
+**Tek seferlik kurulum:**
+- **MyAnimeList:** [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig) adresinden `App Type: other` ve `Redirect URL: http://localhost:47615/callback` ile **Client ID** oluşturup **Ayarlar → MyAnimeList** ekranına yapıştırın (OAuth PKCE).
+- **AniList:** [anilist.co/settings/developer](https://anilist.co/settings/developer) adresinden `Redirect URL: http://localhost:47616/callback` ile **Client ID** oluşturup **Ayarlar → AniList** ekranına yapıştırın (veya doğrudan erişim jetonu girin).
+
+> OAuth jetonlarınız (`mal.json`, `anilist.json`) yalnızca yerelde `0600` izinleriyle saklanır ve `aniclitr yedekle` çıktılarına asla dahil edilmez.
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
 
@@ -320,7 +331,7 @@ Hesabınız bağlandığında kitaplığınız MyAnimeList ile iki yönlü eşit
 
 ## Görünüm ve Temalar
 
-- **Nova arayüzü:** **Ayarlar → Görünüm → Arayüz → yeni** ile etkinleştirilir (klasik arayüz her zaman seçilebilir).
+- **Nova arayüzü (varsayılan):** v1.0.0 itibarıyla varsayılan arayüzdür; **Ayarlar → Görünüm → Arayüz → klasik** ile klasik görünüme her zaman dönülebilir.
 - **Temalar (`ctrl+t`):** `gece`, `catppuccin`, `tokyo night`, `rosé pine`, `gruvbox`, `nord`, `matcha`, `şafak` (açık tema) + `%APPDATA%\aniclitr\themes\*.json` ile özel temalar.
 - **Kapaktan tema:** Açılan animenin kapağından türetilen uyumlu vurgu renkleri (terminal zemin rengi okunurluk için daima korunur).
 - **Erişilebilirlik:** **Ayarlar → Animasyonlar** veya `ANICLITR_REDUCED_MOTION=1` ile tüm animasyonlar kapatılabilir.
@@ -335,7 +346,8 @@ Tüm ayarlar `ctrl+o` menüsünden düzenlenir ve `%APPDATA%\aniclitr\config.jso
 
 | Anahtar | Açıklama |
 |---|---|
-| `ui`, `renderer` | Arayüz (`""` klasik / `"yeni"` Nova), çizici (`"hücre"` / `"klasik"`) |
+| `ui`, `renderer` | Arayüz (`""`/`"yeni"` Nova varsayılan / `"klasik"`), çizici (`"hücre"` / `"klasik"`) |
+| `discord_rpc`, `desktop_notify` | Discord Rich Presence etkinliği ve OS masaüstü bildirimleri |
 | `theme`, `theme_bg`, `cover_theme` | Tema adı, terminal arka planı (OSC 11), kapaktan vurgu rengi |
 | `ambient`, `intro`, `motion`, `sounds` | Arka plan efekti, açılış logosu, animasyonlar, arayüz sesi |
 | `posters`, `graphics`, `speed_graph` | Kapak görselleri (`auto`/`sixel`/`blocks`), canlı indirme hız grafiği |
@@ -343,9 +355,11 @@ Tüm ayarlar `ctrl+o` menüsünden düzenlenir ve `%APPDATA%\aniclitr\config.jso
 | `auto_fallback`, `sources`, `legacy` | Kaynaklar arası yedekleme, etkin kaynaklar ve arşiv modu |
 | `host_order`, `never_hosts`, `only_hosts` | Sunucu deneme sırası ve dışlama/öncelik kuralları |
 | `download_dir`, `mpv_path`, `extra_mpv_args` | İndirme klasörü ve özel `mpv` seçenekleri |
-| `mal_client_id`, `season_sync`, `opensubtitles_api_key` | MAL ve isteğe bağlı OpenSubtitles ayarları |
+| `mal_client_id`, `anilist_client_id`, `season_sync`, `opensubtitles_api_key` | MAL, AniList ve isteğe bağlı OpenSubtitles ayarları |
 
-**Ortam değişkenleri:** `ANICLITR_HOME` (taşınabilir/izole veri klasörü), `ANICLITR_REDUCED_MOTION=1`, `NO_COLOR`.
+**Kişisel kısayollar (`keys.json`):** `%APPDATA%\aniclitr\keys.json` dosyasına yalnızca değiştirmek istediğiniz genel eylemleri ekleyebilirsiniz (ör. `{"library": "alt+l", "torrent": "ctrl+g"}`).
+
+**Ortam değişkenleri:** `ANICLITR_HOME` (taşınabilir/izole veri klasörü), `ANICLITR_REDUCED_MOTION=1`, `ANICLITR_DISCORD_APP_ID`, `NO_COLOR`.
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
 
@@ -367,14 +381,15 @@ Tüm ayarlar `ctrl+o` menüsünden düzenlenir ve `%APPDATA%\aniclitr\config.jso
 
 ## Yol Haritası
 
-- [x] **Nova arayüzü** (tüm ana ekranlar, 3 sütunlu Keşfet, Sixel katman kararlılığı)
-- [x] **Canlı Türkçe altyazı & senkron** (AniSub, `mpv` içi OSD seçici, yerel `.srt`/`.ass`, `z`/`x` ince ayar)
-- [x] **Hızlı CLI & taşınabilir yedekleme** (`devam`, `ara`, `izle`, `yedekle`, `geri-yukle`, `alt+←`/`→`)
-- [ ] **AniList iki yönlü hesap eşitlemesi (OAuth)**
-- [ ] **Nova'nın varsayılan arayüz olması** (klasik ayarda yedek kalır)
-- [ ] **İsteğe bağlı kullanıcı kısayol dosyası (`keys.json`) ve ek kaynaklar**
+v1.0.0 ile tüm çekirdek hedefler tamamlandı:
 
-Ayrıntılı plan ve öneriler için [Issues](https://github.com/RobloxPro1453/aniclitr/issues) sayfasına göz atabilirsiniz.
+- [x] **Nova varsayılan arayüz** (tüm ana ekranlar, 3 sütunlu Keşfet, Sixel katman kararlılığı)
+- [x] **Canlı Türkçe altyazı & senkron** (AniSub, `mpv` içi OSD seçici, yerel `.srt`/`.ass`, `z`/`x` ince ayar)
+- [x] **İki yönlü MAL & AniList OAuth eşitleme** + her iki hesaptan "Devam et" köprüsü
+- [x] **Nyaa.si torrent araması, `aria2c`/magnet indirme, Discord Rich Presence & masaüstü bildirimleri**
+- [x] **Hızlı CLI (`devam`/`ara`/`izle`/`indir`/`torrent`), tek dosya yedekleme, `keys.json` & ekran geçmişi**
+
+v1.1+ için değerlendirilen fikirler [ROADMAP.md](ROADMAP.md) ve [Issues](https://github.com/RobloxPro1453/aniclitr/issues) sayfalarındadır.
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
 
@@ -399,6 +414,7 @@ ANICLITR_LIVE=1 go test ./internal/...    # canlı kaynak testleri
 `aniclitr`, açık kaynak ekosisteminin ve anime topluluğunun emeği sayesinde mümkün oldu. Aşağıdaki projelere, platformlara ve topluluklara teşekkür ederiz:
 
 - **[AniSub](https://anisub.co/)** — Herkese açık, topluluk tabanlı Türkçe anime altyazı arşivi (API anahtarsız canlı altyazı desteği için).
+- **[Nyaa.si](https://nyaa.si/)** — Açık anime torrent RSS akışı için.
 - **[Türkçe Fansub Toplulukları]** — Yıllardır gönüllü olarak Türkçe anime çevirisi ve dizgisi üreten tüm çevirmenlere ve gruplara.
 - **[AniList](https://anilist.co/)** — Ücretsiz ve açık GraphQL API ile yayın takvimi, sezon, tür, öneri, fragman ve karakter/seiyuu verileri için.
 - **[MyAnimeList](https://myanimelist.net/)** — OAuth PKCE kitaplık ve izleme listesi API'si için.

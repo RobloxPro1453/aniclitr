@@ -29,8 +29,11 @@ type Config struct {
 	SeenVersion  string          `json:"seen_version"`  // last version whose intro / what's-new was shown
 	PathAsked    bool            `json:"path_asked"`    // the "open from any terminal" question was answered
 	AutoUpdate   bool            `json:"auto_update"`   // the installed copy updates itself from GitHub releases
-	MalClientID  string          `json:"mal_client_id"` // MyAnimeList API app (myanimelist.net/apiconfig)
-	CoverTheme   bool            `json:"cover_theme"`   // tint the UI with the open anime's cover colours
+	MalClientID      string          `json:"mal_client_id"`               // MyAnimeList API app (myanimelist.net/apiconfig)
+	AniListClientID  string          `json:"anilist_client_id,omitempty"` // AniList OAuth client id (anilist.co/settings/developer)
+	DiscordRPC       bool            `json:"discord_rpc"`                 // show now-playing activity in Discord
+	DesktopNotify    bool            `json:"desktop_notify"`              // OS desktop notifications for new episodes & downloads
+	CoverTheme       bool            `json:"cover_theme"`                 // tint the UI with the open anime's cover colours
 	Sounds       int             `json:"sounds"`        // UI sound volume 0-100 (0 = off)
 	OSKey        string          `json:"opensubtitles_api_key"`
 	DownloadDir      string          `json:"download_dir"`        // offline copies (default ~/Videos/aniclitr)
@@ -43,7 +46,7 @@ type Config struct {
 	// are separate MAL entries may write progress to those entries (true), or
 	// only to its own (false). Missing: not asked yet.
 	SeasonSync map[string]bool `json:"season_sync,omitempty"`
-	// UI: "" (klasik, the default) or "yeni" (the new Nova interface).
+	// UI: "" or "yeni" (Nova, the default) or "klasik" (classic fallback).
 	UI string `json:"ui,omitempty"`
 	WaitAfterFirstMs int             `json:"wait_after_first_ms,omitempty"` // grace period after first resolved host (ms)
 	AutoFallback     bool            `json:"auto_fallback"`                 // offer/switch to another source when all hosts fail
@@ -63,9 +66,11 @@ func defaults() Config {
 		Posters:    true,
 		Motion:     true,
 		Graphics:   "auto",
-		Theme:      "gece",
-		CoverTheme: true,
-		Sounds:     35,
+		Theme:         "gece",
+		CoverTheme:    true,
+		DiscordRPC:    true,
+		DesktopNotify: true,
+		Sounds:        35,
 		ThemeBg:    true,
 		Ambient:    "auto",
 		Intro:      "rastgele",

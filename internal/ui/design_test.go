@@ -65,6 +65,7 @@ func TestActionsRunTheChosenKey(t *testing.T) {
 // back one step at a time.
 func TestDiscoverSteps(t *testing.T) {
 	a := showcaseApp(t, 140, 40)
+	a.cfg.UI = "klasik"
 	d := newDiscover()
 	d.schedOK = true
 	a.stack = append(a.stack, d)

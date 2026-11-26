@@ -14,6 +14,7 @@ import (
 
 	"aniclitr/internal/backup"
 	"aniclitr/internal/config"
+	"aniclitr/internal/nyaa"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
@@ -190,6 +191,54 @@ func ParseWatchArgs(args []string) (query string, ep int) {
 		}
 	}
 	return strings.TrimSpace(strings.Join(args, " ")), 0
+}
+
+// ParseDownloadArgs parses `aniclitr indir <anime adı...> <aralık>`.
+// Example: ["sousou", "no", "frieren", "1-12"] -> ("sousou no frieren", "1-12").
+func ParseDownloadArgs(args []string) (query, epRange string) {
+	if len(args) == 0 {
+		return "", ""
+	}
+	if len(args) >= 2 && looksLikeRange(args[len(args)-1]) {
+		return strings.TrimSpace(strings.Join(args[:len(args)-1], " ")), strings.TrimSpace(args[len(args)-1])
+	}
+	return strings.TrimSpace(strings.Join(args, " ")), ""
+}
+
+func looksLikeRange(s string) bool {
+	if s == "" {
+		return false
+	}
+	hasDigit := false
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		case r == '-' || r == ',' || r == ' ':
+		default:
+			return false
+		}
+	}
+	return hasDigit
+}
+
+// PrintTorrents formats Nyaa.si search results cleanly to w.
+func PrintTorrents(w io.Writer, query string, items []nyaa.Item) {
+	if len(items) == 0 {
+		fmt.Fprintf(w, "Nyaa.si'de sonuç bulunamadı: %q\n", query)
+		return
+	}
+	limit := min(15, len(items))
+	fmt.Fprintf(w, "Nyaa.si · %q (%d sonuç)\n\n", query, len(items))
+	for i := 0; i < limit; i++ {
+		it := items[i]
+		tag := "  "
+		if it.Trusted {
+			tag = "★ "
+		}
+		fmt.Fprintf(w, "  %2d. %s%-54s  %9s  ▲%-4d ▼%-3d\n", i+1, tag, cutRunes(it.Title, 54), it.Size, it.Seeders, it.Leechers)
+	}
+	fmt.Fprintf(w, "\nMagnet görmek için: aniclitr torrent %q --magnet 1\n", query)
 }
 
 func cutRunes(s string, maxR int) string {

@@ -75,6 +75,7 @@ func (a *App) paletteItems() []palItem {
 	add(ic("library"), "Kitaplık", "ekran", "ctrl+b", func(a *App) tea.Cmd { return a.openLibrary("") })
 	add(ic("feed"), "Keşfet: takvim · sezon · öneriler · rastgele", "ekran", "ctrl+e", func(a *App) tea.Cmd { return a.openDiscover() })
 	add("↓", "İndirilenler", "ekran", "ctrl+d", func(a *App) tea.Cmd { return a.openDownloads() })
+	add("✦", "Torrent · Nyaa.si", "ekran", "alt+t", func(a *App) tea.Cmd { return a.push(newTorrentScreen("")) })
 	add(ic("archive"), "İndirme klasörünü aç", "indirme", "", func(a *App) tea.Cmd {
 		_ = os.MkdirAll(a.dl.Dir(), 0o755)
 		_ = exec.Command("explorer", a.dl.Dir()).Start()
@@ -83,6 +84,10 @@ func (a *App) paletteItems() []palItem {
 	add(ic("star"), "MyAnimeList", "ekran", "bağlan / eşitle", func(a *App) tea.Cmd { return a.push(newMalScreen(a)) })
 	if a.mal.Connected() {
 		add(ic("star"), "MAL ile şimdi eşitle", "mal", "", func(a *App) tea.Cmd { a.msync.SyncNow(); return a.tick() })
+	}
+	add("◈", "AniList", "ekran", "bağlan / eşitle", func(a *App) tea.Cmd { return a.push(newAniListScreen(a)) })
+	if a.al != nil && a.al.Connected() {
+		add("◈", "AniList ile şimdi eşitle", "anilist", "", func(a *App) tea.Cmd { a.alsync.SyncNow(); return a.tick() })
 	}
 	add("●", "Kaynak durumu", "ekran", "sağlık", func(a *App) tea.Cmd { return tea.Batch(a.push(&sourcesScreen{}), a.checkHealth()) })
 	add(ic("settings"), "Ayarlar", "ekran", "ctrl+o", func(a *App) tea.Cmd { return a.push(newSettings()) })

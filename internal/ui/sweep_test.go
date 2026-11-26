@@ -50,6 +50,8 @@ func TestScreenSweep(t *testing.T) {
 				"sources":   func() screen { return &sourcesScreen{} },
 				"hostorder": func() screen { return newHostOrder(a) },
 				"mal":       func() screen { return newMalScreen(a) },
+				"anilist":   func() screen { return newAniListScreen(a) },
+				"torrent":   func() screen { return newTorrentScreen("frieren") },
 				"onboard":   func() screen { return &onboard{tools: map[string]bool{"mpv": true}} },
 				"characters": func() screen {
 					cs := newCharactersScreen(an)

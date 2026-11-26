@@ -24,6 +24,15 @@ func TestParseWatchArgs(t *testing.T) {
 	if q != "86" || ep != 0 {
 		t.Fatalf("numeric title alone must stay query: q=%q ep=%d", q, ep)
 	}
+
+	dq, dr := ParseDownloadArgs([]string{"sousou", "no", "frieren", "1-12"})
+	if dq != "sousou no frieren" || dr != "1-12" {
+		t.Fatalf("ParseDownloadArgs range failed: q=%q r=%q", dq, dr)
+	}
+	dq, dr = ParseDownloadArgs([]string{"frieren", "5,7-9"})
+	if dq != "frieren" || dr != "5,7-9" {
+		t.Fatalf("ParseDownloadArgs multi-range failed: q=%q r=%q", dq, dr)
+	}
 }
 
 func TestPrintContinueAndBackupCommands(t *testing.T) {

@@ -2,6 +2,21 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [1.0.0]
+
+`aniclitr`'in ilk kararlı `1.0.0` sürümü — tüm temel arayüz, altyazı, eşitleme, torrent, CLI ve ekosistem özellikleri bir araya getirildi.
+
+### Eklenenler
+- **Nova artık varsayılan arayüz:** Yeni kurulumlarda modern Nova arayüzü (tüm ana ekranlar, 3 sütunlu Keşfet, Sixel katman kararlılığı, tuş kapakları) doğrudan etkin gelir; klasik görünüm **Ayarlar → Görünüm → Arayüz → klasik** ile her zaman seçilebilir.
+- **AniList iki yönlü OAuth eşitleme (`internal/anilist/sync.go`, `anilistui.go`):** **Ayarlar → AniList** üzerinden OAuth (veya erişim jetonu) ile bağlanıp durum, puan, bölüm ilerlemesi ve özel listeleri iki yönlü eşitleme; AniList'te `izliyor` olan serilerin ana sayfa "Devam et" kartlarında görünmesi.
+- **Nyaa.si torrent desteği (`internal/nyaa`, `torrentui.go`):** Açık Nyaa.si RSS akışı üzerinden hızlı anime torrent araması (`alt+t`, anime ekranında `T` veya `aniclitr torrent <ad> [--magnet N]`), Türkçe/Güvenilir filtreleri (`1`–`4`), `aria2c` ile doğrudan indirme (`d`) ve `webtorrent --mpv` / sistem istemcisiyle açma (`enter`).
+- **Discord Rich Presence (`internal/discord`):** Sıfır bağımlılık yerel IPC üzerinden izlediğin animeyi, bölümü ve kapak görselini Discord profilinde gösterme (**Ayarlar → Genel → Discord Rich Presence**).
+- **Masaüstü bildirimleri (`internal/notify`):** Takip ettiğin serilerin yeni bölümü çıktığında veya indirme tamamlandığında Windows/Linux/macOS yerel bildirimi (**Ayarlar → Genel → Masaüstü bildirimleri**).
+- **Kişisel kısayol dosyası (`keys.json`) ve `aniclitr indir <ad> <aralık>` CLI:** `%APPDATA%\aniclitr\keys.json` üzerinden genel kısayolları özelleştirme ve terminalden doğrudan aralık indirme başlatma.
+
+### Değişenler
+- Tüm proje belgeleri (`README.md`, `ROADMAP.md`, `docs/ARCHITECTURE.md`, `docs/DESIGN.md`) `1.0.0` sürümüne göre güncellendi.
+
 ## [0.20.0]
 
 ### Eklenenler
