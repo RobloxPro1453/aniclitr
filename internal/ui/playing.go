@@ -51,6 +51,7 @@ type prefetchedEp struct {
 	vurl   string
 	st     *source.Stream
 	q      source.Quality
+	at     time.Time
 }
 
 type prefetchNextMsg struct {
@@ -212,7 +213,9 @@ func (p *playing) launch(a *App) tea.Cmd {
 		Start:      p.resumeAt(a),
 		Speed:      a.playSpeed,
 		Fullscreen: a.cfg.Fullscreen,
+		UpscaleRes: a.cfg.UpscaleRes,
 		Anime4K:    a.cfg.Anime4K,
+		FrameGen:   a.cfg.FrameGen,
 		Segments:   p.segs,
 		ExtraArgs:  a.cfg.ExtraMpvArgs,
 		MpvPath:    a.cfg.MpvPath,
@@ -348,13 +351,14 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 	}
 	switch ev.Kind {
 	case player.EvStarted:
-		p.started = true
 		p.updateDiscord(a, true)
 	case player.EvProgress:
-		if !p.started || p.savedPos == 0 {
-			p.savedPos, p.savedAt = ev.Pos, time.Now()
+		if ev.Dur > 0 || ev.Pos > 0 || ev.VideoH > 0 {
+			if !p.started || p.savedPos == 0 {
+				p.savedPos, p.savedAt = ev.Pos, time.Now()
+			}
+			p.started = true
 		}
-		p.started = true
 		p.pos, p.dur, p.paused, p.subDelay = ev.Pos, ev.Dur, ev.Paused, ev.SubDelay
 		if ev.VideoH > 0 {
 			p.videoH = ev.VideoH
@@ -366,8 +370,11 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 			p.lastSave = time.Now()
 			p.save(a, false)
 		}
-		// Refresh Discord Rich Presence on pause toggle or when duration first arrives (for progress bar)
-		if a.rpc != nil && (ev.Paused != p.lastRPCPaused || (!p.rpcDurSet && ev.Dur > 0)) && time.Since(p.lastRPCAt) > 3*time.Second {
+		// Refresh Discord Rich Presence immediately on pause/resume toggle (never
+		// dropping presence while paused!), or when duration first arrives.
+		pauseChanged := ev.Paused != p.lastRPCPaused
+		durArrived := !p.rpcDurSet && ev.Dur > 0 && time.Since(p.lastRPCAt) > 2*time.Second
+		if a.rpc != nil && (pauseChanged || durArrived) {
 			p.updateDiscord(a, false)
 		}
 		// Sleep timer (time-based expiration)
@@ -400,9 +407,6 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 		return p.onMpvAction(a, ev.Action)
 	case player.EvEnded:
 		p.started = true
-		if a.rpc != nil {
-			a.rpc.Clear()
-		}
 		if ev.Err != nil {
 			p.err = ev.Err
 			if k := extract.KindOf(ev.Err); k.Permanent() {
@@ -531,6 +535,9 @@ func (p *playing) updateDiscord(a *App, initial bool) {
 	if p.an.IsMovie() {
 		state = "Film"
 	}
+	if p.paused && p.pos > 0 {
+		state += " (" + clock(p.pos) + ")"
+	}
 	now := time.Now()
 	start := now
 	var end time.Time
@@ -544,6 +551,7 @@ func (p *playing) updateDiscord(a *App, initial bool) {
 	p.lastRPCAt = now
 	p.lastRPCPaused = p.paused
 	_ = initial
+	a.lastRPCKey = "" // allow browse RPC to refresh cleanly once playback closes
 	a.rpc.SetActivity(discord.Activity{
 		Details:    p.an.Title,
 		State:      state,
@@ -617,6 +625,7 @@ func (p *playing) startPrefetch(a *App) tea.Cmd {
 						vurl:   v.URL,
 						st:     st,
 						q:      pickQ(st),
+						at:     time.Now(),
 					},
 				}
 			}
@@ -629,7 +638,7 @@ func (p *playing) startPrefetch(a *App) tea.Cmd {
 // falls back to a picker that auto-plays with the same fansub/host.
 func (p *playing) goAdjacent(a *App) tea.Cmd {
 	ep := *p.nextEp
-	if pf := p.prefetched; pf != nil && pf.st != nil && pf.ep.Number == ep.Number && pf.ep.Season == ep.Season {
+	if pf := p.prefetched; pf != nil && pf.st != nil && time.Since(pf.at) < 10*time.Minute && pf.ep.Number == ep.Number && pf.ep.Season == ep.Season {
 		np := newPlaying(p.an, pf.ep, p.nextEps, pf.fansub, pf.host, pf.st, pf.q)
 		np.vurl = pf.vurl
 		a.pop()

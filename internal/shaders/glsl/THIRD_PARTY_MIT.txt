@@ -1,0 +1,16 @@
+Third-Party Open-Source Shaders (MIT License)
+=============================================
+
+1. Anime4K v4.0.1 — https://github.com/bloc97/Anime4K
+   Files: Anime4K_Clamp_Highlights.glsl, Anime4K_Restore_CNN_S.glsl,
+          Anime4K_Restore_CNN_Soft_M.glsl, Anime4K_Restore_CNN_M.glsl,
+          Anime4K_Upscale_CNN_x2_S.glsl, Anime4K_Upscale_CNN_x2_M.glsl,
+          Anime4K_AutoDownscalePre_x2.glsl
+   Copyright (c) 2019-2021 bloc97
+   Licensed under the MIT License.
+
+2. AMD FidelityFX Super Resolution v1.0.2 (mpv GLSL port)
+   File: FSR.glsl
+   Copyright (c) 2021 Advanced Micro Devices, Inc.
+   Ported to mpv by agyild (https://gist.github.com/agyild/82219c545228d70c5604f865ce0b0ce5)
+   Licensed under the MIT License.

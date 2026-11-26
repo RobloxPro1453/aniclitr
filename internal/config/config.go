@@ -14,7 +14,9 @@ type Config struct {
 	Quality      string          `json:"quality"`       // "best", "1080p", "720p"...
 	AutoSkip     bool            `json:"auto_skip"`              // aniskip / source OP/ED
 	SkipFiller   bool            `json:"skip_filler,omitempty"`  // skip filler-marked episodes on next/auto-next
-	Anime4K      string          `json:"anime4k,omitempty"`      // "kapalı" | "hafif" | "dengeli" | "yüksek"
+	UpscaleRes   string          `json:"upscale_res,omitempty"`  // "kapalı" | "otomatik" | "1080p" | "2k" | "4k" (AMD FSR 1.0)
+	Anime4K      string          `json:"anime4k,omitempty"`      // "kapalı" | "hızlı" | "cam" | "sinema" (Bloc97/Anime4K v4 CNN)
+	FrameGen     string          `json:"frame_gen,omitempty"`    // "kapalı" | "akıcı" | "60fps" (mpv GPU interpolation)
 	AutoNext     bool            `json:"auto_next"`              // continue to the next episode
 	Fullscreen   bool            `json:"fullscreen"`    // start mpv fullscreen
 	Posters      bool            `json:"posters"`       // draw cover art

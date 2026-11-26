@@ -63,7 +63,9 @@ type Options struct {
 	Start      float64
 	Speed      float64
 	Fullscreen bool
-	Anime4K    string // "", "kapalı", "hafif", "dengeli", "yüksek"
+	UpscaleRes string // "", "kapalı", "otomatik", "1080p", "2k", "4k" (non-AI AMD FSR)
+	Anime4K    string // "", "kapalı", "hızlı", "cam", "sinema" (Anime4K v4 CNN)
+	FrameGen   string // "", "kapalı", "akıcı", "60fps" (mpv GPU smooth motion)
 	Segments   []aniskip.Segment
 	ExtraArgs  []string
 	MpvPath    string
@@ -138,6 +140,7 @@ func buildArgs(o Options, sock string) []string {
 		"--force-media-title=" + o.Title,
 		"--title=" + o.Title + " — aniclitr",
 		"--input-ipc-server=" + sock,
+		"--force-window=immediate",
 		"--no-terminal",
 		"--screenshot-format=jpg", "--screenshot-jpeg-quality=72",
 		"--keep-open=no",
@@ -176,8 +179,12 @@ func buildArgs(o Options, sock string) []string {
 	if o.Fullscreen {
 		args = append(args, "--fs")
 	}
-	if a4k := shaders.MpvArgs(o.Anime4K); len(a4k) > 0 {
-		args = append(args, a4k...)
+	if pipeArgs := shaders.PipelineArgs(shaders.Pipeline{
+		Res:      o.UpscaleRes,
+		Enhance:  o.Anime4K,
+		FrameGen: o.FrameGen,
+	}); len(pipeArgs) > 0 {
+		args = append(args, pipeArgs...)
 	}
 	if o.Quality.HLSBandwidth > 0 {
 		// URL is the master playlist (the rendition's audio is a separate
@@ -256,34 +263,62 @@ func (s *Session) Seek(sec float64) { s.send("seek", sec, "relative") }
 // SeekAbs jumps to an absolute timestamp in seconds (used by Watch Party sync).
 func (s *Session) SeekAbs(sec float64) { s.send("seek", sec, "absolute") }
 
-// SetShaders switches upscaling profile (kapalı / 1080p / 2k / 4k) live without restarting mpv.
-// Uses native JSON []string set_property so Windows backslashes and semicolons never break.
-func (s *Session) SetShaders(profile string) {
-	prof := shaders.Normalize(profile)
-	paths, err := shaders.Paths(prof)
+// SetPipeline updates Resolution Upscaling (AMD FSR), Anime4K v4 CNN Quality,
+// and GPU Smooth Motion (Frame-Gen) live without restarting mpv. When silent is
+// true (e.g. triggered inside the open in-mpv menu), suppresses the conflicting
+// top-left mpv show-text OSD so it never overlaps the menu.
+func (s *Session) SetPipeline(p shaders.Pipeline, silent bool) {
+	paths, err := shaders.PipelinePaths(p)
+	res := shaders.NormalizeRes(p.Res)
+	enh := shaders.Normalize(p.Enhance)
+	fg := shaders.NormalizeFG(p.FrameGen)
+
 	if err != nil || len(paths) == 0 {
 		s.send("set_property", "glsl-shaders", []string{})
 		s.send("set_property", "scale", "bilinear")
 		s.send("set_property", "cscale", "bilinear")
 		s.send("set_property", "sigmoid-upscaling", false)
-		s.send("show-text", "Görüntü Yükseltme: Kapalı", 2200)
-		return
-	}
-	s.send("set_property", "hwdec", "auto-safe")
-	s.send("set_property", "deband", true)
-	s.send("set_property", "deband-iterations", 1)
-	s.send("set_property", "deband-threshold", 42)
-	s.send("set_property", "deband-range", 16)
-	s.send("set_property", "cscale", "spline36")
-	if prof == shaders.P4K {
-		s.send("set_property", "scale", "ewa_lanczossharp")
-		s.send("set_property", "sigmoid-upscaling", true)
 	} else {
-		s.send("set_property", "scale", "spline36")
-		s.send("set_property", "sigmoid-upscaling", false)
+		s.send("set_property", "hwdec", "auto-safe")
+		s.send("set_property", "deband", true)
+		s.send("set_property", "deband-iterations", 1)
+		s.send("set_property", "deband-threshold", 35)
+		s.send("set_property", "deband-range", 16)
+		s.send("set_property", "cscale", "spline36")
+		s.send("set_property", "dscale", "mitchell")
+		if res == shaders.Res4K || enh == shaders.Cinema {
+			s.send("set_property", "scale", "ewa_lanczossharp")
+			s.send("set_property", "sigmoid-upscaling", true)
+		} else {
+			s.send("set_property", "scale", "spline36")
+			s.send("set_property", "sigmoid-upscaling", false)
+		}
+		s.send("set_property", "glsl-shaders", paths)
 	}
-	s.send("set_property", "glsl-shaders", paths)
-	s.send("show-text", "✦ Yükseltme: "+shaders.ShortLabel(prof), 2400)
+
+	switch fg {
+	case shaders.FGSmooth:
+		s.send("set_property", "video-sync", "display-resample")
+		s.send("set_property", "interpolation", true)
+		s.send("set_property", "tscale", "oversample")
+	case shaders.FG60:
+		s.send("set_property", "video-sync", "display-resample")
+		s.send("set_property", "interpolation", true)
+		s.send("set_property", "tscale", "catmull_rom")
+		s.send("set_property", "tscale-clamp", 0.0)
+	default:
+		s.send("set_property", "interpolation", false)
+		s.send("set_property", "video-sync", "audio")
+	}
+
+	if !silent {
+		s.send("show-text", "Görüntü: "+shaders.SummaryBadge(p), 2200)
+	}
+}
+
+// SetShaders switches the Anime4K quality preset live (backward-compatible helper).
+func (s *Session) SetShaders(profile string) {
+	s.SetPipeline(shaders.Pipeline{Enhance: profile}, false)
 }
 
 // SetVolume sets mpv volume percentage (0..130) live.
@@ -495,7 +530,8 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 			"l repeatable script-message aniclitr-menu-right",
 			"ENTER script-message aniclitr-menu-pick",
 			"KP_ENTER script-message aniclitr-menu-pick",
-			"ESC script-message aniclitr-menu-close",
+			"ESC script-message aniclitr-menu-back",
+			"BS script-message aniclitr-menu-back",
 			"m script-message aniclitr-menu-close",
 			"TAB script-message aniclitr-menu-close",
 			"1 script-message aniclitr-menu-num 1",
@@ -518,6 +554,7 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 			"ENTER script-message aniclitr-sub-pick",
 			"KP_ENTER script-message aniclitr-sub-pick",
 			"ESC script-message aniclitr-sub-close",
+			"BS script-message aniclitr-sub-close",
 			"y script-message aniclitr-sub-close",
 			"1 script-message aniclitr-sub-num 1",
 			"2 script-message aniclitr-sub-num 2",
@@ -661,7 +698,7 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 							}
 						}
 					case "aniclitr-subs", "aniclitr-sub-up", "aniclitr-sub-down", "aniclitr-sub-pick", "aniclitr-sub-close",
-						"aniclitr-menu", "aniclitr-menu-up", "aniclitr-menu-down", "aniclitr-menu-left", "aniclitr-menu-right", "aniclitr-menu-pick", "aniclitr-menu-close",
+						"aniclitr-menu", "aniclitr-menu-up", "aniclitr-menu-down", "aniclitr-menu-left", "aniclitr-menu-right", "aniclitr-menu-pick", "aniclitr-menu-back", "aniclitr-menu-close",
 						"aniclitr-anime4k", "aniclitr-sleep":
 						select {
 						case s.events <- Event{Kind: EvAction, Action: m.Args[0]}:
@@ -695,7 +732,11 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 		s.conn.Close()
 	}
 	act, _ := s.action.Load().(string)
-	if err != nil && act == "" && pos == 0 {
+	if (err != nil || (pos == 0 && dur == 0 && !eof)) && act == "" {
+		if err == nil {
+			err = errors.New("akış açılamadı veya zaman aşımına uğradı")
+		}
+		logx.Errorf("mpv kapandı (pos=%.1f dur=%.1f): %v", pos, dur, err)
 		s.events <- Event{Kind: EvEnded, Pos: pos, Dur: dur, Speed: speed, Err: fmt.Errorf("mpv: %v", err)}
 	} else {
 		s.events <- Event{Kind: EvEnded, Pos: pos, Dur: dur, Speed: speed, Action: act, EOF: eof}

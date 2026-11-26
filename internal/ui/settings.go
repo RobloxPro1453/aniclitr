@@ -240,13 +240,39 @@ func newSettings() *settings {
 		toggle("Kaynaklar arası yedek", "Bir bölümün tüm sunucuları çalışmazsa ya da bölüm o sitede yoksa diğer açık kaynaklardaki (AnimeciX, AnimeTR, AniHub) karşılığını bulup geçiş önerir.", func(a *App) *bool { return &a.cfg.AutoFallback }),
 		toggle("Tam ekran başlat", "Oynatıcı tam ekran açılır.", func(a *App) *bool { return &a.cfg.Fullscreen }),
 		setting{
-			label: "Görüntü yükseltme (1080p/2K/4K)",
-			desc:  "Sıfır-kopya GPU shader ile netleştirme ve 2× anti-ringing yükseltme (kapalı · 1080p · 2k · 4k). Video izlerken mpv içinde m veya Tab ile açılan menüden anında seçilebilir.",
+			label: "Çözünürlük yükseltme (FSR)",
+			desc:  "AI'sız AMD FidelityFX FSR 1.0 ile monitörüne uygun gerçek çözünürlük ölçekleme (kapalı · otomatik · 1080p · 2K · 4K). mpv içinde m tuşundan anında değiştirilebilir.",
+			value: func(a *App) string { return shaders.ShortResLabel(a.cfg.UpscaleRes) },
+			act: func(a *App, dir int) {
+				if dir < 0 {
+					a.cfg.UpscaleRes = shaders.PrevRes(a.cfg.UpscaleRes)
+				} else {
+					a.cfg.UpscaleRes = shaders.NextRes(a.cfg.UpscaleRes)
+				}
+			},
+		},
+		setting{
+			label: "Kalite iyileştirme (Anime4K)",
+			desc:  "Resmi MIT Anime4K v4 CNN shader'ları ile pürüzsüz, cam gibi anime çizgi onarımı (kapalı · hızlı · cam · sinema). Piksel piksel keskinleştirme yapmaz.",
 			value: func(a *App) string { return shaders.ShortLabel(a.cfg.Anime4K) },
 			act: func(a *App, dir int) {
-				cur := shaders.Normalize(a.cfg.Anime4K)
-				n := len(shaders.Profiles)
-				a.cfg.Anime4K = shaders.Profiles[(indexOf(shaders.Profiles, cur)+dir+n)%n]
+				if dir < 0 {
+					a.cfg.Anime4K = shaders.Prev(a.cfg.Anime4K)
+				} else {
+					a.cfg.Anime4K = shaders.Next(a.cfg.Anime4K)
+				}
+			},
+		},
+		setting{
+			label: "Akıcılık (Frame-Gen)",
+			desc:  "mpv GPU zamansal ara kare üretimi ile kamera kaydırmalarında titreşimsiz akıcılık (kapalı · akıcı · 60+ FPS).",
+			value: func(a *App) string { return shaders.ShortFGLabel(a.cfg.FrameGen) },
+			act: func(a *App, dir int) {
+				if dir < 0 {
+					a.cfg.FrameGen = shaders.PrevFG(a.cfg.FrameGen)
+				} else {
+					a.cfg.FrameGen = shaders.NextFG(a.cfg.FrameGen)
+				}
 			},
 		},
 		setting{

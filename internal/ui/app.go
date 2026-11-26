@@ -245,11 +245,13 @@ type App struct {
 	forward      []screen // screen history for alt+left / alt+right
 
 	// screensaver
-	lastInput time.Time
-	saver     bool
-	saverAt   time.Time
-	saverWx   weather
-	saverPop  int // last firework bucket
+	lastInput  time.Time
+	saver      bool
+	saverAt    time.Time
+	saverWx    weather
+	saverPop   int // last firework bucket
+	lastRPCKey string
+	rpcBootAt  time.Time
 }
 
 // typer screens own printable keys while a text field is focused.
@@ -482,7 +484,119 @@ func (a *App) push(s screen) tea.Cmd {
 	a.forward = nil
 	a.stack = append(a.stack, s)
 	a.slide(+1)
+	a.syncBrowseDiscord()
 	return a.tick()
+}
+
+func (a *App) browseDiscordActivity() (string, discord.Activity, bool) {
+	if len(a.stack) == 0 {
+		return "", discord.Activity{}, false
+	}
+	if a.rpcBootAt.IsZero() {
+		a.rpcBootAt = time.Now()
+	}
+	top := a.top()
+	switch s := top.(type) {
+	case *playing:
+		return "", discord.Activity{}, false // playing owns Discord presence
+	case *animeScreen:
+		key := "anime:" + s.an.Key()
+		return key, discord.Activity{
+			Details:    s.an.Title,
+			State:      "Bölümlere göz atıyor",
+			LargeImage: s.an.Poster,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
+		}, true
+	case *picker:
+		key := fmt.Sprintf("pick:%s:%d:%d", s.an.Key(), s.ep.Season, s.ep.Number)
+		return key, discord.Activity{
+			Details:    s.an.Title,
+			State:      fmt.Sprintf("Bölüm %s · kaynak seçiyor", s.ep.Num()),
+			LargeImage: s.an.Poster,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
+		}, true
+	case *results:
+		q := strings.TrimSpace(s.query)
+		st := "Anime arıyor"
+		if q != "" {
+			st = fmt.Sprintf("“%s” arıyor", q)
+		}
+		return "results:" + q, discord.Activity{
+			Details:   "aniclitr",
+			State:     st,
+			LargeText: "aniclitr",
+			Start:     a.rpcBootAt,
+		}, true
+	case *torrentScreen:
+		st := "Nyaa.si · torrent arıyor"
+		if q := strings.TrimSpace(s.queried); q != "" {
+			st = fmt.Sprintf("Torrent · “%s”", q)
+		}
+		return "torrent:" + st, discord.Activity{
+			Details:   "aniclitr",
+			State:     st,
+			LargeText: "aniclitr",
+			Start:     a.rpcBootAt,
+		}, true
+	case *discover:
+		return "discover", discord.Activity{
+			Details:   "aniclitr",
+			State:     "Keşfet · yeni anime arıyor",
+			LargeText: "aniclitr",
+			Start:     a.rpcBootAt,
+		}, true
+	case *library:
+		st := fmt.Sprintf("Kitaplığına bakıyor (%d seri)", len(a.lib.All()))
+		return "library:" + st, discord.Activity{
+			Details:   "aniclitr",
+			State:     st,
+			LargeText: "aniclitr",
+			Start:     a.rpcBootAt,
+		}, true
+	case *downloads:
+		return "downloads", discord.Activity{
+			Details:   "aniclitr",
+			State:     "Çevrimdışı indirilenlere bakıyor",
+			LargeText: "aniclitr",
+			Start:     a.rpcBootAt,
+		}, true
+	case *wrappedScreen:
+		return "wrapped", discord.Activity{
+			Details:   "aniclitr",
+			State:     "Anime Özetine bakıyor",
+			LargeText: "aniclitr",
+			Start:     a.rpcBootAt,
+		}, true
+	case *charactersScreen:
+		return "chars:" + s.an.Key(), discord.Activity{
+			Details:    s.an.Title,
+			State:      "Karakterler ve kadroya bakıyor",
+			LargeImage: s.an.Poster,
+			LargeText:  "aniclitr",
+			Start:      a.rpcBootAt,
+		}, true
+	default:
+		return "home", discord.Activity{
+			Details:   "aniclitr",
+			State:     "Ana sayfada geziniyor",
+			LargeText: "aniclitr",
+			Start:     a.rpcBootAt,
+		}, true
+	}
+}
+
+func (a *App) syncBrowseDiscord() {
+	if a.rpc == nil || !a.cfg.DiscordRPC {
+		return
+	}
+	key, act, ok := a.browseDiscordActivity()
+	if !ok || key == a.lastRPCKey {
+		return
+	}
+	a.lastRPCKey = key
+	a.rpc.SetActivity(act)
 }
 
 func browsableScreen(s screen) bool {
@@ -515,6 +629,7 @@ func (a *App) goForward() {
 	a.forward = a.forward[:len(a.forward)-1]
 	a.stack = append(a.stack, s)
 	a.slide(+1)
+	a.syncBrowseDiscord()
 }
 
 func (a *App) pop() {
@@ -526,6 +641,7 @@ func (a *App) pop() {
 		case *library, *discover, *results, *downloads, *charactersScreen:
 			trimMemory() // poster-heavy screens leave garbage behind
 		}
+		a.syncBrowseDiscord()
 	}
 }
 
@@ -1017,7 +1133,7 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		// terminal frame recomposition behind mpv for <1ms menu responsiveness.
 		if m.ev.Kind == player.EvAction {
 			switch m.ev.Action {
-			case "aniclitr-menu", "aniclitr-menu-close", "aniclitr-menu-up", "aniclitr-menu-down",
+			case "aniclitr-menu", "aniclitr-menu-close", "aniclitr-menu-back", "aniclitr-menu-up", "aniclitr-menu-down",
 				"aniclitr-menu-left", "aniclitr-menu-right", "aniclitr-sub-up", "aniclitr-sub-down":
 				skipPaint = true
 			}
@@ -1123,6 +1239,7 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		a.onUpdate(m)
 		cmds = append(cmds, a.tick())
 	case deferredInitMsg:
+		a.syncBrowseDiscord()
 		cmds = append(cmds, a.loadSchedule(), a.checkHealth(), a.checkUpdate(false), guard("indirme-tara", func() tea.Msg {
 			a.dl.ScanDisk()
 			return nil

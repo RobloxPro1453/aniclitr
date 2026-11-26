@@ -18,52 +18,91 @@ func TestMpvQuickMenuASSAndPick(t *testing.T) {
 	a := showcaseApp(t, 120, 36)
 	an := source.Anime{Source: "animecix", ID: "1", Title: "Another"}
 	ep := source.Episode{ID: "1", Season: 1, Number: 1}
-	st := &source.Stream{Qualities: []source.Quality{{Label: "1080p", URL: "x"}}}
+	st := &source.Stream{Qualities: []source.Quality{{Label: "480p", URL: "x"}}}
 	p := newPlaying(an, ep, []source.Episode{ep}, "Fansub", "Tau", st, st.Qualities[0])
 	p.videoH = 480
 	p.volume = 100
 
-	// Open menu via in-mpv action
+	// Open root menu via in-mpv action
 	p.onMpvAction(a, "aniclitr-menu")
-	if !p.qmenu.open {
-		t.Fatalf("expected quick menu to open")
+	if !p.qmenu.open || p.qmenu.page != menuRoot {
+		t.Fatalf("expected root quick menu to open")
 	}
 	ass := p.buildQuickMenuASS(a)
-	for _, want := range []string{`\p1`, "ANICLITR", "HIZLI MENÜ", "480p", "1080p Net", "2K Keskin", "4K Ultra", "Ses Seviyesi", "Uyku Zamanlayıcısı", "Oynatma Hızı"} {
+	for _, want := range []string{`\p1`, "ANICLITR", "480p", "Çözünürlük (FSR)", "Kalite & Akıcılık", "Altyazı & Senkron", "Ses & Oynatma", "Bölüm Geçişi"} {
 		if !strings.Contains(ass, want) {
-			t.Fatalf("quick menu ASS missing %q", want)
+			t.Fatalf("root quick menu ASS missing %q", want)
 		}
 	}
 
-	// Pick item #3 (2K Keskin) directly via number shortcut
+	// Enter sub-menu 1 (Resolution FSR) -> pick 2K (row 4) -> Esc returns to root (does NOT close!)
+	p.onMpvAction(a, "aniclitr-menu-num:1")
+	if p.qmenu.page != menuRes {
+		t.Fatalf("expected menuRes sub-menu, got %v", p.qmenu.page)
+	}
+	p.onMpvAction(a, "aniclitr-menu-num:4")
+	if a.cfg.UpscaleRes != shaders.Res2K {
+		t.Fatalf("expected 2k FSR after menu-num:4, got %q", a.cfg.UpscaleRes)
+	}
+	p.onMpvAction(a, "aniclitr-menu-back")
+	if !p.qmenu.open || p.qmenu.page != menuRoot {
+		t.Fatalf("Esc inside sub-menu MUST return to parent root menu, got open=%v page=%v", p.qmenu.open, p.qmenu.page)
+	}
+
+	// Enter sub-menu 2 (Quality & Frame-Gen) -> pick Cam Gibi (row 3) + Frame-Gen (row 5)
+	p.onMpvAction(a, "aniclitr-menu-num:2")
+	if p.qmenu.page != menuQuality {
+		t.Fatalf("expected menuQuality sub-menu, got %v", p.qmenu.page)
+	}
 	p.onMpvAction(a, "aniclitr-menu-num:3")
-	if a.cfg.Anime4K != shaders.P2K {
-		t.Fatalf("expected 2k profile after menu-num:3, got %q", a.cfg.Anime4K)
+	if a.cfg.Anime4K != shaders.Clear {
+		t.Fatalf("expected Anime4K Clear ('cam'), got %q", a.cfg.Anime4K)
 	}
-
-	// Inline ←/→ adjusts upscale cleanly
-	p.onMpvAction(a, "aniclitr-menu-right")
-	if a.cfg.Anime4K != shaders.P4K {
-		t.Fatalf("expected 4k profile after menu-right, got %q", a.cfg.Anime4K)
+	p.onMpvAction(a, "aniclitr-menu-num:5")
+	if a.cfg.FrameGen != shaders.FGSmooth {
+		t.Fatalf("expected FrameGen FGSmooth ('akıcı'), got %q", a.cfg.FrameGen)
 	}
+	p.onMpvAction(a, "aniclitr-menu-back")
 
-	// Pick item #9 (Sleep timer)
-	p.onMpvAction(a, "aniclitr-menu-num:9")
-	if !a.sleep.active() {
-		t.Fatalf("expected sleep timer active after menu-num:9")
+	// Enter sub-menu 4 (Playback) -> adjust volume & sleep
+	p.onMpvAction(a, "aniclitr-menu-num:4")
+	if p.qmenu.page != menuPlayback {
+		t.Fatalf("expected menuPlayback, got %v", p.qmenu.page)
 	}
-
-	// Volume inline step on row #7 (index 6)
-	p.qmenu.cur = 6
+	p.qmenu.cur = 0
 	p.onMpvAction(a, "aniclitr-menu-left")
 	if p.volume != 95 {
 		t.Fatalf("expected volume 95 after menu-left, got %d", p.volume)
 	}
+	p.onMpvAction(a, "aniclitr-menu-num:3")
+	if !a.sleep.active() {
+		t.Fatalf("expected sleep timer active")
+	}
 
-	// Close menu
-	p.onMpvAction(a, "aniclitr-menu-close")
+	// Back to root, then Esc on root closes completely
+	p.onMpvAction(a, "aniclitr-menu-back")
+	if !p.qmenu.open || p.qmenu.page != menuRoot {
+		t.Fatalf("expected return to root")
+	}
+	p.onMpvAction(a, "aniclitr-menu-back")
 	if p.qmenu.open {
-		t.Fatalf("expected quick menu to close")
+		t.Fatalf("Esc on root menu should close menu")
+	}
+}
+
+func TestBrowseDiscordPresenceCoversScreens(t *testing.T) {
+	t.Setenv("ANICLITR_HOME", t.TempDir())
+	a := New(config.Load(), Graphics{})
+	if _, act, ok := a.browseDiscordActivity(); !ok || !strings.Contains(act.State, "Ana sayfada") {
+		t.Fatalf("unexpected home browse activity: ok=%v act=%+v", ok, act)
+	}
+	a.stack = append(a.stack, newResults("another"))
+	if _, act, ok := a.browseDiscordActivity(); !ok || !strings.Contains(act.State, "another") {
+		t.Fatalf("unexpected search browse activity: ok=%v act=%+v", ok, act)
+	}
+	a.stack = append(a.stack, newAnime(source.Anime{Source: "animecix", ID: "1", Title: "Another", Poster: "https://example.com/a.jpg"}, nil, 1, 0))
+	if _, act, ok := a.browseDiscordActivity(); !ok || act.Details != "Another" || act.LargeImage != "https://example.com/a.jpg" {
+		t.Fatalf("unexpected anime browse activity: ok=%v act=%+v", ok, act)
 	}
 }
 

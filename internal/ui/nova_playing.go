@@ -93,8 +93,8 @@ func (p *playing) novaView(a *App, w, h int) string {
 	if math.Abs(p.subDelay) >= 0.05 {
 		chips = append(chips, fg(cWarn).Background(colorOf(cSurface)).Bold(true).Render(" senkron: "+player.FormatSubDelay(p.subDelay)+" "))
 	}
-	if prof := shaders.Normalize(a.cfg.Anime4K); prof != shaders.Off {
-		chips = append(chips, fg(cAccent2).Background(colorOf(cSurface)).Bold(true).Render(" ✦ "+shaders.ShortLabel(prof)+" "))
+	if pipe := (shaders.Pipeline{Res: a.cfg.UpscaleRes, Enhance: a.cfg.Anime4K, FrameGen: a.cfg.FrameGen}); shaders.SummaryBadge(pipe) != "Orijinal" {
+		chips = append(chips, fg(cAccent2).Background(colorOf(cSurface)).Bold(true).Render(" "+shaders.SummaryBadge(pipe)+" "))
 	}
 	if sp := a.sleep.shortPill(); sp != "" {
 		chips = append(chips, fg(cWarn).Background(colorOf(cSurface)).Bold(true).Render(" "+sp+" "))

@@ -82,6 +82,8 @@ func (c *Client) SetEnabled(on bool) {
 }
 
 // SetActivity updates the user's Discord presence asynchronously.
+// Automatically reconnects & retries once if the existing IPC pipe dropped so
+// presence never vanishes on pause or screen transitions.
 func (c *Client) SetActivity(act Activity) {
 	go func() {
 		c.mu.Lock()
@@ -89,33 +91,38 @@ func (c *Client) SetActivity(act Activity) {
 		if !c.enabled {
 			return
 		}
-		if err := c.ensureConnectedLocked(); err != nil {
-			c.lastErr = err.Error()
-			logx.Errorf("discord rpc bağlanamadı: %v", err)
-			return
-		}
 		payload := buildActivityFrame(os.Getpid(), act, fmt.Sprintf("aniclitr-%d", time.Now().UnixNano()))
-		if err := writePacket(c.conn, opFrame, payload); err != nil {
-			c.lastErr = err.Error()
-			logx.Errorf("discord rpc yazılamadı: %v", err)
-			c.closeLocked()
-			return
-		}
-		op, reply, err := readPacket(c.conn)
-		if err != nil {
-			c.lastErr = err.Error()
-			c.closeLocked()
-			return
-		}
-		if op == opClose || isDiscordError(reply) {
-			c.lastErr = strings.TrimSpace(string(reply))
-			logx.Errorf("discord rpc etkinlik reddedildi (op=%d): %s", op, c.lastErr)
-			if op == opClose {
-				c.closeLocked()
+		for attempt := 0; attempt < 2; attempt++ {
+			if err := c.ensureConnectedLocked(); err != nil {
+				c.lastErr = err.Error()
+				if attempt == 1 {
+					logx.Errorf("discord rpc bağlanamadı: %v", err)
+				}
+				return
 			}
+			if err := writePacket(c.conn, opFrame, payload); err != nil {
+				c.lastErr = err.Error()
+				c.closeLocked()
+				continue
+			}
+			op, reply, err := readPacket(c.conn)
+			if err != nil {
+				c.lastErr = err.Error()
+				c.closeLocked()
+				continue
+			}
+			if op == opClose || isDiscordError(reply) {
+				c.lastErr = strings.TrimSpace(string(reply))
+				logx.Errorf("discord rpc etkinlik reddedildi (op=%d): %s", op, c.lastErr)
+				if op == opClose {
+					c.closeLocked()
+					continue
+				}
+				return
+			}
+			c.lastErr = ""
 			return
 		}
-		c.lastErr = ""
 	}()
 }
 
@@ -210,11 +217,10 @@ func buildActivityFrame(pid int, act Activity, nonce string) []byte {
 	}
 	state := clampDiscordStr(rawState, 2, 128)
 	body := map[string]any{
-		"name":                "aniclitr",
 		"details":             details,
 		"state":               state,
 		"type":                3, // Watching
-		"status_display_type": 2, // Show anime title (details) in sidebar instead of app name
+		"status_display_type": 2, // Show details (anime/screen) in member sidebar
 		"instance":            false,
 	}
 	if !act.Paused && !act.Start.IsZero() {
