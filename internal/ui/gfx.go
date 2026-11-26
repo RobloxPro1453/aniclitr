@@ -13,6 +13,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-sixel"
+	"github.com/rivo/uniseg"
 	"golang.org/x/image/draw"
 
 	"aniclitr/internal/logx"
@@ -398,10 +399,103 @@ func (g *gfx) paintStale(lines []string) {
 	}
 }
 
+// rowMarker is a picture marker's raw APC sequence and its exact visual column.
+type rowMarker struct {
+	raw string
+	col int
+}
+
+// extractRowMarkers strips all picture markers from l and returns the clean
+// line alongside each marker's visual column. Any string-slicer (overlayAt,
+// overlay, confetti) must run on the clean line so ansi.TruncateLeft / Cut can
+// never teleport a zero-width marker to a box edge.
+func extractRowMarkers(l string) (string, []rowMarker) {
+	if !strings.Contains(l, "\x1b_kz") {
+		return l, nil
+	}
+	var ms []rowMarker
+	for {
+		k := strings.Index(l, "\x1b_kz")
+		if k < 0 {
+			break
+		}
+		end := strings.Index(l[k:], "\x1b\\")
+		if end < 0 {
+			break
+		}
+		col := ansi.StringWidth(l[:k])
+		ms = append(ms, rowMarker{raw: l[k : k+end+2], col: col})
+		l = l[:k] + l[k+end+2:]
+	}
+	return l, ms
+}
+
+// injectRowMarkers puts markers back into clean at their exact visual columns.
+func injectRowMarkers(clean string, ms []rowMarker) string {
+	if len(ms) == 0 {
+		return clean
+	}
+	sort.SliceStable(ms, func(i, j int) bool { return ms[i].col < ms[j].col })
+	var b strings.Builder
+	b.Grow(len(clean) + len(ms)*12)
+	vis, mi := 0, 0
+	flush := func() {
+		for mi < len(ms) && ms[mi].col <= vis {
+			b.WriteString(ms[mi].raw)
+			mi++
+		}
+	}
+	for i := 0; i < len(clean); {
+		if clean[i] == 0x1b {
+			j := skipAnsiEscape(clean, i)
+			b.WriteString(clean[i:j])
+			i = j
+			continue
+		}
+		flush()
+		cluster, _, _, _ := uniseg.FirstGraphemeClusterInString(clean[i:], -1)
+		b.WriteString(cluster)
+		vis += ansi.StringWidth(cluster)
+		i += len(cluster)
+	}
+	flush()
+	return b.String()
+}
+
+func skipAnsiEscape(s string, i int) int {
+	if i+1 >= len(s) {
+		return len(s)
+	}
+	switch s[i+1] {
+	case '[':
+		j := i + 2
+		for j < len(s) && (s[j] < 0x40 || s[j] > 0x7e) {
+			j++
+		}
+		if j < len(s) {
+			return j + 1
+		}
+		return len(s)
+	case ']', 'P', '_', '^', 'X':
+		for j := i + 2; j < len(s); j++ {
+			if s[j] == 0x07 {
+				return j + 1
+			}
+			if s[j] == 0x1b && j+1 < len(s) && s[j+1] == '\\' {
+				return j + 2
+			}
+		}
+		return len(s)
+	}
+	return i + 2
+}
+
 // extract strips picture markers from a composed frame and returns where
-// each picture sits (self-paint path; View uses finish).
+// each picture sits (self-paint path; View uses finish). Each request ID is
+// emitted at most once so a duplicate marker can never draw a ghost image.
 func (g *gfx) extract(lines []string) []placement {
 	var places []placement
+	seen := map[int]bool{}
 	for i, l := range lines {
 		for {
 			k := strings.Index(l, "\x1b_kz")
@@ -415,7 +509,8 @@ func (g *gfx) extract(lines []string) []placement {
 			id, err := strconv.Atoi(l[k+4 : k+end])
 			col := ansi.StringWidth(l[:k])
 			l = l[:k] + l[k+end+2:]
-			if err == nil && id < len(g.reqs) {
+			if err == nil && id >= 0 && id < len(g.reqs) && !seen[id] {
+				seen[id] = true
 				places = append(places, placement{placeReq: g.reqs[id], row: i, col: col})
 			}
 		}

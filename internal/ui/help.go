@@ -35,10 +35,21 @@ func overlay(lines, box []string, w int) []string {
 		if j >= len(out) {
 			break
 		}
-		l := fit(out[j], w)
+		clean, ms := extractRowMarkers(out[j])
+		l := fit(clean, w)
 		left := ansi.Truncate(l, x, "")
 		right := ansi.TruncateLeft(l, x+bw, "")
-		out[j] = left + "\x1b[0m" + fit(b, bw) + "\x1b[0m" + right
+		spliced := left + "\x1b[0m" + fit(b, bw) + "\x1b[0m" + right
+		if len(ms) > 0 {
+			var kept []rowMarker
+			for _, m := range ms {
+				if m.col < x || m.col >= x+bw {
+					kept = append(kept, m)
+				}
+			}
+			spliced = injectRowMarkers(spliced, kept)
+		}
+		out[j] = spliced
 	}
 	return out
 }

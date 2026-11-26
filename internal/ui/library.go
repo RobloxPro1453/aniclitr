@@ -532,12 +532,42 @@ func (l *library) view(a *App, w, h int) string {
 	for len(stats) > 0 && lipgloss.Width("Kitaplık")+lipgloss.Width(strings.Join(stats, stFaint.Render("  ·  ")))+8 > inner {
 		stats = stats[:len(stats)-1]
 	}
-	head := pageHeadIn("Kitaplık", stMuted.Render("Durumlar, listeler ve puanlar  ·  ")+a.malLine(), strings.Join(stats, stFaint.Render("  ·  ")), inner, h)
+	var head []string
+	if a.nova() {
+		counts := map[string]int{}
+		for _, it := range all {
+			counts[it.Status]++
+		}
+		var pills []string
+		for _, st := range []string{store.Watching, store.Completed, store.Planned} {
+			if n := counts[st]; n > 0 {
+				pills = append(pills, fg(statusColor(st)).Render(statusIcon(st)+" ")+stText.Render(fmt.Sprint(n)))
+			}
+		}
+		left1 := gradient("Kitaplık", brand, true)
+		if len(pills) > 0 {
+			left1 += stFaint.Render("   ") + strings.Join(pills, stFaint.Render("  ·  "))
+		}
+		cues := keycap("v") + " " + stMuted.Render("duvar") + "  " + keycap("o") + " " + stMuted.Render(sortNames[l.sortBy]) + "  " + keycap("i") + " " + stMuted.Render("istatistik")
+		if inner < 92 {
+			cues = keycap("v") + "  " + keycap("o") + "  " + keycap("/")
+		}
+		head = []string{
+			row2(left1, strings.Join(stats, stFaint.Render("  ·  ")), inner),
+			row2(a.malLine(), cues, inner),
+			"",
+		}
+	} else {
+		head = pageHeadIn("Kitaplık", stMuted.Render("Durumlar, listeler ve puanlar  ·  ")+a.malLine(), strings.Join(stats, stFaint.Render("  ·  ")), inner, h)
+	}
 	for _, l := range head {
 		out = append(out, strings.Repeat(" ", pad)+l)
 	}
 	bodyH := h - len(out)
 	sideW := 26
+	if a.nova() && inner < 86 {
+		sideW = 20
+	}
 	detailW := 0
 	if inner >= 120 {
 		detailW = min(44, inner/3)

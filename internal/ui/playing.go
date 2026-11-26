@@ -431,6 +431,9 @@ func (p *playing) key(a *App, k tea.KeyMsg) tea.Cmd {
 }
 
 func (p *playing) view(a *App, w, h int) string {
+	if a.nova() {
+		return p.novaView(a, w, h)
+	}
 	cw := min(84, w-10)
 	posterW := 0
 	if a.cfg.Posters && cw >= 60 && h >= 16 {

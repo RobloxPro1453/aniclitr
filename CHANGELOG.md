@@ -2,11 +2,16 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
-## [Yayınlanmamış]
+## [0.17.0]
 
 ### Eklenenler
-- **Nova Anime ekranı:** Yeni arayüzde (`Ayarlar → Görünüm → Arayüz → yeni`) anime sayfası sol vitrin kartı (kapak, kitaplık durumu, türler, tuş kapaklı hızlı işlemler ve özet) ile sağ odaklı bölüm sahnesine ayrılır; dar terminallerde iki satırlı özet başlığa katlanır.
+- **Nova arayüzü tüm ana ekranlarda:** Ana sayfa ve üst/alt çubuğa ek olarak **Anime** (`nova_anime.go`), **Çeviri/Sunucu Seçici** (`nova_picker.go`), **Oynatılıyor** (`nova_playing.go`), **Kitaplık** ve **Keşfet** ekranları Nova tasarım diline (kapaktan renkli paneller, tuş kapakları, dar ekranda akıllı katlanma) geçti; klasik arayüz ayarlarda korunur.
 - **İndirilenler depolama alanı göstergesi:** İndirilenler ekranında (`ctrl+d`) hem `aniclitr`'in diskte kapladığı alanı hem de sürücüdeki kalan boş alanı renkli bir çubukla gösterir (düşük disk alanında uyarı rengiyle); Windows, Linux ve macOS uyumludur.
+- **Veri katmanı test zırhı:** `internal/store` (geçmiş ve kitaplık) ile `internal/config` için atomik yazım, `.bozuk-*` kurtarma ve MAL kayıt benimseme birim testleri eklendi.
+
+### Düzeltilenler
+- **Sixel kapak kayması / ışınlanması:** Arama öneri kutusu, açılır menüler ve yazma kıvılcımları (`overlayAt`, `overlay`, `confetti.draw`) artık Sixel işaretçilerini (`\x1b_kzN\x1b\\`) metin kesme sırasında kutu kenarına ışınlamıyor; kutu altındaki kapak temizce gizlenir, yanındaki kapaklar tam sütununda kalır ve kutu kapanınca yerine döner.
+- **Nova ana sayfa kırpmaları:** Tek "Devam et" kartı varken bölüm detayının kesilmesi (`%2.`) ve geniş sayılarda istatistik satırının taşması düzeltildi.
 
 ## [0.16.1]
 

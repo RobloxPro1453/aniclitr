@@ -259,3 +259,48 @@ func TestNovaAnimeWideAndCompact(t *testing.T) {
 		}
 	}
 }
+
+func TestNovaPickerAndPlayingViews(t *testing.T) {
+	a := novaApp(t)
+	an := source.Anime{Source: "animecix", ID: "100", Title: "Sousou no Frieren", Kind: "TV"}
+	ep := source.Episode{ID: "5", Season: 1, Number: 5, Title: "Ölülerin Hayaletleri"}
+	eps := []source.Episode{ep}
+
+	pk := newPicker(an, ep, eps, false)
+	pk.build(a, []source.Variant{
+		{Fansub: "HakaiRyuu", Host: "Tau Video", URL: "https://tau-video.xyz/v1"},
+		{Fansub: "AnimeciX", Host: "Sibnet", URL: "https://sibnet.ru/v2"},
+	})
+	a.resolved["https://tau-video.xyz/v1"] = &resolveState{
+		st: &source.Stream{Qualities: []source.Quality{{Label: "1080p", Height: 1080, Size: 420 << 20}}},
+	}
+
+	wide := pk.view(a, 140, 32)
+	if len(strings.Split(wide, "\n")) != 32 {
+		t.Fatalf("nova picker wide height mismatch")
+	}
+	plain := ansi.Strip(wide)
+	for _, want := range []string{"Sousou no Frieren", "HakaiRyuu", "Tau Video", "1080p", "çeviri"} {
+		if !strings.Contains(strings.ToLower(plain), strings.ToLower(want)) {
+			t.Errorf("nova picker wide missing %q:\n%s", want, plain)
+		}
+	}
+	narrow := pk.view(a, 80, 21)
+	if len(strings.Split(narrow, "\n")) != 21 {
+		t.Fatalf("nova picker narrow height mismatch")
+	}
+
+	st := &source.Stream{Qualities: []source.Quality{{Label: "1080p", URL: "x"}}}
+	pl := newPlaying(an, ep, eps, "HakaiRyuu", "Tau Video", st, st.Qualities[0])
+	pl.started, pl.pos, pl.dur = true, 620, 1440
+	pv := pl.view(a, 120, 30)
+	if len(strings.Split(pv, "\n")) != 30 {
+		t.Fatalf("nova playing height mismatch")
+	}
+	plainP := ansi.Strip(pv)
+	for _, want := range []string{"Sousou no Frieren", "HakaiRyuu", "Tau Video", "1080p", "10:20", "24:00"} {
+		if !strings.Contains(plainP, want) {
+			t.Errorf("nova playing missing %q:\n%s", want, plainP)
+		}
+	}
+}

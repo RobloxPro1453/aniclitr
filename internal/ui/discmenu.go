@@ -84,15 +84,32 @@ func (d *discover) menuKey(a *App, k tea.KeyMsg) tea.Cmd {
 }
 
 func (d *discover) menuView(a *App, w, h int) string {
-	out := pageHead("Keşfet", "Yayın takvimi, sezon, türler ve öneriler. Bir bölüm seçin.", "AniList", w, h)
-	bodyH := h - len(out)
 	inner := w - kitPad*2
+	var out []string
+	if a.nova() {
+		left1 := gradient("Keşfet", brand, true) + stFaint.Render("  ·  ") + stMuted.Render("takvim, sezon, türler ve öneriler")
+		right1 := pill("ANILIST", cSky)
+		cues := keycap("1-6") + " " + stMuted.Render("hızlı aç") + "   " + keycap("enter") + " " + stMuted.Render("gir")
+		out = indent([]string{
+			row2(left1, right1, inner),
+			row2(stMuted.Render(discoverDesc[d.tab]), cues, inner),
+			"",
+		})
+	} else {
+		out = pageHead("Keşfet", "Yayın takvimi, sezon, türler ve öneriler. Bir bölüm seçin.", "AniList", w, h)
+	}
+	bodyH := h - len(out)
 	lw, rw := split(inner)
 	if rw > 0 {
 		lw = min(lw, 72)
 		rw = inner - lw - kitGap
 	}
 	items := d.menuItems(a)
+	if a.nova() {
+		for i := range items {
+			items[i].icon = fmt.Sprintf("%d", i+1) + " " + items[i].icon
+		}
+	}
 	band := d.mgl.row(a, d.tab)
 	left := pane{title: "bölümler", focused: true, draw: func(w, h int) []string { return menuRows(items, band, w) }}
 	right := pane{title: discoverTabs[d.tab], draw: func(w, h int) []string { return d.peek(a, w, h) }}

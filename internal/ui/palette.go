@@ -499,15 +499,28 @@ func (p *palette) draw(a *App, lines []string) []string {
 }
 
 // overlayAt draws box with its top-left at (x,y) (rows above 0 are clipped).
+// Picture markers inside [x, x+bw) are discarded cleanly instead of letting
+// ansi.TruncateLeft teleport them to the right edge of the box.
 func overlayAt(lines, box []string, x, y, w int) []string {
 	for i, b := range box {
 		j := y + i
 		if j < 0 || j >= len(lines) {
 			continue
 		}
-		l := fit(lines[j], w)
+		clean, ms := extractRowMarkers(lines[j])
+		l := fit(clean, w)
 		bw := lipgloss.Width(b)
-		lines[j] = ansi.Truncate(l, x, "") + "\x1b[0m" + b + "\x1b[0m" + ansi.TruncateLeft(l, x+bw, "")
+		spliced := ansi.Truncate(l, x, "") + "\x1b[0m" + b + "\x1b[0m" + ansi.TruncateLeft(l, x+bw, "")
+		if len(ms) > 0 {
+			var kept []rowMarker
+			for _, m := range ms {
+				if m.col < x || m.col >= x+bw {
+					kept = append(kept, m)
+				}
+			}
+			spliced = injectRowMarkers(spliced, kept)
+		}
+		lines[j] = spliced
 	}
 	return lines
 }

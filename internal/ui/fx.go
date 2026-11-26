@@ -198,9 +198,12 @@ func (c *confetti) draw(lines []string, w int) {
 	}
 	for y, ps := range byRow {
 		// one pass per row, every segment cut from the original line:
-		// splicing repeatedly would re-copy the escape codes each time
+		// splicing repeatedly would re-copy the escape codes each time.
+		// Picture markers are lifted out before ansi.Cut and restored at their
+		// exact visual columns afterwards so sparks can never shift Sixel art.
 		sort.Slice(ps, func(i, j int) bool { return ps[i].x < ps[j].x })
-		l := fit(lines[y], w)
+		clean, ms := extractRowMarkers(lines[y])
+		l := fit(clean, w)
 		var b strings.Builder
 		prev := 0
 		for _, p := range ps {
@@ -217,7 +220,7 @@ func (c *confetti) draw(lines []string, w int) {
 			prev = x + 1
 		}
 		b.WriteString(ansi.Cut(l, prev, w))
-		lines[y] = b.String()
+		lines[y] = injectRowMarkers(b.String(), ms)
 	}
 }
 

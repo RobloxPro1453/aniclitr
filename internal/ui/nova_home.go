@@ -295,7 +295,8 @@ func (h *home) novaView(a *App, w, ht int) string {
 			detail += stMuted.Render(fmt.Sprintf("  ·  %%%d", p))
 		}
 		detail += stFaint.Render("  ·  " + agoLong(e.UpdatedAt))
-		out = append(out, pad+truncate(detail, rowW))
+		detailW := max(rowW, w-len(pad)-kitPad)
+		out = append(out, pad+truncate(detail, detailW))
 
 		if bandH > 0 {
 			out = append(out, "")
@@ -489,13 +490,21 @@ func novaStats(a *App, w int) []string {
 		}
 	}
 	kv := func(k, v, rest string) string {
-		return stMuted.Render(fit(k, 11)) + stText.Bold(true).Render(v) + stMuted.Render(rest)
+		kw := 10
+		if w < 32 {
+			kw = 9
+		}
+		return stMuted.Render(fit(k, kw)) + stText.Bold(true).Render(v) + stMuted.Render(rest)
 	}
 	out := []string{kv("bu hafta", fmtWatch(week), " izledin")}
 	if s := a.hist.Streak(); s > 0 {
 		out = append(out, kv("üst üste", fmt.Sprintf("%d gün", s), " izliyorsun"))
 	}
-	out = append(out, kv("toplam", fmt.Sprint(eps), " bölüm"), kv("kitaplık", fmt.Sprint(lib), fmt.Sprintf(" seri · %d bitti", done)))
+	libRest := fmt.Sprintf(" seri · %d bitti", done)
+	if w < 34 {
+		libRest = fmt.Sprintf(" · %d bitti", done)
+	}
+	out = append(out, kv("toplam", fmt.Sprint(eps), " bölüm"), kv("kitaplık", fmt.Sprint(lib), libRest))
 	for i := range out {
 		out[i] = truncate(out[i], w)
 	}

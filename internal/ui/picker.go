@@ -584,6 +584,9 @@ func (p *picker) key(a *App, k tea.KeyMsg) tea.Cmd {
 }
 
 func (p *picker) view(a *App, w, h int) string {
+	if a.nova() {
+		return p.novaView(a, w, h)
+	}
 	pad := 2
 	inner := w - pad*2
 	var out []string

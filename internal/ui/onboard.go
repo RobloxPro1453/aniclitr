@@ -15,6 +15,12 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"0.17.0": {
+		"Sixel kapakları artık kaya gibi: arama önerileri, açılır menüler veya yazma efektleri açıkken kapakların yan tarafa kayması/ışınlanması kökünden giderildi",
+		"Yeni arayüz (Nova) artık tüm ana ekranlarda: Anime sayfası, çeviri/sunucu seçici, oynatılıyor kartı, Kitaplık ve Keşfet ekranları Nova diline geçti; dar terminallerde de temizce katlanır",
+		"İndirilenler depolama çubuğu: ctrl+d ekranında aniclitr'in diskte kapladığı alan ve sürücüdeki kalan boş alan renkli çubukla görünür (düşük disk uyarısıyla)",
+		"Nova ana sayfada tek kart altındaki bölüm detayı ve istatistik satırındaki kırpmalar düzeltildi",
+	},
 	"0.16.1": {
 		"Yeni arayüz (deneme): Ayarlar → Görünüm → Arayüz → yeni. Üst çubukta indirme dalgası ve adıyla kaynak işaretleri, tuş kapakları, renkli bildirimler; istediğin an klasiğe dönebilirsin",
 		"Yeni arayüzde ana sayfa: kapak kartları (← →), seçili kart çerçeveli; altta kaldığın an görüntüsü, yaklaşan bölümler ve sade istatistikler",
