@@ -24,6 +24,14 @@ Bu belge `aniclitr`'in tamamlanan temel kilometre taşlarını ve `v1.0.0` sonra
 - **Sıfır bekleme sonraki bölüm ön-hazırlama:** %70 sonrasında sonraki bölümün akışını arka planda çözüp anında oynatma.
 - **Keşfet Ruh Hali Sihirbazı & Tek Tuşla Araç Kurulumu:** Öneriler içinde 6 küratörlü ruh hali (`m`), `aniclitr kur` otomatik araç kurucu, Winget otomatik senkron ve tam-eşleşme arama sıralaması.
 
+## v1.3.0 ile Tamamlananlar
+
+- **İki bağımsız açık kaynak (MIT) video motoru:** (1) AI'sız gerçek hedef çözünürlük ölçekleme (**AMD FidelityFX FSR v1.0.2**: `Otomatik`, `1080p / 1920×1080`, `2K / 2560×1440`, `4K / 3840×2160`) ve (2) resmi **Bloc97/Anime4K v4.0.1** CNN pürüzsüz çizgi onarımı (`Hızlı`, `Cam Gibi`, `Sinema`) + **`mpv` GPU Frame-Gen** (`Akıcı Smooth Motion` / `60+ FPS Catmull-Rom`), tamamı sıfır-kopya (`--hwdec=auto-safe`).
+- **Tokyo Studio `mpv` içi kontrol merkezi (`m` / `Tab` / `Alt+4`):** Keskin mat obsidyen mimari kart, iki katmanlı alt menüler (`Esc`/`Backspace` üst menüye döner), tekrarlı akıcı `↑↓←→` gezinme, canlı çözünürlük telemetrisi ve `<1 ms` tepki.
+- **İnsanüstü performans & UX psikolojisi:** 3,3× hızlı `tty.Frame.setLine` (`0 allocs`), doğrudan TrueColor yazıcı (`<1 ms/kare`), fare hareketinde `0 bayt`, çift-hızlı **60/20/0 FPS** uyarlamalı ambiyans saati, kademeli açılış (`OpenLazy`) ve HTTP/2 bağlantı havuzu.
+- **Tüm menülerde eksiksiz akıllı arama:** Birleşik `match.RankTitle` motoru tüm arama yüzeylerine (`results`, `suggest`, `library`, CLI) ve Nyaa.si'nin tüm 5 sekmesine (TF-DF gürültü ayıklamalı otomatik seeders ikinci geçişiyle) yayıldı.
+- **Tam Arayüz Discord Rich Presence & Bölüm Geçişi:** Sıralı yarışsız RPC işçisi, tüm ekranlarda canlı gezinti durumu, duraklatma koruması, sarma (seek) senkronu, özel `aniclitr` ikonu ve `--force-window=immediate` ile anında sonraki bölüm `mpv` penceresi.
+
 ## Sonraki Sürümler için Değerlendirilenler
 
 - **Ek açık kaynak sağlayıcıları:** Bot koruması ve Cloudflare engeli olmayan açık API/HTML sunan yeni Türkçe kaynaklar.

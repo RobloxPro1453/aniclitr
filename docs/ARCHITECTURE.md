@@ -19,11 +19,11 @@ viewers. It is a Go program with these parts:
 - **UI:** Bubble Tea for the event loop, plus its own cell renderer
   (`internal/tty`). Nova is the default interface since v1.0.0 (`klasik` stays available in Settings).
 - **Sources:** live scrapers and APIs (AnimeciX primary, AnimeTR, AniHub, SonAnime, Animim, HiAnime English, TürkAnime archive as legacy) plus Nyaa.si public RSS torrent search (`internal/nyaa`).
-- **Playback:** mpv, controlled over JSON IPC (live in-mpv ASS OSD subtitle menu `y`, live `sub-delay` sync fine-tuning `z`/`x`/`Z`/`X`/`Alt+0`, OP/ED skip).
+- **Playback:** mpv, controlled over JSON IPC (`--force-window=immediate`, live Tokyo Studio in-mpv control console `m`/`Tab`/`Alt+4` with sub-menu back-stack, live ASS OSD subtitle menu `y`, `sub-delay` sync `z`/`x`/`Z`/`X`/`Alt+0`, two independent MIT video pipelines — AMD FSR 1.0 real resolution scaling + Bloc97/Anime4K v4 CNN + mpv GPU Frame-Gen — and OP/ED skip).
 - **Subtitles:** AniSub (`anisub.co`, no API key) + optional OpenSubtitles + local `.srt`/`.ass`/`.vtt` loader (`internal/subs`).
-- **Downloads:** aria2c / yt-dlp, with a built-in fallback and cross-platform disk space bar.
+- **Downloads:** aria2c / yt-dlp / embedded `anacrolix/torrent` streamer & downloader (`internal/tstream`, `internal/download/torrent.go`) + automatic release classifier/organizer (`internal/download/organizer.go`), lazy startup (`OpenLazy`), and cross-platform disk space bar.
 - **Accounts:** MyAnimeList (OAuth PKCE) and AniList (OAuth2) two-way sync.
-- **Ecosystem:** zero-dependency Discord Rich Presence (`internal/discord`), OS desktop notifications (`internal/notify`), single-file portable backup (`internal/backup`), quick CLI (`internal/cli`), and custom `keys.json`.
+- **Ecosystem:** serialized, deadlock-free Discord Rich Presence (`internal/discord`, live browsing across all screens + pause/seek sync + hosted icon), OS desktop notifications (`internal/notify`), Watch Party LAN/TCP sync (`internal/watchparty`), animated Wrapped + PNG card (`internal/wrapped`), auto tool installer (`internal/tools`), single-file portable backup (`internal/backup`), quick CLI (`internal/cli`), and custom `keys.json`.
 - **Metadata:** AniList for discovery (schedule, seasons, recommendations,
   trailers, characters & seiyuu).
 
@@ -51,10 +51,10 @@ internal/
   config/                 Config (JSON), keys.json custom bindings, Dir()/CacheDir(), WriteAtomic
   backup/                 versioned single-file export/import with pre-restore safety snapshot
   cli/                    fast non-TUI CLI commands (search, continue list, torrent list, backup/restore)
-  discord/                zero-dependency Discord Rich Presence over local IPC pipe/socket
+  discord/                serialized latest-wins Discord Rich Presence over local IPC pipe/socket (reconnect-retry, pause/seek/browse)
   notify/                 zero-dependency OS desktop notifications (Windows WinRT, notify-send, osascript)
-  nyaa/                   public Nyaa.si RSS torrent search, relevance ranking, magnet builder, aria2c/webtorrent launchers
-  shaders/                embedded optimized Anime4K GLSL shaders (4 profiles, live Alt+4 mpv switching)
+  nyaa/                   public Nyaa.si RSS + TF-DF noise-excluded HTML seeders search across all 5 tabs, magnet builder
+  shaders/                go:embed official MIT AMD FSR v1.0.2 + Bloc97/Anime4K v4.0.1 CNN shaders + mpv GPU Frame-Gen pipeline
   tools/                  managed portable tools dir & auto-installer (mpv, yt-dlp, aria2c, ffmpeg)
   tstream/                embedded pure-Go BitTorrent streamer (anacrolix/torrent + local HTTP Range -> mpv)
   watchparty/             zero-dependency LAN/TCP Watch Together playback sync room
@@ -200,15 +200,11 @@ type typer    interface{ typing() bool }          // printable keys belong to a 
 
 While any overlay is open, sixel images are suppressed (see §5).
 
-### 4.1.1 Nova (the new interface, opt-in)
+### 4.1.1 Nova (default interface since v1.0.0)
 
-`cfg.UI == "yeni"` (Settings → Görünüm → Arayüz). Only presentation forks;
-data, screens, keys and hints are shared. Files: `nova_shell.go` (top bar
-with the download wave and source chips, the progress rule, keycap footer,
-notification pills), `nova_home.go` (home as cover cards plus a band).
-`compose()` picks the shell; a screen picks its Nova layout with
-`a.nova()`. Screens not redone yet use their classic body inside the Nova
-shell. Both interfaces run through `TestScreenSweep`.
+`cfg.UI == ""` or `"yeni"` is Nova (default); `"klasik"` stays available in Settings → Görünüm → Arayüz. Only presentation forks;
+data, screens, keys and hints are shared. Files: `nova_shell.go`, `nova_home.go`, `nova_anime.go`, `nova_picker.go`, `nova_playing.go`, `nova_discover.go`.
+`compose()` picks the shell; a screen picks its Nova layout with `a.nova()`. Both interfaces run through `TestScreenSweep`.
 
 **Pictures under boxes.** Dropdowns and the search suggestions call
 `a.cover(x, y, w, h)`; `buildFrame` skips pictures that touch a cover
@@ -259,14 +255,12 @@ footer. Then:
 
 ### 4.4 Animation clock
 
-- `tickMsg` arrives at 30 fps **only while `needsTick()` is true**. That
-  covers toasts, transitions, poster fades, encodes in flight, theme morphs,
-  confetti, glides, open overlays, and any screen whose `animating()` is
-  true.
-- An idle app costs zero CPU. Respect this: if you animate, make
-  `animating()` return true only while it matters.
-- Reduced motion (`!a.cfg.Motion`) must skip every animation, glide and
-  sound tick.
+- Dual-rate adaptive clock (`App.tickInterval()`):
+  - **60 FPS (`16 ms`)** while fast interactive motion is active (transitions, glides, toasts, poster fades, theme morphs, confetti, open overlays, loaders, logo intro, Wrapped slides).
+  - **20 FPS (`50 ms`)** when calmly idling on Home with ambient weather/logo shimmer enabled (`Ambient != "yok"`).
+  - **0 FPS (0% CPU)** when `Ambient == "yok"`, when `Motion == false`, on all idle non-Home screens, and while `mpv` is playing.
+- Mouse-move events (`MouseActionMotion`) and in-mpv menu cursor navigation skip terminal repaint (`skipPaint = true`).
+- Reduced motion (`!a.cfg.Motion`) must skip every animation, glide and sound tick.
 
 ### 4.5 Other UI subsystems
 
@@ -476,14 +470,17 @@ details are on `sourcesScreen`.
 ## 7. Playback (`internal/player`)
 
 - `FindMpv` prefers `mpv.exe`; `mpv.com` breaks the pipe IPC.
-- **IPC:** a named pipe `\\.\pipe\aniclitr-mpv-<pid>-<n>` (Unix socket
-  elsewhere).
-  - It observes `time-pos`, `duration` and `pause`.
-  - Progress events are throttled to about 2.5 per second.
+- `--force-window=immediate` opens the player window immediately while the stream buffers (crucial on next-episode transitions).
+- **IPC:** a named pipe `\\.\pipe\aniclitr-mpv-<pid>-<n>` (Unix socket elsewhere).
+  - Observes `time-pos`, `duration`, `pause`, `speed`, `sub-delay`, `video-params/h`, `volume`, `mute`.
+  - Progress events are throttled to ~2.5/s; silent zero-duration exits trigger automatic failover recovery.
 - **Key bindings sent to mpv:**
+  - `m` / `Tab` / `Alt+4` open the hierarchical Tokyo Studio ASS control console (`internal/ui/mpvmenu.go`) with `repeatable` `↑↓←→` and `Esc`/`Backspace` parent-menu navigation;
+  - `y` opens the in-mpv AniSub ASS subtitle picker (`internal/ui/subsui.go`);
+  - `z`/`x`/`Z`/`X`/`Alt+0` adjust `sub-delay` live;
   - `n` / `b` send `script-message aniclitr-next` / `-prev`;
-  - `q` sends `aniclitr-quit`, which takes a resume screenshot and then
-    quits.
+  - `q` sends `aniclitr-quit`, which takes a resume screenshot and then quits.
+- **Video pipeline (`SetPipeline`):** live JSON `[]string` `set_property glsl-shaders` + `video-sync`/`interpolation`/`tscale` switching without restarting mpv.
 - **Skip:** segments are armed once the duration is known. They come from
   `aniskip.ForDuration`, which picks one segment per family by the closest
   episode length.

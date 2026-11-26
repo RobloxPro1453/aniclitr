@@ -55,7 +55,7 @@
 
 Kalınan saniye, seri bazlı çözünürlük tercihi, çok sezonlu seri hizalaması ve açılış/bitiş (OP/ED) jenerik atlama otomatik yönetilir; oynatma sırasında terminal boşa çekilir ve işlemci kullanmaz.
 
-> **English summary.** `aniclitr` v1.3 is an open-source (GPL-3.0), keyboard-driven Go terminal anime player built for Turkish-subtitled content. Powered by a zero-flicker 60 FPS adaptive renderer (`0%` idle CPU, zero mouse-motion repaints), it searches six live sources in parallel plus Nyaa.si torrents across every tab with unified smart title-relevance ranking and embedded BitTorrent streaming, plays via `mpv` with an **in-mpv interactive dropdown menu (`m` / `Tab`)**, crisp zero-copy **1080p / 2K / 4K** GPU upscaling (`Alt+4`), **zero-wait next-episode pre-fetching**, **Watch Party** LAN/TCP sync, **Sleep Timer** (`Alt+s`), **Discord Rich Presence** with anime-title sidebar display & live progress bar, live in-mpv **AniSub** OSD subtitles (`y`) & sync fine-tuning (`z`/`x`), OP/ED skip, animated **Anime Wrapped** with zero-model Turkish persona commentary & shareable PNG card (`aniclitr ozet --png`), **Keşfet Mood Wizard**, one-key auto tool installer (`aniclitr kur`), auto-organized offline downloads, Sixel/half-block Nova UI, and two-way MyAnimeList & AniList OAuth sync.
+> **English summary.** `aniclitr` v1.3 is an open-source (GPL-3.0), keyboard-driven Go terminal anime player built for Turkish-subtitled content. Powered by a zero-flicker 60/20/0 FPS adaptive cell renderer (zero mouse-motion repaints, `<1 ms` TrueColor frame compose), it searches six live sources in parallel plus all 5 Nyaa.si tabs with unified smart title-relevance ranking and embedded pure-Go BitTorrent streaming, plays via `mpv` with a **Tokyo Studio in-mpv control console (`m` / `Tab`)**, two independent MIT open-source video pipelines (**AMD FidelityFX FSR 1.0** real `1080p / 2K / 4K` resolution upscaling + **Bloc97/Anime4K v4 CNN** smooth restoration & **mpv GPU Frame-Gen**), **zero-wait next-episode pre-fetching**, **Watch Party** LAN/TCP sync, **Sleep Timer** (`Alt+s`), full-app **Discord Rich Presence** (live browsing + pause/seek sync), in-mpv **AniSub** OSD subtitles (`y`) & sync fine-tuning (`z`/`x`), OP/ED skip, animated **Anime Wrapped** with zero-model Turkish persona commentary & shareable PNG card (`aniclitr ozet --png`), **Keşfet Mood Wizard**, one-key auto tool installer (`aniclitr kur`), auto-organized offline downloads, Sixel/half-block Nova UI, and two-way MyAnimeList & AniList OAuth sync.
 
 ### Kullanılan Teknolojiler
 
@@ -104,16 +104,16 @@ Kalınan saniye, seri bazlı çözünürlük tercihi, çok sezonlu seri hizalama
 
 | Alan | Açıklama |
 |---|---|
-| **Paralel Arama & Doğrudan Bağlantı** | Etkin tüm kaynaklarda eşzamanlı arama; aynı anime tek sonuçta birleştirilir. Arama kutusuna, komut paletine (`ctrl+k`) veya komut satırına yapıştırılan anime/bölüm bağlantısı doğrudan açılır. |
-| **Akıllı Oynatma (`mpv`), Hızlı Menü (`m`) & 1080p/2K/4K** | Saniye hassasiyetinde kaldığın yerden devam, **seri bazında kalite hafızası**, **sıfır bekleme sonraki bölüm ön-hazırlama**, doğrudan `mpv` penceresinde açılan **etkileşimli hızlı dropdown menü (`m` / `Tab`)**, sıfır-kopya GPU dostu **1080p Net / 2K Keskin / 4K Ultra** yükseltme (`Alt+4`), **Uyku Zamanlayıcısı** (`Alt+s` / `T`), AniSkip + kaynak OP/ED ve **filler atlama**. |
+| **Paralel Akıllı Arama & Doğrudan Bağlantı** | Etkin tüm kaynaklarda eşzamanlı arama; birleşik alaka motoru (`match.RankTitle`) sayesinde kısa sorgularda tam eşleşme her zaman 1. sırada. Yapıştırılan anime/bölüm bağlantısı doğrudan açılır. |
+| **Tokyo Studio `mpv` Menüsü (`m`) & 2'li MIT Video Motoru** | Video üzerinde açılan alt-menülü **Tokyo Studio kontrol merkezi (`m` / `Tab`)** + iki bağımsız sıfır-kopya (`--hwdec=auto-safe`) motor: **(1) AI'sız gerçek çözünürlük ölçekleme** (AMD FidelityFX FSR 1.0: `Otomatik / 1080p / 2K / 4K`), **(2) Kalite & Akıcılık** (resmi Bloc97/Anime4K v4 CNN cam gibi çizgi onarımı + `mpv` GPU Frame-Gen *Smooth Motion / 60+ FPS*), ayrıca **seri bazlı kalite hafızası**, **sıfır bekleme sonraki bölüm ön-hazırlama**, **Uyku Zamanlayıcısı** ve OP/ED + filler atlama. |
 | **Birlikte İzle (Watch Party)** | Harici sunucu veya hesap gerektirmeden yerel TCP odası kur (`h`) / katıl (`j`); duraklatma ve sarma her iki `mpv` penceresinde anlık eşitlenir (`ctrl+k` veya oynatırken `P`). |
 | **Canlı Anime Özeti (Wrapped)** | 6 slaytlık animasyonlu terminal özeti, sıfır-model Türkçe kişilik & yorum motoru ve tek tuşla `900×1200` paylaşılabilir PNG kart (`aniclitr ozet [--png]`, Kitaplık'ta `W`). |
-| **Canlı Türkçe Altyazı (`y`) & Senkron** | Alt-Tab yapmadan doğrudan `mpv` penceresi içinde `y` ile açılan **[AniSub](https://anisub.co/)** OSD altyazı seçici (API anahtarsız!); `z`/`x` (`±0,1s`), `Z`/`X` (`±0,5s`), `Alt+0` (sıfırla) ile canlı senkron ince ayarı; terminalde `l` ile yerel `.srt`/`.ass`/`.vtt` yükleme. |
+| **Canlı Türkçe Altyazı (`y`) & Senkron** | Alt-Tab yapmadan doğrudan `mpv` penceresi içinde `y` (veya `m` menüsü) ile açılan **[AniSub](https://anisub.co/)** OSD altyazı seçici (API anahtarsız!); `z`/`x` (`±0,1s`), `Z`/`X` (`±0,5s`), `Alt+0` (sıfırla) ile canlı senkron; terminalde `l` ile yerel `.srt`/`.ass`/`.vtt` yükleme. |
 | **Yerel Çözücüler & Otomatik Kurtarma** | Tau Video, AniHub HLS, OK.ru, Vidmoly, Voe, Sibnet ve Google Drive doğrudan Go içinde çözülür; akışlar oynatılmadan doğrulanır. Bir sunucu açılmazsa sıradaki sunucu, fansub veya diğer açık kaynak otomatik denenir. |
-| **Nova 60 FPS Motor (%0 Boşta CPU)** | Özel hücre-diff çizici (`internal/tty`), sıfır-ayırımlı TrueColor yazıcı ve uyarlamalı 60 FPS saat: fare hareketinde sıfır yeniden çizim, boşta ve oynatırken %0 işlemci kullanımı; tüm ekranlarda akıcı Nova tasarımı. |
+| **Nova 60/20/0 FPS Uyarlamalı Motor** | Özel hücre-diff çizici (`internal/tty`), doğrudan TrueColor yazıcı (`<1 ms/kare`), fare hareketinde sıfır yeniden çizim; etkileşimde **60 FPS**, Ana Sayfa sakin ambiyansında **20 FPS**, boş ekranlarda ve `mpv` oynarken **%0 CPU**. |
 | **MyAnimeList & AniList Eşitleme** | OAuth ile **iki yönlü** durum/puan/bölüm/özel liste eşitleme, AniList `PREQUEL`/`SEQUEL` zinciriyle çok sezonlu hizalama ve her iki hesapta `izliyor` olan serilerin doğrudan ana sayfadaki **Devam et** kartlarında görünmesi. |
-| **Nyaa.si Gömülü Torrent Akışı (`alt+t` / `T`)** | Resmi Nyaa.si RSS araması (`Tümü`, `Türkçe`, `İngilizce`, `Raw (Ham)`, `Güvenilir`), harici istemci olmadan **gömülü dosya seçici + anlık `mpv` akışı (`enter`)**, `ctrl+d` İndirilenler kuyruğunda canlı indirme (`d`) ve otomatik `<Seri Adı>/SxxEyy [Grup] [Kalite].mkv` klasörleme. |
-| **Discord Rich Presence & Bildirimler** | Üye listesinde doğrudan izlediğin anime adı (`status_display_type`), canlı kalan süre ilerleme çubuğu, duraklatma durumu ve kapak görseli (sıfır ayar; isteğe bağlı özel `discord_app_id`) + yeni bölüm / indirme masaüstü bildirimleri. |
+| **Nyaa.si Gömülü Torrent Akışı (`alt+t` / `T`)** | Tüm 5 sekmede (`Tümü`, `Türkçe`, `İngilizce`, `Raw`, `Güvenilir`) TF-DF gürültü ayıklamalı akıllı arama, harici istemci olmadan **gömülü dosya seçici + anlık `mpv` akışı (`enter`)**, `ctrl+d` İndirilenler kuyruğunda canlı indirme (`d`/`D`) ve otomatik `<Seri Adı>/SxxEyy [Grup] [Kalite].mkv` klasörleme. |
+| **Tam Arayüz Discord Rich Presence & Bildirimler** | İzlerken anime adı, bölüm, kapak, canlı ilerleme çubuğu (sarma/OP-ED atlama senkronlu) ve duraklatma durumu; arayüzde gezinirken de tüm ekranlar (Ana Sayfa, Arama, Anime, Keşfet, Kitaplık, Torrent, Ayarlar, Wrapped) canlı gösterilir (sıfır ayar; özel kart başlığı için `discord_app_id`). |
 | **Hızlı CLI, Yedekleme & Otomatik Kurulum** | `devam`, `ara`, `izle`, `indir`, `torrent`, `ozet [--png]`, eksik araçları tek komutla kuran **`aniclitr kur`**, güvenli `yedekle`/`geri-yukle`, ekran geçmişi (`alt+←`/`→`) ve kişiselleştirilebilir `keys.json`. |
 | **Esnek Toplu İndirme & Depolama** | Tek bölüm (`d`), çoklu seçim (`v`), özel aralık (`30-100`), buradan sona veya tüm sezon (`D`); canlı hız kıvılcım grafiği (`▁▂▃▅▆▇`), disk/depolama çubuğu, `aria2c` / `yt-dlp` / dahili indirici. |
 | **Karakterler ve Seslendirenler (`c`)** | Sixel/half-block karakter & seiyuu portreleri, ana/yardımcı roller ve spoiler korumalı biyografiler (`x`). |
@@ -173,7 +173,7 @@ aniclitr devam [--list]           Son izlenen animeye devam eder (--list: düz m
 aniclitr ara <ad>                 Etkin kaynaklarda hızlı CLI araması yapar
 aniclitr izle <ad> [bölüm]        Doğrudan ilgili animeyi arayıp açar
 aniclitr indir <ad> [aralık]      Doğrudan indirme için animeyi arar (örn: 1-12)
-aniclitr torrent <ad> [--raw]     Nyaa.si torrent arar (--raw/--tr/--trusted/--magnet N)
+aniclitr torrent <ad> [--raw]     Nyaa.si torrent arar (--raw/--tr/--en/--trusted/--magnet N)
 aniclitr ozet [--png [dosya]]     Canlı animasyonlu Anime Özeti (--png: 900×1200 paylaşım kartı)
 aniclitr kur                      Eksik yardımcı araçları (mpv, yt-dlp, aria2c, ffmpeg) otomatik kurar
 aniclitr yedekle [dosya.json]     Ayar, geçmiş, kitaplık ve eşlemeleri tek dosyaya yedekler
@@ -214,7 +214,7 @@ Arayüz öngörülebilir katmanlarla ilerler: **menü → liste → öğe → ey
 | **Kitaplık** | `ctrl+b` / `F2` | Durumlar, özel listeler, puanlar, kapak duvarı (`v`) ve grafiksel izleme istatistikleri (`i`). |
 | **Keşfet** | `ctrl+e` / `F4` | 3 sütunlu yerleşim: solda 6 bölümlük şerit (Takvim, Bu akşam, Bu sezon, Türler, Öneriler, Rastgele), ortada odak sahnesi, sağda kapaklı ayrıntı kartı. |
 | **İndirilenler** | `ctrl+d` / `F3` | Kapaklı çevrimdışı kitaplık, canlı hız grafikli indirme sırası (`v`) ve renkli disk depolama çubuğu. |
-| **Torrent (Nyaa.si)** | Ana Sayfa `✦ Torrent` · `alt+t` · Anime'de `T` | 2 sütunlu Nova Nyaa.si araması (`Tümü`, `Türkçe`, `İngilizce`, **`Raw (Ham)`**, `Güvenilir`), sıralama (`o`), kalite/paket süzgeci (`q`), `aria2c` indirme (`d`), magnet kopyalama (`c`) ve webtorrent/magnet açma (`enter`). |
+| **Torrent (Nyaa.si)** | Ana Sayfa `✦ Torrent` · `alt+t` · Anime'de `T` | 2 sütunlu Nova Nyaa.si araması (`Tümü`, `Türkçe`, `İngilizce`, **`Raw (Ham)`**, `Güvenilir`), tüm sekmelerde akıllı arama, gömülü BitTorrent dosya seçici + anlık `mpv` akışı (`enter`), `ctrl+d` kuyruğuna bağlı canlı indirme + otomatik klasörleme (`d`/`D`) ve magnet kopyalama (`c`). |
 | **Ayarlar** | `ctrl+o` | Genel (MAL, AniList, Discord RPC, Masaüstü bildirimleri, Yedekleme), görünüm, oynatma, kaynaklar ve **Sunucu sırası**. |
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
@@ -261,8 +261,7 @@ Arayüz öngörülebilir katmanlarla ilerler: **menü → liste → öğe → ey
 | `n` · `b` | Sonraki bölüm *(filler atlama destekli)* · Önceki bölüm |
 | `y` | **Altyazı seçici (mpv içinde OSD menü — Alt-Tab gerekmez! `↑↓`/`1-8`/`Enter`)** |
 | `z` / `x` · `Z` / `X` · `Alt+0` / `0` | **Altyazı senkron ince ayarı:** `±0,1 sn` · `±0,5 sn` · `0,0 sn` sıfırla |
-| `m` · `Tab` *(mpv içi)* | **Etkileşimli Hızlı Dropdown Menü:** `1080p / 2K / 4K`, AniSub altyazı, Uyku zamanlayıcısı, Oynatma hızı, senkron sıfırlama (`↑↓` / `1-8` / `Enter`) |
-| `Alt+4` *(mpv içi)* | Hızlı dropdown menüyü doğrudan görüntü yükseltme seçenekleriyle aç |
+| `m` · `Tab` · `Alt+4` *(mpv içi)* | **Tokyo Studio Kontrol Merkezi:** `Çözünürlük (AMD FSR: Otomatik/1080p/2K/4K)`, `Kalite & Akıcılık (Anime4K v4 CNN + Frame-Gen)`, `Altyazı & Senkron`, `Ses & Oynatma` ve `Bölüm Geçişi` (`↑↓`/`←→`/`Enter`, alt menüde `Esc` üst menüye döner) |
 | `Alt+s` *(mpv)* · `T` *(terminal)* | **Uyku zamanlayıcısı** (`1 bölüm`, `2 bölüm`, `30/60 dk`, `PC'yi uyut`) |
 | `P` *(terminal)* | **Birlikte İzle** (Watch Party) oda yönetimi |
 | `l` *(terminal altyazı kartında)* | Bilgisayardan yerel `.srt`/`.ass`/`.ssa`/`.vtt` dosyası yükle |
@@ -333,7 +332,7 @@ Hesaplarınız bağlandığında kitaplığınız **MyAnimeList** ve/veya **AniL
 
 - **Esnek seçim:** Tek bölüm (`d`), çoklu işaretleme (`v`), veya `D` menüsünden *seçili bölümden sona kadar*, *özel aralık (`30-100`, `5-12, 15`)*, *sadece izlenmeyenler* ya da *tüm sezon*.
 - **Canlı izleme ve depolama:** İndirilenler ekranında (`ctrl+d` → `v`) hem toplam hem iş başına canlı hız grafiği (`▁▂▃▅▆▇`) ve sürücüdeki boş alan / `aniclitr` kullanımını gösteren renkli depolama çubuğu yer alır.
-- **Çevrimdışı oynatma:** İndirilen dosyalar `~/Videos/aniclitr/<Anime>/S01E05 [fansub] [1080p].mp4` biçiminde kapak ve altyazıyla kaydedilir; internet yokken doğrudan açılır, `x` ile tek bölüm veya tüm seri diskten silinebilir.
+- **Çevrimdışı oynatma & otomatik torrent klasörleme:** İndirilen normal ve torrent videoları `~/Videos/aniclitr/<Anime>/S01E05 [fansub] [1080p].mp4|.mkv` biçiminde kapak ve altyazıyla düzenlenir; internet yokken doğrudan açılır, `x` ile tek bölüm veya tüm seri diskten silinebilir.
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
 
@@ -357,7 +356,8 @@ Tüm ayarlar `ctrl+o` menüsünden düzenlenir ve `%APPDATA%\aniclitr\config.jso
 | Anahtar | Açıklama |
 |---|---|
 | `ui`, `renderer` | Arayüz (`""`/`"yeni"` Nova varsayılan / `"klasik"`), çizici (`"hücre"` / `"klasik"`) |
-| `discord_rpc`, `desktop_notify` | Discord Rich Presence etkinliği ve OS masaüstü bildirimleri |
+| `discord_rpc`, `discord_app_id`, `desktop_notify` | Discord Rich Presence (tüm ekranlar + oynatma), isteğe bağlı özel Discord App ID ve OS masaüstü bildirimleri |
+| `upscale_res`, `anime4k`, `frame_gen` | Gerçek AMD FSR hedef çözünürlük (`otomatik`/`1080p`/`2k`/`4k`), Anime4K v4 CNN kalite (`hızlı`/`cam`/`sinema`) ve GPU Frame-Gen (`akıcı`/`60fps`) |
 | `theme`, `theme_bg`, `cover_theme` | Tema adı, terminal arka planı (OSC 11), kapaktan vurgu rengi |
 | `ambient`, `intro`, `motion`, `sounds` | Arka plan efekti, açılış logosu, animasyonlar, arayüz sesi |
 | `posters`, `graphics`, `speed_graph` | Kapak görselleri (`auto`/`sixel`/`blocks`), canlı indirme hız grafiği |
@@ -391,15 +391,15 @@ Tüm ayarlar `ctrl+o` menüsünden düzenlenir ve `%APPDATA%\aniclitr\config.jso
 
 ## Yol Haritası
 
-v1.0.0 ile tüm çekirdek hedefler tamamlandı:
+`v1.3.0` itibarıyla tüm ana hedefler tamamlandı:
 
-- [x] **Nova varsayılan arayüz** (tüm ana ekranlar, 3 sütunlu Keşfet, Sixel katman kararlılığı)
-- [x] **Canlı Türkçe altyazı & senkron** (AniSub, `mpv` içi OSD seçici, yerel `.srt`/`.ass`, `z`/`x` ince ayar)
-- [x] **İki yönlü MAL & AniList OAuth eşitleme** + her iki hesaptan "Devam et" köprüsü
-- [x] **Nyaa.si torrent araması, `aria2c`/magnet indirme, Discord Rich Presence & masaüstü bildirimleri**
-- [x] **Hızlı CLI (`devam`/`ara`/`izle`/`indir`/`torrent`), tek dosya yedekleme, `keys.json` & ekran geçmişi**
+- [x] **Nova 60/20/0 FPS uyarlamalı motor** (3,3× hızlı hücre çizici, `<1 ms` TrueColor kare, fare hareketinde 0 bayt, Sixel katman kararlılığı)
+- [x] **2 bağımsız açık kaynak (MIT) video motoru & Tokyo Studio `mpv` konsolu (`m`/`Tab`):** gerçek AMD FSR 1.0 çözünürlük ölçekleme (`1080p/2K/4K/Otomatik`), resmi Bloc97/Anime4K v4 CNN pürüzsüz kalite onarımı ve `mpv` GPU Frame-Gen (`Smooth Motion` / `60+ FPS`)
+- [x] **Gömülü BitTorrent akışı & otomatik klasörleme** (harici magnet istemcisi olmadan anlık `mpv` oynatma, `ctrl+d` kuyruğu, `<Seri>/SxxEyy` düzenleyici) + tüm 5 Nyaa.si sekmesinde ve her menüde eksiksiz akıllı arama
+- [x] **Canlı Türkçe altyazı & senkron** (AniSub `mpv` içi OSD, yerel `.srt`/`.ass`, `z`/`x` ince ayar) + **Watch Party**, **Uyku Zamanlayıcısı**, **Sıfır Bekleme Ön-Hazırlama**, **Animasyonlu Anime Özeti (Wrapped + PNG)**, **Ruh Hali Sihirbazı** & **`aniclitr kur`**
+- [x] **İki yönlü MAL & AniList OAuth eşitleme** + **Tam Arayüz Discord Rich Presence** (duraklatma/sarma senkronlu) + hızlı CLI, yedekleme ve `keys.json`
 
-v1.1+ için değerlendirilen fikirler [ROADMAP.md](ROADMAP.md) ve [Issues](https://github.com/RobloxPro1453/aniclitr/issues) sayfalarındadır.
+Sonraki sürümler için değerlendirilen fikirler [ROADMAP.md](ROADMAP.md) ve [Issues](https://github.com/RobloxPro1453/aniclitr/issues) sayfalarındadır.
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
 
@@ -423,6 +423,9 @@ ANICLITR_LIVE=1 go test ./internal/...    # canlı kaynak testleri
 
 `aniclitr`, açık kaynak ekosisteminin ve anime topluluğunun emeği sayesinde mümkün oldu. Aşağıdaki projelere, platformlara ve topluluklara teşekkür ederiz:
 
+- **[Anime4K (bloc97)](https://github.com/bloc97/Anime4K)** *(MIT)* — Gerçek zamanlı, cam gibi pürüzsüz CNN anime restorasyon ve büyütme GLSL shader'ları için.
+- **[AMD FidelityFX Super Resolution (agyild mpv portu)](https://gist.github.com/agyild/82219c545228d70c5604f865ce0b0ce5)** *(MIT)* — AI'sız gerçek hedef çözünürlük (1080p/2K/4K) GPU ölçekleme shader'ı için.
+- **[anacrolix/torrent](https://github.com/anacrolix/torrent)** — Harici istemci gerektirmeyen saf Go gömülü BitTorrent akış motoru için.
 - **[AniSub](https://anisub.co/)** — Herkese açık, topluluk tabanlı Türkçe anime altyazı arşivi (API anahtarsız canlı altyazı desteği için).
 - **[Nyaa.si](https://nyaa.si/)** — Açık anime torrent RSS akışı için.
 - **[Türkçe Fansub Toplulukları]** — Yıllardır gönüllü olarak Türkçe anime çevirisi ve dizgisi üreten tüm çevirmenlere ve gruplara.
