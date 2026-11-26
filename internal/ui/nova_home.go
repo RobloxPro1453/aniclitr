@@ -497,6 +497,23 @@ func novaUpcoming(a *App, w, ht int) []string {
 	return out
 }
 
+// totalWatchedEps returns the user's real total watched episodes across both
+// local watch history and synced MAL/AniList library items (so synced libraries
+// never display a jarring "toplam 0 bölüm" alongside "kitaplık 125 · 70 bitti").
+func totalWatchedEps(a *App) int {
+	histEps, _ := a.hist.Totals()
+	libEps := 0
+	for _, it := range a.lib.All() {
+		if it.Watched > 0 {
+			libEps += it.Watched
+		}
+	}
+	if libEps > histEps {
+		return libEps
+	}
+	return histEps
+}
+
 // novaStats is four plain sentences.
 func novaStats(a *App, w int) []string {
 	now := time.Now()
@@ -504,7 +521,7 @@ func novaStats(a *App, w int) []string {
 	for i := 0; i < 7; i++ {
 		week += a.hist.Day(now.AddDate(0, 0, -i))
 	}
-	eps, _ := a.hist.Totals()
+	eps := totalWatchedEps(a)
 	lib, done := 0, 0
 	for _, it := range a.lib.All() {
 		lib++

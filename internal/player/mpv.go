@@ -45,6 +45,9 @@ type Event struct {
 	Dur      float64
 	Speed    float64
 	SubDelay float64
+	VideoH   int
+	Volume   int
+	Muted    bool
 	Paused   bool
 	Text     string // skipped segment label
 	Action   string // EvEnded: "next", "prev"; EvAction: live in-mpv command
@@ -254,12 +257,14 @@ func (s *Session) Seek(sec float64) { s.send("seek", sec, "relative") }
 func (s *Session) SeekAbs(sec float64) { s.send("seek", sec, "absolute") }
 
 // SetShaders switches upscaling profile (kapalı / 1080p / 2k / 4k) live without restarting mpv.
+// Uses native JSON []string set_property so Windows backslashes and semicolons never break.
 func (s *Session) SetShaders(profile string) {
 	prof := shaders.Normalize(profile)
-	list, err := shaders.ShaderList(prof)
-	if err != nil || list == "" {
-		s.send("change-list", "glsl-shaders", "clr", "")
+	paths, err := shaders.Paths(prof)
+	if err != nil || len(paths) == 0 {
+		s.send("set_property", "glsl-shaders", []string{})
 		s.send("set_property", "scale", "bilinear")
+		s.send("set_property", "cscale", "bilinear")
 		s.send("set_property", "sigmoid-upscaling", false)
 		s.send("show-text", "Görüntü Yükseltme: Kapalı", 2200)
 		return
@@ -267,6 +272,9 @@ func (s *Session) SetShaders(profile string) {
 	s.send("set_property", "hwdec", "auto-safe")
 	s.send("set_property", "deband", true)
 	s.send("set_property", "deband-iterations", 1)
+	s.send("set_property", "deband-threshold", 42)
+	s.send("set_property", "deband-range", 16)
+	s.send("set_property", "cscale", "spline36")
 	if prof == shaders.P4K {
 		s.send("set_property", "scale", "ewa_lanczossharp")
 		s.send("set_property", "sigmoid-upscaling", true)
@@ -274,8 +282,25 @@ func (s *Session) SetShaders(profile string) {
 		s.send("set_property", "scale", "spline36")
 		s.send("set_property", "sigmoid-upscaling", false)
 	}
-	s.send("change-list", "glsl-shaders", "set", list)
+	s.send("set_property", "glsl-shaders", paths)
 	s.send("show-text", "✦ Yükseltme: "+shaders.ShortLabel(prof), 2400)
+}
+
+// SetVolume sets mpv volume percentage (0..130) live.
+func (s *Session) SetVolume(vol int) {
+	if vol < 0 {
+		vol = 0
+	}
+	if vol > 130 {
+		vol = 130
+	}
+	s.send("set_property", "mute", false)
+	s.send("set_property", "volume", vol)
+}
+
+// ToggleMute flips mpv audio mute live.
+func (s *Session) ToggleMute() {
+	s.send("cycle", "mute")
 }
 
 // SetSpeed changes playback speed live inside mpv.
@@ -430,13 +455,18 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 	if speed <= 0 {
 		speed = 1.0
 	}
-	var paused, eof bool
+	var paused, eof, muted bool
+	videoH := 0
+	volume := 100
 	if s.conn != nil {
 		s.send("observe_property", 1, "time-pos")
 		s.send("observe_property", 2, "duration")
 		s.send("observe_property", 3, "pause")
 		s.send("observe_property", 4, "speed")
 		s.send("observe_property", 5, "sub-delay")
+		s.send("observe_property", 6, "video-params/h")
+		s.send("observe_property", 7, "volume")
+		s.send("observe_property", 8, "mute")
 		s.send("keybind", "n", "script-message aniclitr-next")
 		s.send("keybind", "N", "script-message aniclitr-next")
 		s.send("keybind", "b", "script-message aniclitr-prev")
@@ -449,16 +479,20 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 		s.send("keybind", "Z", "script-message aniclitr-subdelay -0.5")
 		s.send("keybind", "X", "script-message aniclitr-subdelay +0.5")
 		s.send("keybind", "Alt+0", "script-message aniclitr-subdelay 0")
-		// m / Tab / Alt+4 open the interactive in-mpv dropdown menu (upscale, sleep, speed, subs)
+		// m / Tab / Alt+4 open the interactive in-mpv Nova command center
 		s.send("keybind", "m", "script-message aniclitr-menu")
 		s.send("keybind", "TAB", "script-message aniclitr-menu")
 		s.send("keybind", "Alt+4", "script-message aniclitr-menu")
 		s.send("keybind", "Alt+s", "script-message aniclitr-sleep")
 		menuSection := strings.Join([]string{
-			"UP script-message aniclitr-menu-up",
-			"DOWN script-message aniclitr-menu-down",
-			"k script-message aniclitr-menu-up",
-			"j script-message aniclitr-menu-down",
+			"UP repeatable script-message aniclitr-menu-up",
+			"DOWN repeatable script-message aniclitr-menu-down",
+			"LEFT repeatable script-message aniclitr-menu-left",
+			"RIGHT repeatable script-message aniclitr-menu-right",
+			"k repeatable script-message aniclitr-menu-up",
+			"j repeatable script-message aniclitr-menu-down",
+			"h repeatable script-message aniclitr-menu-left",
+			"l repeatable script-message aniclitr-menu-right",
 			"ENTER script-message aniclitr-menu-pick",
 			"KP_ENTER script-message aniclitr-menu-pick",
 			"ESC script-message aniclitr-menu-close",
@@ -472,16 +506,19 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 			"6 script-message aniclitr-menu-num 6",
 			"7 script-message aniclitr-menu-num 7",
 			"8 script-message aniclitr-menu-num 8",
+			"9 script-message aniclitr-menu-num 9",
+			"0 script-message aniclitr-menu-num 10",
 		}, "\n")
 		s.send("define-section", "aniclitr-menu", menuSection, "default")
 		subSection := strings.Join([]string{
-			"UP script-message aniclitr-sub-up",
-			"DOWN script-message aniclitr-sub-down",
-			"k script-message aniclitr-sub-up",
-			"j script-message aniclitr-sub-down",
+			"UP repeatable script-message aniclitr-sub-up",
+			"DOWN repeatable script-message aniclitr-sub-down",
+			"k repeatable script-message aniclitr-sub-up",
+			"j repeatable script-message aniclitr-sub-down",
 			"ENTER script-message aniclitr-sub-pick",
 			"KP_ENTER script-message aniclitr-sub-pick",
 			"ESC script-message aniclitr-sub-close",
+			"y script-message aniclitr-sub-close",
 			"1 script-message aniclitr-sub-num 1",
 			"2 script-message aniclitr-sub-num 2",
 			"3 script-message aniclitr-sub-num 3",
@@ -570,6 +607,18 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 						s.subDelay = math.Round(sd*10) / 10
 						s.subMu.Unlock()
 					}
+				case "video-params/h":
+					var vh float64
+					if json.Unmarshal(m.Data, &vh) == nil && vh > 0 {
+						videoH = int(math.Round(vh))
+					}
+				case "volume":
+					var vv float64
+					if json.Unmarshal(m.Data, &vv) == nil {
+						volume = int(math.Round(vv))
+					}
+				case "mute":
+					_ = json.Unmarshal(m.Data, &muted)
 				}
 				if time.Since(lastEmit) > 400*time.Millisecond {
 					lastEmit = time.Now()
@@ -577,7 +626,7 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 					sd := s.subDelay
 					s.subMu.Unlock()
 					select {
-					case s.events <- Event{Kind: EvProgress, Pos: pos, Dur: dur, Speed: speed, SubDelay: sd, Paused: paused}:
+					case s.events <- Event{Kind: EvProgress, Pos: pos, Dur: dur, Speed: speed, SubDelay: sd, VideoH: videoH, Volume: volume, Muted: muted, Paused: paused}:
 					default: // UI busy; drop a frame rather than block mpv
 					}
 				}
@@ -612,7 +661,7 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 							}
 						}
 					case "aniclitr-subs", "aniclitr-sub-up", "aniclitr-sub-down", "aniclitr-sub-pick", "aniclitr-sub-close",
-						"aniclitr-menu", "aniclitr-menu-up", "aniclitr-menu-down", "aniclitr-menu-pick", "aniclitr-menu-close",
+						"aniclitr-menu", "aniclitr-menu-up", "aniclitr-menu-down", "aniclitr-menu-left", "aniclitr-menu-right", "aniclitr-menu-pick", "aniclitr-menu-close",
 						"aniclitr-anime4k", "aniclitr-sleep":
 						select {
 						case s.events <- Event{Kind: EvAction, Action: m.Args[0]}:

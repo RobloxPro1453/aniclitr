@@ -90,6 +90,9 @@ type playing struct {
 	finding   bool
 	attempt   int // automatic recoveries so far for this episode
 	subDelay  float64
+	videoH    int
+	volume    int
+	muted     bool
 	activeSub string
 	subs      subsState
 	qmenu     mpvMenuState
@@ -353,6 +356,12 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 		}
 		p.started = true
 		p.pos, p.dur, p.paused, p.subDelay = ev.Pos, ev.Dur, ev.Paused, ev.SubDelay
+		if ev.VideoH > 0 {
+			p.videoH = ev.VideoH
+		}
+		if ev.Volume > 0 || ev.Muted {
+			p.volume, p.muted = ev.Volume, ev.Muted
+		}
 		if time.Since(p.lastSave) > 10*time.Second {
 			p.lastSave = time.Now()
 			p.save(a, false)

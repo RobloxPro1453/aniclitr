@@ -334,68 +334,89 @@ func assEscape(s string) string {
 	return s
 }
 
-// buildMpvSubASS formats the interactive ASS OSD menu drawn directly inside mpv.
+// buildMpvSubASS formats the interactive solid-card Nova ASS OSD menu inside mpv.
 func (p *playing) buildMpvSubASS() string {
 	const (
-		hdr   = `{\an7\pos(40,34)\fnSegoe UI\fs24\b1\bord2.2\shad1\c&HA88BF3&\3c&H1B1011&}`
-		sub   = `{\fs18\b0\c&HC8ADB6&}`
-		sel   = `{\fs21\b1\c&HAFE2F9&}`
-		norm  = `{\fs20\b0\c&HF0E8E8&}`
-		dim   = `{\fs17\b0\c&H9AA0B4&}`
-		errC  = `{\fs20\b0\c&HA88BF3&}`
-		okTag = `{\c&HA1E3A6&\b1}`
-		enTag = `{\c&HFAE089&\b1}`
+		cardX = 34
+		cardY = 28
+		cardW = 640
+		hdrH  = 52
+		footH = 38
+		rowH  = 38
+		limit = 8
 	)
-	var b strings.Builder
-	b.WriteString(hdr)
-	b.WriteString("ANISUB ALTYAZI SEÇİCİ")
-	b.WriteString(sub)
-	b.WriteString("   ·   senkron: " + assEscape(player.FormatSubDelay(p.subDelay)))
-	b.WriteString(`\N`)
+	off := p.subWindowOffset(limit)
+	end := min(len(p.subs.rs), off+limit)
+	rowCount := max(1, end-off)
+	if p.subs.busy || (p.subs.err != "" && len(p.subs.rs) == 0) {
+		rowCount = 1
+	}
+	extra := 0
+	if len(p.subs.rs) > limit && !p.subs.busy {
+		extra = 24
+	}
+	cardH := hdrH + 14 + rowCount*rowH + extra + 12 + footH + 4
 
+	var evs []string
+	evs = append(evs, assSolidCard(cardX, cardY, cardW, cardH, hdrH, footH)...)
+	evs = append(evs, fmt.Sprintf(
+		`{\an7\pos(%d,%d)\fnSegoe UI\fs22\b1\bord0\shad0\1c&HA26AFF&}✦ {\1c&HF4F2FA&}ANISUB ALTYAZI {\fs17\b0\1c&H9E97B3&}SEÇİCİ`,
+		cardX+20, cardY+14))
+	evs = append(evs, fmt.Sprintf(
+		`{\an9\pos(%d,%d)\fnSegoe UI\fs16\b1\bord0\shad0\1c&H4EC1F2&}senkron: %s`,
+		cardX+cardW-18, cardY+18, assEscape(player.FormatSubDelay(p.subDelay))))
+
+	bodyY := cardY + hdrH + 14
 	switch {
 	case p.subs.busy && len(p.subs.rs) == 0:
-		b.WriteString(norm + "◌  AniSub arşivi taranıyor…" + `\N`)
+		evs = append(evs, fmt.Sprintf(`{\an7\pos(%d,%d)\fnSegoe UI\fs19\b0\bord0\shad0\1c&HE8E4F2&}◌  AniSub arşivi taranıyor…`, cardX+24, bodyY+6))
 	case p.subs.err != "" && len(p.subs.rs) == 0:
-		b.WriteString(errC + "✗  " + assEscape(p.subs.err) + `\N`)
+		evs = append(evs, fmt.Sprintf(`{\an7\pos(%d,%d)\fnSegoe UI\fs19\b0\bord0\shad0\1c&H7A6BFF&}✗  %s`, cardX+24, bodyY+6, assEscape(p.subs.err)))
 	case p.subs.busy && len(p.subs.rs) > 0:
-		b.WriteString(sel + "◌  Seçilen altyazı indiriliyor ve yükleniyor…" + `\N`)
+		evs = append(evs, fmt.Sprintf(`{\an7\pos(%d,%d)\fnSegoe UI\fs19\b1\bord0\shad0\1c&H4EC1F2&}◌  Seçilen altyazı indiriliyor ve yükleniyor…`, cardX+24, bodyY+6))
 	default:
-		const limit = 8
-		off := p.subWindowOffset(limit)
-		end := min(len(p.subs.rs), off+limit)
 		for i := off; i < end; i++ {
 			r := p.subs.rs[i]
-			num := i - off + 1
-			langCol := enTag
+			rowIdx := i - off
+			ry := bodyY + rowIdx*rowH
+			isSel := i == p.subs.cur
+			if isSel {
+				evs = append(evs, fmt.Sprintf(`{\an7\pos(%d,%d)\bord1\shad0\1c&H422830&\1a&H0A&\3c&HA26AFF&\3a&H60&\p1}%s{\p0}`,
+					cardX+12, ry-2, assRoundedRect(cardW-24, rowH-4, 7)))
+				evs = append(evs, fmt.Sprintf(`{\an7\pos(%d,%d)\bord0\shad0\1c&HA26AFF&\1a&H00&\p1}%s{\p0}`,
+					cardX+12, ry+3, assRoundedRect(4, rowH-14, 2)))
+			}
+			langCol := "&HFFB86A&" // sky blue
 			if strings.EqualFold(r.Lang, "tr") {
-				langCol = okTag
+				langCol = "&H9AD36B&" // ok green
 			}
-			lineStyle := norm
-			prefix := fmt.Sprintf("   %d. ", num)
-			if i == p.subs.cur {
-				lineStyle = sel
-				prefix = fmt.Sprintf("▸ %d. ", num)
+			txtCol := "&HE8E4F2&"
+			boldTag := `\b0`
+			if isSel {
+				txtCol = "&HFFFFFF&"
+				boldTag = `\b1`
 			}
-			rel := truncate(r.Release, 58)
-			meta := ""
+			rel := truncate(r.Release, 48)
+			evs = append(evs, fmt.Sprintf(
+				`{\an7\pos(%d,%d)\fnSegoe UI\fs18\bord0\shad0\1c&H948DA8&\b1}%d  {\1c%s\b1}%s  {\1c%s%s}%s`,
+				cardX+24, ry+7, rowIdx+1, langCol, strings.ToUpper(r.Lang), txtCol, boldTag, assEscape(rel)))
 			if r.Provider != "" {
-				meta = "  [" + r.Provider + "]"
+				evs = append(evs, fmt.Sprintf(
+					`{\an9\pos(%d,%d)\fnSegoe UI\fs15\b0\bord0\shad0\1c&H9E97B3&}%s`,
+					cardX+cardW-22, ry+9, assEscape(r.Provider)))
 			}
-			b.WriteString(lineStyle + prefix)
-			b.WriteString(langCol + strings.ToUpper(r.Lang) + " ")
-			b.WriteString(lineStyle + assEscape(rel))
-			if meta != "" {
-				b.WriteString(dim + assEscape(meta))
-			}
-			b.WriteString(`\N`)
 		}
 		if len(p.subs.rs) > limit {
-			b.WriteString(dim + fmt.Sprintf("   (%d / %d sonuç)", p.subs.cur+1, len(p.subs.rs)) + `\N`)
+			evs = append(evs, fmt.Sprintf(
+				`{\an7\pos(%d,%d)\fnSegoe UI\fs15\b0\bord0\shad0\1c&H9E97B3&}%d / %d sonuç`,
+				cardX+24, bodyY+rowCount*rowH+4, p.subs.cur+1, len(p.subs.rs)))
 		}
 	}
-	b.WriteString(`\N` + dim + "↑↓ seç · Enter / 1-8 yükle · z/x senkron (±0,1s) · Z/X (±0,5s) · Alt+0 sıfırla · Esc kapat")
-	return b.String()
+	fy := cardY + cardH - footH + 8
+	evs = append(evs, fmt.Sprintf(
+		`{\an7\pos(%d,%d)\fnSegoe UI\fs15\b0\bord0\shad0\1c&HFFFFFF&\b1}↑↓{\b0\1c&H9E97B3&} seç   {\1c&HFFFFFF&\b1}Enter/1-8{\b0\1c&H9E97B3&} yükle   {\1c&HFFFFFF&\b1}z/x{\b0\1c&H9E97B3&} senkron   {\1c&HFFFFFF&\b1}y/Esc{\b0\1c&H9E97B3&} kapat`,
+		cardX+20, fy))
+	return strings.Join(evs, "\n")
 }
 
 func (p *playing) syncMpvSubMenu() {

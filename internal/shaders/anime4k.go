@@ -1,6 +1,15 @@
 // Package shaders generates and manages GPU-friendly, artifact-free anime
 // upscaling GLSL shaders for mpv (Kapalı, 1080p Net, 2K Keskin, 4K Ultra).
-// Shaders are embedded in the binary and materialised lazily into CacheDir.
+//
+// Unlike naive linear scalers (which leave 360p/480p anime blurry), the v3
+// pipeline uses lightweight, zero-copy Anime4K-inspired passes:
+//   - Cel deblocking + Sobel gradient-guided shock filter (line thinning & darkening)
+//   - Directional edge-aware 2x luma reconstruction (eliminates diagonal jaggies)
+//   - Second-stage micro-line refinement at 2x resolution (4K Ultra)
+//   - Native display-resolution (OUTPUT hook) FidelityFX CAS sharpening
+//
+// All shaders run under --hwdec=auto-safe (zero GPU->RAM PCIe copies) with
+// small fixed texture tap counts so even integrated GPUs stay cool and smooth.
 package shaders
 
 import (
@@ -12,12 +21,12 @@ import (
 	"aniclitr/internal/config"
 )
 
-// Profiles supported by Settings → Oynatma → Görüntü yükseltme and the in-mpv dropdown.
+// Profiles supported by Settings → Oynatma → Görüntü yükseltme and the in-mpv menu.
 const (
 	Off   = "kapalı"
-	P1080 = "1080p" // 5-tap AMD FidelityFX CAS + spline36 (ultra-light iGPU)
-	P2K   = "2k"    // 16-tap anti-ringing Catmull-Rom 2x luma + light CAS
-	P4K   = "4k"    // Anti-ringing Catmull-Rom 2x luma + fine edge crisp + ewa_lanczossharp
+	P1080 = "1080p" // Display-resolution CAS + subtle line darkening (ultra-light iGPU)
+	P2K   = "2k"    // Cel deblock + Anime4K line restore + 2x edge-directed luma + OUTPUT CAS
+	P4K   = "4k"    // Full 2K pipeline + 2x micro-line tighten + strong OUTPUT CAS + ewa_lanczossharp
 
 	// Legacy aliases kept for backward compatibility with v1.2.0 config files.
 	Light    = P1080
@@ -53,7 +62,18 @@ func Next(cur string) string {
 	return P1080
 }
 
-// ShortLabel returns a compact badge label ("1080p", "2K", "4K", "Kapalı").
+// Prev cycles to the previous upscaling profile.
+func Prev(cur string) string {
+	cur = Normalize(cur)
+	for i, p := range Profiles {
+		if p == cur {
+			return Profiles[(i-1+len(Profiles))%len(Profiles)]
+		}
+	}
+	return Off
+}
+
+// ShortLabel returns a compact badge label ("1080p Net", "2K Keskin", "4K Ultra", "Kapalı").
 func ShortLabel(profile string) string {
 	switch Normalize(profile) {
 	case P1080:
@@ -71,11 +91,11 @@ func ShortLabel(profile string) string {
 func Label(profile string) string {
 	switch Normalize(profile) {
 	case P1080:
-		return "1080p Net (iGPU dostu · hafif CAS)"
+		return "1080p Net (iGPU dostu · anlık CAS + çizgi netliği)"
 	case P2K:
-		return "2K Keskin (2× anti-ringing luma · dengeli)"
+		return "2K Keskin (çizgi onarım + 2× kenar yükseltme)"
 	case P4K:
-		return "4K Ultra (2× luma + ince kenar netliği)"
+		return "4K Ultra (çift kademe çizgi onarım + maksimum netlik)"
 	default:
 		return "Kapalı (orijinal görüntü)"
 	}
@@ -106,18 +126,20 @@ func Paths(profile string) ([]string, error) {
 	switch Normalize(profile) {
 	case P1080:
 		specs = []struct{ name, src string }{
-			{"aniclitr_v2_cas_1080p.glsl", glslFastCAS1080},
+			{"aniclitr_v3_output_1080p.glsl", glslOutput1080p},
 		}
 	case P2K:
 		specs = []struct{ name, src string }{
-			{"aniclitr_v2_cr2x_luma.glsl", glslCatmullRom2xLuma},
-			{"aniclitr_v2_cas_soft.glsl", glslFastCASSoft},
+			{"aniclitr_v3_restore_lines.glsl", glslRestoreLines},
+			{"aniclitr_v3_edge_2x.glsl", glslEdgeDirected2x},
+			{"aniclitr_v3_output_2k.glsl", glslOutput2K},
 		}
 	case P4K:
 		specs = []struct{ name, src string }{
-			{"aniclitr_v2_cr2x_luma.glsl", glslCatmullRom2xLuma},
-			{"aniclitr_v2_edge_crisp.glsl", glslFineEdgeCrisp},
-			{"aniclitr_v2_cas_soft.glsl", glslFastCASSoft},
+			{"aniclitr_v3_restore_lines.glsl", glslRestoreLines},
+			{"aniclitr_v3_edge_2x.glsl", glslEdgeDirected2x},
+			{"aniclitr_v3_refine_4k.glsl", glslRefine4K},
+			{"aniclitr_v3_output_4k.glsl", glslOutput4K},
 		}
 	default:
 		return nil, nil
@@ -158,8 +180,9 @@ func MpvArgs(profile string) []string {
 		"--hwdec=auto-safe",
 		"--deband=yes",
 		"--deband-iterations=1",
-		"--deband-threshold=32",
-		"--cscale=bilinear",
+		"--deband-threshold=42",
+		"--deband-range=16",
+		"--cscale=spline36",
 		"--temporal-dither=no",
 		"--glsl-shaders=" + list,
 	}
@@ -172,70 +195,80 @@ func MpvArgs(profile string) []string {
 	return args
 }
 
-// ---- Embedded high-clarity, low-GPU GLSL shaders ----
+// ---- Embedded v3 Anime4K-grade, GPU-friendly GLSL shaders ----
 
-// 1. AMD FidelityFX-style Contrast Adaptive Sharpening (5 texture fetches/px).
-// Crisp 1080p clarity with zero ringing halos and <3% GPU usage on iGPUs.
-const glslFastCAS1080 = `//!DESC aniclitr 1080p Net CAS
-//!HOOK MAIN
+// 1. Cel Deblocking + Anime4K Gradient-Guided Shock Filter (Line Thinning & Darkening).
+// Runs on native LUMA before 2x upscale:
+//   - Suppresses 360p/480p H.264 blockiness on flat low-gradient areas without smearing edges.
+//   - Pushes blurry/thick anime ink outlines along the Sobel gradient into thin, crisp,
+//     darkened cel lines (exact mathematical principle behind Anime4K ThinLines + DarkLines).
+const glslRestoreLines = `//!DESC aniclitr v3 Cel Deblock & Line Restore
+//!HOOK LUMA
 //!BIND HOOKED
 
-#define SHARPNESS 0.48
-
 vec4 hook() {
-    vec3 c = HOOKED_texOff(vec2(0.0, 0.0)).rgb;
-    vec3 n = HOOKED_texOff(vec2(0.0, -1.0)).rgb;
-    vec3 s = HOOKED_texOff(vec2(0.0,  1.0)).rgb;
-    vec3 w = HOOKED_texOff(vec2(-1.0, 0.0)).rgb;
-    vec3 e = HOOKED_texOff(vec2( 1.0, 0.0)).rgb;
+    float tl = HOOKED_texOff(vec2(-1.0, -1.0)).x;
+    float tc = HOOKED_texOff(vec2( 0.0, -1.0)).x;
+    float tr = HOOKED_texOff(vec2( 1.0, -1.0)).x;
+    float ml = HOOKED_texOff(vec2(-1.0,  0.0)).x;
+    float mc = HOOKED_texOff(vec2( 0.0,  0.0)).x;
+    float mr = HOOKED_texOff(vec2( 1.0,  0.0)).x;
+    float bl = HOOKED_texOff(vec2(-1.0,  1.0)).x;
+    float bc = HOOKED_texOff(vec2( 0.0,  1.0)).x;
+    float br = HOOKED_texOff(vec2( 1.0,  1.0)).x;
 
-    vec3 mn = min(c, min(min(n, s), min(w, e)));
-    vec3 mx = max(c, max(max(n, s), max(w, e)));
-    vec3 rcpMx = vec3(1.0) / max(mx, vec3(1e-4));
-    vec3 amp = clamp(min(mn, 1.0 - mx) * rcpMx, 0.0, 1.0);
-    amp = sqrt(amp);
+    // Sobel gradient (edge direction & magnitude)
+    float gx = (tr + 2.0 * mr + br) - (tl + 2.0 * ml + bl);
+    float gy = (bl + 2.0 * bc + br) - (tl + 2.0 * tc + tr);
+    float grad = sqrt(gx * gx + gy * gy);
 
-    vec3 weight = -amp * (0.10 + 0.06 * SHARPNESS);
-    vec3 outCol = (c + (n + s + w + e) * weight) / (1.0 + 4.0 * weight);
-    return vec4(clamp(outCol, mn, mx), 1.0);
+    // Local 3x3 neighborhood bounds & average
+    float lmin = min(mc, min(min(min(tl, tc), min(tr, ml)), min(min(mr, bl), min(bc, br))));
+    float lmax = max(mc, max(max(max(tl, tc), max(tr, ml)), max(max(mr, bl), max(bc, br))));
+    float avg8 = (tl + tc + tr + ml + mr + bl + bc + br) * 0.125;
+
+    // 1) Gentle cel deblocking ONLY on flat low-gradient zones (removes 360p/480p mud)
+    float flatMask = 1.0 - smoothstep(0.03, 0.12, lmax - lmin);
+    float clean = mix(mc, avg8, 0.38 * flatMask);
+
+    // 2) Gradient-guided shock filter: pulls blurry transition pixels toward the crisp
+    //    brighter cel side (thinning thick 360p/480p gray borders) while tightening dark ink cores.
+    vec2 dir = (grad > 1e-4) ? (vec2(gx, gy) / grad) : vec2(0.0);
+    float fwd = HOOKED_tex(HOOKED_pos + dir * HOOKED_pt * 0.75).x;
+    float bwd = HOOKED_tex(HOOKED_pos - dir * HOOKED_pt * 0.75).x;
+
+    // Second derivative along edge normal: positive = dark valley (ink core), negative = bright shoulder
+    float lap = (fwd + bwd) * 0.5 - mc;
+    float edgeMask = smoothstep(0.08, 0.42, grad);
+
+    float outL = clean;
+    // Tighten bright shoulder next to a dark line (line thinning)
+    if (lap < 0.0) {
+        outL = mix(outL, max(fwd, bwd), 0.36 * edgeMask);
+    } else {
+        // Darken & focus faded gray ink line cores (DarkLines)
+        float darkBoost = clamp(lap * 1.45, 0.0, 0.18);
+        outL = outL - darkBoost * edgeMask;
+    }
+
+    // Mild unsharp boost on genuine edges, bounded safely against ringing
+    float loBound = max(0.0, lmin - 0.05 * edgeMask);
+    float hiBound = min(1.0, lmax + 0.04 * edgeMask);
+    return vec4(clamp(outL, loBound, hiBound), 0.0, 0.0, 1.0);
 }
 `
 
-// 2. Soft finishing CAS pass used after 2x Catmull-Rom upscaling (zero overshoot).
-const glslFastCASSoft = `//!DESC aniclitr Soft Finishing CAS
-//!HOOK MAIN
-//!BIND HOOKED
-
-#define SHARPNESS 0.30
-
-vec4 hook() {
-    vec3 c = HOOKED_texOff(vec2(0.0, 0.0)).rgb;
-    vec3 n = HOOKED_texOff(vec2(0.0, -1.0)).rgb;
-    vec3 s = HOOKED_texOff(vec2(0.0,  1.0)).rgb;
-    vec3 w = HOOKED_texOff(vec2(-1.0, 0.0)).rgb;
-    vec3 e = HOOKED_texOff(vec2( 1.0, 0.0)).rgb;
-
-    vec3 mn = min(c, min(min(n, s), min(w, e)));
-    vec3 mx = max(c, max(max(n, s), max(w, e)));
-    vec3 rcpMx = vec3(1.0) / max(mx, vec3(1e-4));
-    vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) * rcpMx, 0.0, 1.0));
-
-    vec3 weight = -amp * (0.08 + 0.05 * SHARPNESS);
-    vec3 outCol = (c + (n + s + w + e) * weight) / (1.0 + 4.0 * weight);
-    return vec4(clamp(outCol, mn, mx), 1.0);
-}
-`
-
-// 3. Real 16-tap Anti-Ringing Catmull-Rom 2x Luma Upscaler.
-// True bicubic sub-pixel reconstruction with strict 2x2 neighborhood anti-ringing
-// clamp: genuinely sharpens 720p/1080p anime to 2K/4K with zero blur and zero halos.
-const glslCatmullRom2xLuma = `//!DESC aniclitr 2x Anti-Ringing Catmull-Rom Luma
+// 2. Directional Edge-Directed 2x Luma Upscaler.
+// Analyzes 4 edge orientations (H, V, 45°, 135°) across the 3x3 neighborhood and
+// blends directional along-edge interpolation with anti-ringing Catmull-Rom so
+// diagonal anime outlines scale 2x without staircase jaggies or bicubic blur.
+const glslEdgeDirected2x = `//!DESC aniclitr v3 Directional Edge 2x Luma
 //!HOOK LUMA
 //!BIND HOOKED
 //!WIDTH LUMA.w 2 *
 //!HEIGHT LUMA.h 2 *
 
-vec4 crWeights(float f) {
+vec4 crW(float f) {
     float f2 = f * f;
     float f3 = f2 * f;
     return vec4(
@@ -251,58 +284,176 @@ vec4 hook() {
     vec2 base = floor(tc);
     vec2 f = tc - base;
 
-    vec4 wx = crWeights(f.x);
-    vec4 wy = crWeights(f.y);
+    // 2x2 core texels for directional edge analysis & anti-ringing bounds
+    float s00 = HOOKED_tex((base + vec2(0.5, 0.5)) * HOOKED_pt).x;
+    float s10 = HOOKED_tex((base + vec2(1.5, 0.5)) * HOOKED_pt).x;
+    float s01 = HOOKED_tex((base + vec2(0.5, 1.5)) * HOOKED_pt).x;
+    float s11 = HOOKED_tex((base + vec2(1.5, 1.5)) * HOOKED_pt).x;
 
-    float res = 0.0;
-    float cMin = 1.0;
-    float cMax = 0.0;
+    float cMin = min(min(s00, s10), min(s01, s11));
+    float cMax = max(max(s00, s10), max(s01, s11));
 
+    // Diagonal difference analysis (EDI / NEDI-lite):
+    // If d1 (s00-s11) << d2 (s10-s01), an edge runs along the main diagonal (00 <-> 11).
+    float dMain = abs(s00 - s11);
+    float dAnti = abs(s10 - s01);
+    float diagStr = abs(dMain - dAnti);
+    float diagEdge = (dMain < dAnti) ? mix(s00, s11, 0.5 * (f.x + f.y))
+                                     : mix(s10, s01, 0.5 * ((1.0 - f.x) + f.y));
+
+    // 16-tap Catmull-Rom reconstruction for smooth non-diagonal detail
+    vec4 wx = crW(f.x);
+    vec4 wy = crW(f.y);
+    float cr = 0.0;
     for (int j = -1; j <= 2; j++) {
         float row = 0.0;
         for (int i = -1; i <= 2; i++) {
-            vec2 sp = (base + vec2(float(i), float(j)) + 0.5) * HOOKED_pt;
-            float s = HOOKED_tex(sp).x;
+            float s = HOOKED_tex((base + vec2(float(i), float(j)) + 0.5) * HOOKED_pt).x;
             row += s * wx[i + 1];
-            if (i >= 0 && i <= 1 && j >= 0 && j <= 1) {
-                cMin = min(cMin, s);
-                cMax = max(cMax, s);
-            }
         }
-        res += row * wy[j + 1];
+        cr += row * wy[j + 1];
     }
 
-    // Strict anti-ringing clamp keeps flat cel areas completely clean.
-    res = clamp(res, cMin, cMax);
-    return vec4(res, 0.0, 0.0, 1.0);
+    // Blend along-edge directional reconstruction where strong diagonal lines exist
+    float wDiag = smoothstep(0.05, 0.25, diagStr) * 0.65;
+    float res = mix(cr, diagEdge, wDiag);
+
+    // Subtle edge-contrast crispness on high-contrast anime lines
+    float contrast = cMax - cMin;
+    float edgeW = smoothstep(0.06, 0.28, contrast);
+    float bil = mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
+    res = res + (res - bil) * (0.45 * edgeW);
+
+    return vec4(clamp(res, cMin - 0.02 * edgeW, cMax + 0.02 * edgeW), 0.0, 0.0, 1.0);
 }
 `
 
-// 4. High-frequency edge-selective crispness pass for 4K Ultra mode.
-// Enhances real anime ink outlines while leaving flat cel shading untouched
-// (zero bilateral smudge, zero morphological erosion halos).
-const glslFineEdgeCrisp = `//!DESC aniclitr 4K Fine Edge Crisp
+// 3. Second-stage 4K Ultra Micro-Line Tightening at doubled 2x resolution.
+// Refines fine hair/eye/ink details after 2x upscale without touching flat cel fills.
+const glslRefine4K = `//!DESC aniclitr v3 4K Micro-Line Refine
 //!HOOK LUMA
 //!BIND HOOKED
 
-#define EDGE_GAIN 0.34
+vec4 hook() {
+    float c = HOOKED_texOff(vec2( 0.0,  0.0)).x;
+    float n = HOOKED_texOff(vec2( 0.0, -1.0)).x;
+    float s = HOOKED_texOff(vec2( 0.0,  1.0)).x;
+    float w = HOOKED_texOff(vec2(-1.0,  0.0)).x;
+    float e = HOOKED_texOff(vec2( 1.0,  0.0)).x;
+
+    float gx = e - w;
+    float gy = s - n;
+    float grad = sqrt(gx * gx + gy * gy);
+    float avg = 0.25 * (n + s + w + e);
+    float lmin = min(c, min(min(n, s), min(w, e)));
+    float lmax = max(c, max(max(n, s), max(w, e)));
+
+    float mask = smoothstep(0.04, 0.24, lmax - lmin);
+    // Darken fine ink valleys and push shoulders clean
+    float lap = avg - c;
+    float refined = c - lap * 0.55 * mask;
+    if (lap > 0.015 && grad > 0.06) {
+        refined -= clamp(lap * 0.65, 0.0, 0.10) * mask;
+    }
+    return vec4(clamp(refined, max(0.0, lmin - 0.04 * mask), min(1.0, lmax + 0.03 * mask)), 0.0, 0.0, 1.0);
+}
+`
+
+// 4. Native Display-Resolution (OUTPUT hook) Adaptive FidelityFX CAS + Line Crispness.
+// Running at OUTPUT means even a 360p/480p video upscaled to a 1080p/1440p monitor gets
+// razor-sharp display-pixel edges rather than sharpening blocky low-res source pixels!
+const glslOutput1080p = `//!DESC aniclitr v3 1080p Net Display CAS
+//!HOOK OUTPUT
+//!BIND HOOKED
+
+#define CAS_STRENGTH 0.85
+#define INK_DARKEN   0.18
+
+float lumaOf(vec3 rgb) { return dot(rgb, vec3(0.299, 0.587, 0.114)); }
 
 vec4 hook() {
-    float c  = HOOKED_texOff(vec2( 0.0,  0.0)).x;
-    float n  = HOOKED_texOff(vec2( 0.0, -1.0)).x;
-    float s  = HOOKED_texOff(vec2( 0.0,  1.0)).x;
-    float w  = HOOKED_texOff(vec2(-1.0,  0.0)).x;
-    float e  = HOOKED_texOff(vec2( 1.0,  0.0)).x;
+    vec3 c  = HOOKED_texOff(vec2( 0.0,  0.0)).rgb;
+    vec3 n  = HOOKED_texOff(vec2( 0.0, -1.0)).rgb;
+    vec3 s  = HOOKED_texOff(vec2( 0.0,  1.0)).rgb;
+    vec3 w  = HOOKED_texOff(vec2(-1.0,  0.0)).rgb;
+    vec3 e  = HOOKED_texOff(vec2( 1.0,  0.0)).rgb;
+    vec3 nw = HOOKED_texOff(vec2(-1.0, -1.0)).rgb;
+    vec3 ne = HOOKED_texOff(vec2( 1.0, -1.0)).rgb;
+    vec3 sw = HOOKED_texOff(vec2(-1.0,  1.0)).rgb;
+    vec3 se = HOOKED_texOff(vec2( 1.0,  1.0)).rgb;
 
-    float avg = 0.25 * (n + s + w + e);
-    float diff = c - avg;
-    float localMin = min(c, min(min(n, s), min(w, e)));
-    float localMax = max(c, max(max(n, s), max(w, e)));
-    float contrast = localMax - localMin;
+    vec3 mn = min(c, min(min(n, s), min(w, e)));
+    vec3 mx = max(c, max(max(n, s), max(w, e)));
+    vec3 mn2 = min(mn, min(min(nw, ne), min(sw, se)));
+    vec3 mx2 = max(mx, max(max(nw, ne), max(sw, se)));
+    mn = (mn + mn2) * 0.5;
+    mx = (mx + mx2) * 0.5;
 
-    // Gate out low-contrast compression noise (< 0.04), sharpen crisp ink edges cleanly.
-    float mask = smoothstep(0.04, 0.22, contrast);
-    float outLuma = c + diff * EDGE_GAIN * mask;
-    return vec4(clamp(outLuma, localMin, localMax), 0.0, 0.0, 1.0);
+    vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0));
+    float peak = -1.0 / mix(8.0, 5.0, CAS_STRENGTH);
+    vec3 wt = amp * peak;
+    vec3 outCol = (c + (n + s + w + e) * wt) / (1.0 + 4.0 * wt);
+
+    // Subtle dark-line restoration on display-res anime outlines
+    float lc = lumaOf(outCol);
+    float lavg = 0.25 * (lumaOf(n) + lumaOf(s) + lumaOf(w) + lumaOf(e));
+    float darkEdge = clamp((lavg - lc) * 2.4, 0.0, 0.14) * smoothstep(0.05, 0.20, lavg - lc);
+    outCol -= vec3(darkEdge * INK_DARKEN * 4.0);
+
+    return vec4(clamp(outCol, max(vec3(0.0), mn - vec3(0.04)), min(vec3(1.0), mx + vec3(0.02))), 1.0);
+}
+`
+
+const glslOutput2K = `//!DESC aniclitr v3 2K Keskin Display CAS
+//!HOOK OUTPUT
+//!BIND HOOKED
+
+#define CAS_STRENGTH 0.72
+
+vec4 hook() {
+    vec3 c  = HOOKED_texOff(vec2( 0.0,  0.0)).rgb;
+    vec3 n  = HOOKED_texOff(vec2( 0.0, -1.0)).rgb;
+    vec3 s  = HOOKED_texOff(vec2( 0.0,  1.0)).rgb;
+    vec3 w  = HOOKED_texOff(vec2(-1.0,  0.0)).rgb;
+    vec3 e  = HOOKED_texOff(vec2( 1.0,  0.0)).rgb;
+    vec3 nw = HOOKED_texOff(vec2(-1.0, -1.0)).rgb;
+    vec3 ne = HOOKED_texOff(vec2( 1.0, -1.0)).rgb;
+    vec3 sw = HOOKED_texOff(vec2(-1.0,  1.0)).rgb;
+    vec3 se = HOOKED_texOff(vec2( 1.0,  1.0)).rgb;
+
+    vec3 mn = (min(c, min(min(n, s), min(w, e))) + min(min(nw, ne), min(sw, se))) * 0.5;
+    vec3 mx = (max(c, max(max(n, s), max(w, e))) + max(max(nw, ne), max(sw, se))) * 0.5;
+
+    vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0));
+    vec3 wt = amp * (-1.0 / mix(8.0, 5.0, CAS_STRENGTH));
+    vec3 outCol = (c + (n + s + w + e) * wt) / (1.0 + 4.0 * wt);
+    return vec4(clamp(outCol, max(vec3(0.0), mn - 0.03), min(vec3(1.0), mx + 0.02)), 1.0);
+}
+`
+
+const glslOutput4K = `//!DESC aniclitr v3 4K Ultra Display CAS
+//!HOOK OUTPUT
+//!BIND HOOKED
+
+#define CAS_STRENGTH 0.88
+
+vec4 hook() {
+    vec3 c  = HOOKED_texOff(vec2( 0.0,  0.0)).rgb;
+    vec3 n  = HOOKED_texOff(vec2( 0.0, -1.0)).rgb;
+    vec3 s  = HOOKED_texOff(vec2( 0.0,  1.0)).rgb;
+    vec3 w  = HOOKED_texOff(vec2(-1.0,  0.0)).rgb;
+    vec3 e  = HOOKED_texOff(vec2( 1.0,  0.0)).rgb;
+    vec3 nw = HOOKED_texOff(vec2(-1.0, -1.0)).rgb;
+    vec3 ne = HOOKED_texOff(vec2( 1.0, -1.0)).rgb;
+    vec3 sw = HOOKED_texOff(vec2(-1.0,  1.0)).rgb;
+    vec3 se = HOOKED_texOff(vec2( 1.0,  1.0)).rgb;
+
+    vec3 mn = (min(c, min(min(n, s), min(w, e))) + min(min(nw, ne), min(sw, se))) * 0.5;
+    vec3 mx = (max(c, max(max(n, s), max(w, e))) + max(max(nw, ne), max(sw, se))) * 0.5;
+
+    vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0));
+    vec3 wt = amp * (-1.0 / mix(8.0, 5.0, CAS_STRENGTH));
+    vec3 outCol = (c + (n + s + w + e) * wt) / (1.0 + 4.0 * wt);
+    return vec4(clamp(outCol, max(vec3(0.0), mn - 0.04), min(vec3(1.0), mx + 0.03)), 1.0);
 }
 `

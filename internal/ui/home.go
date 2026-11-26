@@ -98,12 +98,26 @@ func (h *home) animating(a *App) bool {
 	if !h.feedOK || h.sug.busy {
 		return true
 	}
-	if a.nova() {
-		// Nova home has no background weather particles: settle to 0 FPS / 0% CPU
-		// the moment the logo intro finishes.
-		return a.motion() && time.Since(a.start) < introDur(a.intro)
+	if !a.motion() {
+		return false
 	}
-	return a.motion() // classic home: weather, logo, spotlight rotation
+	if time.Since(a.start) < introDur(a.intro) {
+		return true
+	}
+	if a.nova() {
+		// Keep ambient weather & logo shimmer alive smoothly (paced at 20 FPS by
+		// App.tickInterval); drop to 0 FPS / 0% CPU when ambient is turned off ("yok").
+		return ambientNow(a.cfg.Ambient, time.Now()) != "yok"
+	}
+	return true // classic home: weather, logo, spotlight rotation
+}
+
+// fastAnimating reports whether home needs 60 FPS (intro, loaders) vs calm 20 FPS ambient.
+func (h *home) fastAnimating(a *App) bool {
+	if a.top() != screen(h) {
+		return false
+	}
+	return !h.feedOK || h.sug.busy || (a.motion() && time.Since(a.start) < introDur(a.intro))
 }
 
 func (h *home) update(a *App, msg tea.Msg) tea.Cmd {
@@ -634,7 +648,7 @@ func (h *home) stats(a *App, w, ht int) []string {
 			days.WriteString(stMuted.Render(fit(dn, bw+1)))
 		}
 	}
-	eps, _ := a.hist.Totals()
+	eps := totalWatchedEps(a)
 	done := 0
 	for _, it := range a.lib.All() {
 		if it.Status == store.Completed {

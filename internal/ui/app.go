@@ -27,6 +27,7 @@ import (
 	"aniclitr/internal/logx"
 	"aniclitr/internal/mal"
 	"aniclitr/internal/malsync"
+	"aniclitr/internal/player"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 	"aniclitr/internal/tools"
@@ -599,12 +600,53 @@ func (a *App) needsTick() bool {
 	return false
 }
 
+func (a *App) fastTickNeeded() bool {
+	if time.Now().Before(a.toastUntil) || a.trans.active() || a.posters.fading() || a.gfx.busy() || a.painterBusy() || len(a.posters.reload) > 0 {
+		return true
+	}
+	if a.pal != nil && a.pal.openT.active() {
+		return true
+	}
+	if (a.drop != nil && a.drop.openT.active()) || a.bellT.active() {
+		return true
+	}
+	if a.tfade != nil || a.fx.active() || a.flashT.active() || a.logoKick.active() || a.gliding || time.Now().Before(a.oscUntil) {
+		return true
+	}
+	for _, p := range a.posters.items {
+		if p.loading {
+			return true
+		}
+	}
+	for _, s := range a.stack {
+		if h, ok := s.(*home); ok {
+			if h.fastAnimating(a) {
+				return true
+			}
+			continue
+		}
+		if an, ok := s.(animator); ok && an.animating(a) {
+			return true
+		}
+	}
+	return false
+}
+
+// tickInterval returns 60 FPS during active motion/interaction and a silky,
+// ultra-low-CPU 20 FPS cadence when only calm background ambient weather runs.
+func (a *App) tickInterval() time.Duration {
+	if a.fastTickNeeded() {
+		return time.Second / 60
+	}
+	return 50 * time.Millisecond // 20 FPS calm ambient weather & screensaver
+}
+
 func (a *App) tick() tea.Cmd {
 	if a.ticking {
 		return nil
 	}
 	a.ticking = true
-	return tea.Tick(time.Second/60, func(t time.Time) tea.Msg { return tickMsg(t) })
+	return tea.Tick(a.tickInterval(), func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
 // ---- async helpers ----
@@ -968,6 +1010,16 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 				a.redraw() // repaint the whole terminal from scratch
 				a.gfx.invalidate()
 				return a, nil
+			}
+		}
+	case playerMsg:
+		// Pure in-mpv menu cursor moves only redraw the mpv ASS overlay — skip
+		// terminal frame recomposition behind mpv for <1ms menu responsiveness.
+		if m.ev.Kind == player.EvAction {
+			switch m.ev.Action {
+			case "aniclitr-menu", "aniclitr-menu-close", "aniclitr-menu-up", "aniclitr-menu-down",
+				"aniclitr-menu-left", "aniclitr-menu-right", "aniclitr-sub-up", "aniclitr-sub-down":
+				skipPaint = true
 			}
 		}
 	case searchMsg:
