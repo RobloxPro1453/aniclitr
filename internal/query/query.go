@@ -296,6 +296,13 @@ func Filter(rawQuery string, lib *store.Library, hist *store.History, local *loc
 		return nil
 	}
 	parsed := Parse(rawQuery)
+	needsLocal := false
+	for _, pr := range parsed.Predicates {
+		if pr.Field == "disk" || pr.Field == "eksik" {
+			needsLocal = true
+			break
+		}
+	}
 	items := lib.All()
 	var out []Record
 	for _, it := range items {
@@ -310,9 +317,12 @@ func Filter(rawQuery string, lib *store.Library, hist *store.History, local *loc
 					notes = append(notes, n)
 				}
 				rec.Notes = strings.Join(notes, " ")
+				if avg, cnt, _ := hist.EpisodeScoreStats(it.Key()); cnt > 0 {
+					rec.EpAvgScore = avg
+				}
 			}
 		}
-		if local != nil {
+		if local != nil && needsLocal {
 			// Check whether at least episode 1 is on disk and whether any are missing
 			if _, ok := local.Lookup([]string{it.Title}, 1, 1); ok {
 				rec.HasLocal = true

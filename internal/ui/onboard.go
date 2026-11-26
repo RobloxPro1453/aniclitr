@@ -16,10 +16,10 @@ var Version = "dev"
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
 	"2.0.0": {
-		"Sıfır-derleme eklenti/çözücü motoru: 17 yerleşik çözücü paketi (Filemoon, StreamWish, DoodStream, MixDrop, Streamtape, Mp4Upload, Uqload, Mail.ru, Yandex Disk, VK, Dailymotion, Sendvid, HdVid, Vidoza, Rumble, Blogger, Direct) + %APPDATA%\\aniclitr\\plugins klasöründe derlemesiz JSON güncelleme",
-		"Çok-parametreli karar matrisli otomatik altyazı hizalama (VAD + gömülü referans + sahne kesimi + FPS kayma + TV/BD reklam arası çoklu parça ofseti) + mpv içi Tipografi Stüdyosu ve Ses Stüdyosu (Referans / Gece Modu / Kulaklık BS2B)",
-		"Etkileşimli OP/ED sahne atlama kartı ('Opening atlansın mı? [Enter]'), MKV chapter desteği, sunucusuz mpv IPC yedek geçiş + ISP akıllı hız/sahte-kalite yönlendiricisi ve sunucusuz Hibrit Yerel Disk Kütüphanesi ('Diskte Hazır')",
-		"Bölüm bazlı puanlama (E) & otomatik seri ortalaması önerisi (G), 365 günlük izleme ısı haritası, Yerel Zevk DNA'sı, İnteraktif Evren & İzleme Sırası Ağacı (U), OST Müzikler (O), Sahne Yer İmleri (Shift+B / B), Tek Tuş Klip/4K Kare (Alt+C / Alt+F), ctrl+k 2.0 Evrensel Sorgu Motoru ve Sunucusuz Watch Party 2.0 (oda kodu + canlı mpv ASS sohbet)",
+		"AniList genel anime kataloğu: tüm animeler kaynaktan bağımsız aranır; bir seri açıldığında tüm etkin kaynaklar paralel taranır ve s menüsünden anlık değiştirilebilir",
+		"Gömülü torrent akışı iyileştirmesi, 17 yeni çözücü paketi ve %APPDATA%\\aniclitr\\plugins altında anlık güncellenebilir çözücü kuralları",
+		"Otomatik altyazı hizalama, oynatıcı içi Tipografi ve Ses Stüdyosu (Referans / Gece / Kulaklık), etkileşimli OP/ED atlama kartı ve akıllı yedek sunucu geçişi",
+		"Bölüm bazlı puanlama (E), 365 günlük izleme ısı haritası, izleme profili analizi, İzleme Sırası Ağacı (U), OST Müzikler (O), Sahne Yer İmleri (Shift+B / B), Klip ve Kare yakalama (Alt+C / Alt+F) ve oda kodlu Birlikte İzle",
 	},
 	"1.3.0": {
 		"İnsanüstü hız ve akıcılık: 60 FPS uyarlamalı saat, Nova ana sayfada %0 boşta CPU, fare hareketinde sıfır yeniden çizim, 3× hızlı hücre çizici + sıfır-ayırımlı TrueColor yazıcı ve Doherty eşiğine göre pürüzsüz kaydırma/geçişler",
@@ -333,7 +333,7 @@ func (o *onboard) update(a *App, msg tea.Msg) tea.Cmd {
 		}
 	case "y", "e":
 		if o.step == obPath && !o.isUpdate {
-			if !a.path.Has() {
+			if !a.hasPath() {
 				cmd := a.togglePath(true)
 				return tea.Batch(cmd, o.next(a))
 			}
@@ -455,14 +455,14 @@ func (o *onboard) view(a *App, w, h int) string {
 			if a.mal.Connected() {
 				body = []string{stOK.Render("● bağlı: ") + stBold.Render(a.mal.User()), "", stSub.Render("Kitaplığınız MyAnimeList listenizle iki yönlü eşitleniyor.")}
 			} else {
-				body = append(body, para("İsteğe bağlı: MyAnimeList hesabınızı bağladığınızda izlenen bölümler, puanlar ve listeler otomatik olarak eşitlenir; MyAnimeList'teki listeniz de buraya aktarılır.")...)
+				body = append(body, para("MyAnimeList hesabınızı bağlayarak izlenen bölümleri, puanları ve listeleri otomatik olarak iki yönlü eşitleyebilirsiniz.")...)
 				body = append(body, "", stText.Bold(true).Render("b")+stMuted.Render(" şimdi bağla   ·   ")+stText.Bold(true).Render("→")+stMuted.Render(" daha sonra (Ayarlar → MyAnimeList)"))
 			}
 		case obPath:
 			dir, _ := a.path.Dir()
 			body = append(body, para("aniclitr'i her terminalden aniclitr komutuyla açabilmeniz için aşağıdaki klasöre kurup PATH'e ekleyebiliriz:")...)
 			body = append(body, "", "  "+stAccent.Render(truncate(dir, cw-8)), "")
-			if a.path.Has() {
+			if a.hasPath() {
 				body = append(body, stOK.Render(" ✓ ")+stSub.Render("Zaten kurulu. Yeni bir terminalde aniclitr yazmanız yeterli."))
 			} else {
 				body = append(body, " "+stText.Bold(true).Render("y")+stMuted.Render(" kur   ·   ")+stText.Bold(true).Render("n")+stMuted.Render(" şimdi değil"), "")

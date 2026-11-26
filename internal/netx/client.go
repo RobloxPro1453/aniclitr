@@ -181,18 +181,25 @@ func PostJSON(ctx context.Context, url string, headers map[string]string, payloa
 		return err
 	}
 	var lastErr error
+	var hintedDelay time.Duration
+	var hasHint bool
 	for attempt := 0; attempt < 3; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if attempt > 0 {
 			delay := time.Duration(300*(1<<attempt))*time.Millisecond + time.Duration(rand.IntN(200))*time.Millisecond
-			t := time.NewTimer(delay)
-			select {
-			case <-ctx.Done():
-				t.Stop()
-				return ctx.Err()
-			case <-t.C:
+			if hasHint {
+				delay = hintedDelay
+			}
+			if delay > 0 {
+				t := time.NewTimer(delay)
+				select {
+				case <-ctx.Done():
+					t.Stop()
+					return ctx.Err()
+				case <-t.C:
+				}
 			}
 		}
 		if err := WaitHost(ctx, url); err != nil {
@@ -211,13 +218,22 @@ func PostJSON(ctx context.Context, url string, headers map[string]string, payloa
 		}
 		resp, err := Client.Do(req)
 		if err != nil {
+			hasHint = false
 			lastErr = err
 			continue
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 		resp.Body.Close()
+		hasHint = false
 		if resp.StatusCode < 200 || resp.StatusCode > 299 {
-			se := &StatusError{Code: resp.StatusCode, URL: url, Body: body}
+			var ra time.Duration
+			if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+				ra, _ = parseRetryAfter(resp.Header, time.Now())
+				if ra > 0 {
+					hintedDelay, hasHint = ra, true
+				}
+			}
+			se := &StatusError{Code: resp.StatusCode, URL: url, Body: body, RetryAfter: ra}
 			lastErr = se
 			if !isRetryableStatus(resp.StatusCode) {
 				return se

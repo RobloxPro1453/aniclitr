@@ -27,6 +27,9 @@ func (a *App) waitMal() tea.Cmd {
 
 // onMal reports sync errors (each one once) and recovery.
 func (a *App) onMal() {
+	if a.msync == nil {
+		return
+	}
 	st := a.msync.Status()
 	if st.Err != "" && st.Err != a.malErr {
 		a.notify("MAL: "+st.Err, "err")
@@ -41,8 +44,11 @@ func (a *App) onMal() {
 
 // malLine is the small status shown in the library header.
 func (a *App) malLine() string {
-	if !a.mal.Connected() {
+	if a.mal == nil || !a.mal.Connected() {
 		return stFaint.Render("○ ") + stMuted.Render("MAL · m")
+	}
+	if a.msync == nil {
+		return stOK.Render("● ") + stSub.Render("MAL "+a.mal.User())
 	}
 	st := a.msync.Status()
 	switch {
@@ -218,7 +224,7 @@ type malScreen struct {
 type malLoginMsg struct{ err error }
 
 func newMalScreen(a *App) *malScreen {
-	s := &malScreen{in: input{placeholder: "MAL Client ID'yi buraya yapıştır"}}
+	s := &malScreen{in: input{placeholder: "MAL Client ID girin"}}
 	s.in.Set(a.cfg.MalClientID)
 	return s
 }
@@ -233,7 +239,9 @@ func (s *malScreen) hints() []hint {
 	return []hint{{"enter", "bağlan"}, {"ctrl+y", "apiconfig sayfası"}, {"ctrl+s", "şimdi eşitle"}, {"ctrl+x", "bağlantıyı kes"}, {"esc", "geri"}}
 }
 
-func (s *malScreen) animating(a *App) bool { return s.waiting || a.msync.Status().Busy }
+func (s *malScreen) animating(a *App) bool {
+	return s.waiting || (a.msync != nil && a.msync.Status().Busy)
+}
 
 func (s *malScreen) update(a *App, msg tea.Msg) tea.Cmd {
 	switch m := msg.(type) {
@@ -241,14 +249,16 @@ func (s *malScreen) update(a *App, msg tea.Msg) tea.Cmd {
 		s.waiting = false
 		if m.err != nil {
 			s.err = m.err.Error()
-			a.notify("MAL girişi olmadı: "+s.err, "err")
+			a.notify("MAL girişi başarısız: "+s.err, "err")
 			return nil
 		}
 		s.err = ""
-		a.msync.Start()
+		if a.msync != nil {
+			a.msync.Start()
+		}
 		a.anchorOK = false
 		a.celebrate(70)
-		a.notify("MyAnimeList bağlandı: "+a.mal.User()+" · listen çekiliyor", "ok")
+		a.notify("MyAnimeList bağlandı: "+a.mal.User()+" · listeniz eşitleniyor", "ok")
 		return a.tick()
 	case tea.KeyMsg:
 		switch m.String() {
@@ -316,11 +326,11 @@ func (s *malScreen) view(a *App, w, h int) string {
 		return strings.Join(out, "\n")
 	}
 	steps := []string{
-		stBold.Render("1") + stSub.Render("  myanimelist.net/apiconfig → ") + stBold.Render("Create ID") + stMuted.Render("   (ctrl+y açar)"),
+		stBold.Render("1") + stSub.Render("  myanimelist.net/apiconfig → ") + stBold.Render("Create ID") + stMuted.Render("   (ctrl+y ile açın)"),
 		stBold.Render("2") + stSub.Render("  App Type: ") + stBold.Render("other") + stSub.Render("   ·   App Redirect URL:"),
 		"   " + stAccent.Render(mal.RedirectURL),
-		stBold.Render("3") + stSub.Render("  Diğer alanlara ne istersen yaz, kaydet; çıkan ") + stBold.Render("Client ID") + stSub.Render("'yi kopyala"),
-		stBold.Render("4") + stSub.Render("  Aşağıya yapıştır, enter → tarayıcıda ") + stBold.Render("Allow") + stSub.Render(" de, bitti"),
+		stBold.Render("3") + stSub.Render("  Gerekli alanları doldurup kaydedin ve ") + stBold.Render("Client ID") + stSub.Render(" değerini kopyalayın"),
+		stBold.Render("4") + stSub.Render("  Aşağıya yapıştırıp enter tuşuna basın, tarayıcıda ") + stBold.Render("Allow") + stSub.Render(" ile onaylayın"),
 	}
 	for _, l := range panel("bağlanmak için", steps, cw, len(steps)+2, true, cAccent) {
 		out = append(out, center(l, w))
@@ -331,7 +341,7 @@ func (s *malScreen) view(a *App, w, h int) string {
 	}
 	switch {
 	case s.waiting:
-		out = append(out, "", center(stAccent.Render(spinner(a.frame/2))+stSub.Render(" tarayıcıda onay bekleniyor… (şifren aniclitr'e hiç gelmez)"), w))
+		out = append(out, "", center(stAccent.Render(spinner(a.frame/2))+stSub.Render(" tarayıcıda OAuth onayı bekleniyor…"), w))
 	case s.err != "":
 		out = append(out, "", center(stErr.Render("✗ "+truncate(s.err, cw)), w))
 	}

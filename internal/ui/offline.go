@@ -30,7 +30,11 @@ func probeNet() tea.Cmd {
 		for _, u := range targets {
 			u := u
 			go func() {
-				req, _ := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
+				req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
+				if err != nil {
+					ok <- false
+					return
+				}
 				req.Header.Set("User-Agent", netx.UserAgent)
 				resp, err := (&http.Client{Timeout: 4 * time.Second}).Do(req)
 				if err == nil {
@@ -128,7 +132,7 @@ func (o *offlineScreen) update(a *App, msg tea.Msg) tea.Cmd {
 			if o.dl.openShow == "" {
 				return nil // the offline shelf is the root
 			}
-		case "v":
+		case "v", "tab":
 			return nil // the queue needs the network; stay on the shelf
 		}
 	}
@@ -139,8 +143,8 @@ func (o *offlineScreen) view(a *App, w, h int) string {
 	o.dl.queue = false
 	pad := 2
 	inner := w - pad*2
-	banner := pill("ÇEVRİMDIŞI", cWarn) + "  " + stSub.Render("İnternet yok — indirdiklerini izleyebilirsin.") +
-		stMuted.Render("  Bağlantı gelince ana sayfa kendiliğinden açılır.")
+	banner := pill("ÇEVRİMDIŞI", cWarn) + "  " + stSub.Render("İnternet bağlantısı yok — indirilen bölümleri izleyebilirsiniz.") +
+		stMuted.Render("  Bağlantı geldiğinde ana sayfa otomatik açılır.")
 	shows := offlineShelf(a)
 	var out []string
 	out = append(out, "", strings.Repeat(" ", pad)+truncate(banner, inner), "")

@@ -71,6 +71,7 @@ func (s *hostOrderScreen) update(a *App, msg tea.Msg) tea.Cmd {
 	if !ok || len(s.order) == 0 {
 		return nil
 	}
+	s.cur = clamp(s.cur, 0, len(s.order)-1)
 	h := s.order[s.cur]
 	switch k.String() {
 	case "esc", "q":

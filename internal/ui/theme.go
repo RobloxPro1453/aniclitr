@@ -326,7 +326,10 @@ func mix(a, b rgb, t float64) rgb {
 
 // gradAt samples a multi-stop gradient at t∈[0,1].
 func gradAt(stops []string, t float64) rgb {
-	if t <= 0 {
+	if len(stops) == 0 {
+		return rgb{}
+	}
+	if len(stops) == 1 || t <= 0 {
 		return hex(stops[0])
 	}
 	if t >= 1 {
@@ -334,6 +337,9 @@ func gradAt(stops []string, t float64) rgb {
 	}
 	seg := t * float64(len(stops)-1)
 	i := int(seg)
+	if i >= len(stops)-1 {
+		return hex(stops[len(stops)-1])
+	}
 	return mix(hex(stops[i]), hex(stops[i+1]), seg-float64(i))
 }
 

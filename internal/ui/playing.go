@@ -18,6 +18,7 @@ import (
 	"aniclitr/internal/router"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
+	"aniclitr/internal/tstream"
 	"aniclitr/internal/watchparty"
 )
 
@@ -122,6 +123,7 @@ type playing struct {
 	lastRPCPos      float64
 	lastRPCPaused   bool
 	rpcDurSet       bool
+	torrentSess     *tstream.Session
 }
 
 func newPlaying(an source.Anime, ep source.Episode, eps []source.Episode, fansub, host string, st *source.Stream, q source.Quality) *playing {
@@ -244,7 +246,7 @@ func (p *playing) launch(a *App) tea.Cmd {
 		ExtraArgs:       a.cfg.ExtraMpvArgs,
 		MpvPath:         a.cfg.MpvPath,
 		NextLabel:       p.nextLabel(),
-		Thumb:           thumbPath(p.an.Key()),
+		Thumb:           thumbPathForWrite(p.an.Key()),
 	}
 	id := p.id
 	return guard("mpv", func() tea.Msg {
@@ -535,6 +537,7 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 		return p.onMpvAction(a, ev.Action)
 	case player.EvEnded:
 		p.started = true
+		invalidateThumb(p.an.Key())
 		p.recordISPTelemetry(ev.Err != nil)
 		if ev.Err != nil {
 			p.err = ev.Err
@@ -545,7 +548,8 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 				a.failed[p.vurl] = time.Now()
 			}
 			// smart recovery: don't make the user pick — try the next source
-			if p.attempt < 3 && p.pos < 5 {
+			// (only for registered streaming providers, never for torrent/local streams)
+			if p.attempt < 3 && p.pos < 5 && p.torrentSess == nil && source.Get(p.an.Source) != nil {
 				a.notify(p.host+" açılmadı — sıradaki kaynak deneniyor…", "warn")
 				pk := newPicker(p.an, p.ep, p.eps, true)
 				pk.prefFan, pk.attempt = p.fansub, p.attempt+1
@@ -631,6 +635,9 @@ func (p *playing) findAdjacent(a *App, dir int, countdown bool) tea.Cmd {
 		return func() tea.Msg { return adjacentMsg{id: id} }
 	}
 	prov := source.Get(p.an.Source)
+	if prov == nil {
+		return func() tea.Msg { return adjacentMsg{id: id} }
+	}
 	an, sn := p.an, target.Number
 	return tea.Batch(a.tick(), run(30*time.Second, func(ctx context.Context) tea.Msg {
 		eps, err := prov.Episodes(ctx, an, sn)
@@ -810,6 +817,12 @@ func (p *playing) key(a *App, k tea.KeyMsg) tea.Cmd {
 		case "esc", "q":
 			a.pop()
 		case "enter", "r":
+			if p.torrentSess != nil || source.Get(p.an.Source) == nil {
+				// Retry playback directly for torrent / local streams instead of opening provider picker
+				p.err = nil
+				p.started = false
+				return tea.Batch(a.tick(), p.launch(a))
+			}
 			// back to the source picker for this episode to try another host
 			pk := newPicker(p.an, p.ep, p.eps, false)
 			pk.prefFan = p.fansub
@@ -857,6 +870,18 @@ func (p *playing) key(a *App, k tea.KeyMsg) tea.Cmd {
 		p.sess.Quit()
 	}
 	return nil
+}
+
+func (p *playing) torrentStatusLine() string {
+	if p.torrentSess == nil {
+		return ""
+	}
+	st := p.torrentSess.Stats()
+	pct := 0.0
+	if st.Length > 0 {
+		pct = float64(st.Completed) / float64(st.Length) * 100
+	}
+	return fmt.Sprintf("⇄ %d eş · %d seed · tampon %s (%%%.1f)", st.Peers, st.Seeders, fmtTorrentBytes(st.Completed), pct)
 }
 
 func (p *playing) view(a *App, w, h int) string {
@@ -908,10 +933,13 @@ func (p *playing) view(a *App, w, h int) string {
 	}
 	info = append(info, "")
 	meta := []string{stSub.Render(truncate(p.fansub, tw/2)), stSub.Render(p.host), stSub.Render(p.q.Label)}
-	if len(p.st.Subtitles) > 0 {
+	if p.st != nil && len(p.st.Subtitles) > 0 {
 		meta = append(meta, stSub.Render("altyazı: "+p.st.Subtitles[0].Label))
 	}
 	info = append(info, truncate(strings.Join(meta, stFaint.Render(" · ")), tw))
+	if ts := p.torrentStatusLine(); ts != "" {
+		info = append(info, stMuted.Render(ts))
+	}
 	segs := aniskip.ForDuration(p.segs, p.dur)
 	if len(segs) > 0 {
 		var ks []string
@@ -946,9 +974,15 @@ func (p *playing) view(a *App, w, h int) string {
 	}
 	info = append(info, p.subLines(a, tw)...)
 	if p.err != nil {
+		retryHint := stText.Bold(true).Render("enter") + stMuted.Render(" başka kaynak seç  ·  ") + stText.Bold(true).Render("esc") + stMuted.Render(" geri")
+		subMsg := "Bağlantı süresi dolmuş ya da sunucu yanıt vermiyor olabilir."
+		if p.torrentSess != nil {
+			subMsg = "Torrent eş bağlantısı kurulamadı veya zaman aşımına uğradı."
+			retryHint = stText.Bold(true).Render("r") + stMuted.Render(" tekrar dene  ·  ") + stText.Bold(true).Render("esc") + stMuted.Render(" geri")
+		}
 		info = append(info, "", stErr.Render(truncate(shortErr(p.err), tw)),
-			stSub.Render("Link süresi dolmuş ya da sunucu yanıt vermiyor olabilir."),
-			stText.Bold(true).Render("enter")+stMuted.Render(" başka kaynak seç  ·  ")+stText.Bold(true).Render("esc")+stMuted.Render(" geri"))
+			stSub.Render(subMsg),
+			retryHint)
 	}
 	if !p.countdown.IsZero() {
 		left := time.Until(p.countdown).Seconds()

@@ -481,6 +481,47 @@ func Search(ctx context.Context, name string) ([]Media, error) {
 	return res.Page.Media, nil
 }
 
+// SearchCatalog searches the full AniList anime catalog (source-agnostic) with
+// synopsis and metadata for instant interactive search.
+func SearchCatalog(ctx context.Context, name string) ([]Media, error) {
+	q := `query($q:String){Page(perPage:25){media(search:$q,type:ANIME,isAdult:false,sort:[SEARCH_MATCH,POPULARITY_DESC]){` + mediaFields + ` description(asHtml:false)}}}`
+	var res struct {
+		Page struct {
+			Media []Media `json:"media"`
+		} `json:"Page"`
+	}
+	if err := query(ctx, q, map[string]any{"q": name}, 12*time.Hour, &res); err != nil {
+		return nil, err
+	}
+	var out []Media
+	for _, m := range res.Page.Media {
+		if keep(m) {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+// FormatTR maps an AniList format code to a concise Turkish label.
+func FormatTR(format string) string {
+	switch strings.ToUpper(strings.TrimSpace(format)) {
+	case "TV":
+		return "TV"
+	case "TV_SHORT":
+		return "Kısa TV"
+	case "MOVIE":
+		return "Film"
+	case "OVA":
+		return "OVA"
+	case "ONA":
+		return "ONA"
+	case "SPECIAL":
+		return "Özel"
+	default:
+		return format
+	}
+}
+
 // Random picks a well-liked anime at random.
 func Random(ctx context.Context) (Media, error) {
 	q := `query($page:Int){Page(page:$page,perPage:1){media(type:ANIME,sort:POPULARITY_DESC,isAdult:false,averageScore_greater:68,format_in:[TV,MOVIE,ONA]){` + mediaFields + ` description(asHtml:false) trailer{id site}}}}`

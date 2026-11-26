@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"aniclitr/internal/anilist"
 	"aniclitr/internal/match"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
@@ -104,20 +105,28 @@ func (s *suggest) fire(a *App, gen int) tea.Cmd {
 		return nil
 	}
 	q := s.q
-	var prov source.Provider
+	var fallbackProv source.Provider
 	for _, p := range source.All() {
 		if a.cfg.Enabled(p.Info().ID, p.Info().Legacy) {
-			prov = p
+			fallbackProv = p
 			break
 		}
 	}
-	if prov == nil {
-		s.busy = false
-		return nil
-	}
 	return run(10*time.Second, func(ctx context.Context) tea.Msg {
-		res, err := prov.Search(ctx, q)
-		return sugResMsg{gen: gen, q: q, res: res, err: err}
+		// Source-agnostic AniList catalog first (consistent with full search).
+		ms, err := anilist.SearchCatalog(ctx, q)
+		if err == nil && len(ms) > 0 {
+			out := make([]source.Anime, 0, len(ms))
+			for _, m := range ms {
+				out = append(out, catalogAnime(m))
+			}
+			return sugResMsg{gen: gen, q: q, res: out}
+		}
+		if fallbackProv != nil {
+			res, ferr := fallbackProv.Search(ctx, q)
+			return sugResMsg{gen: gen, q: q, res: res, err: ferr}
+		}
+		return sugResMsg{gen: gen, q: q, err: err}
 	})
 }
 

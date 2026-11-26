@@ -18,7 +18,7 @@ import (
 // the first time.
 func (s *animeScreen) openSources(a *App) tea.Cmd {
 	var look tea.Cmd
-	if !s.looking && !s.looked {
+	if !s.looking && (!s.looked || s.catalogEmpty) {
 		s.looking, s.lookKey = true, s.an.Key()
 		look = a.findAlts(s.an)
 	}
@@ -37,6 +37,7 @@ func (s *animeScreen) openSources(a *App) tea.Cmd {
 func (s *animeScreen) sourceItems(a *App) []dropItem {
 	var items []dropItem
 	known := map[string]bool{}
+	num := 0
 	for i, x := range s.srcs {
 		i, x := i, x
 		known[x.Source] = true
@@ -44,6 +45,7 @@ func (s *animeScreen) sourceItems(a *App) []dropItem {
 		if p == nil {
 			continue
 		}
+		num++
 		in := p.Info()
 		var note []string
 		switch {
@@ -58,7 +60,7 @@ func (s *animeScreen) sourceItems(a *App) []dropItem {
 		if h, ok := a.health[in.ID]; ok && !h.OK {
 			note = append(note, "yanıt vermiyor")
 		}
-		it := dropItem{icon: "●", color: sourceColor(x.Source), label: fmt.Sprintf("%d  %s", i+1, in.Name),
+		it := dropItem{icon: "●", color: sourceColor(x.Source), label: fmt.Sprintf("%d  %s", num, in.Name),
 			note: strings.Join(note, " · ")}
 		if !srcOn(a, x) {
 			it.color = cFaint
@@ -77,7 +79,7 @@ func (s *animeScreen) sourceItems(a *App) []dropItem {
 		if known[in.ID] || (in.Legacy && !a.cfg.Legacy) {
 			continue
 		}
-		state := "bu animeyi bulamadı"
+		state := "bulamadı"
 		if s.looking {
 			state = spinner(a.frame/2) + " aranıyor…"
 		}
@@ -87,6 +89,19 @@ func (s *animeScreen) sourceItems(a *App) []dropItem {
 		items = append(items, dropItem{group: "diğer kaynaklar"})
 		items = append(items, rest...)
 	}
+	items = append(items,
+		dropItem{group: "alternatif"},
+		dropItem{
+			icon:  "⇄",
+			color: cWarn,
+			label: "   Nyaa.si · Torrent",
+			note:  "anlık izle / indir",
+			run: func(a *App) tea.Cmd {
+				ts := newTorrentScreen(s.an.Title)
+				return tea.Batch(a.push(ts), ts.start(a))
+			},
+		},
+	)
 	return items
 }
 

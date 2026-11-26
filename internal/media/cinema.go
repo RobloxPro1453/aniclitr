@@ -32,26 +32,26 @@ func AnalyzeStream(height int, bitrateBps int64) CinemaAdvice {
 	switch {
 	case height >= 1080 && (bitrateBps == 0 || kbps >= 2200):
 		return CinemaAdvice{
-			Reason:       fmt.Sprintf("%dp yüksek kaliteli kaynak — orijinal görüntü en temiz seçenek", height),
-			OptionalNote: "Zorlama yok · varsayılan orijinal kalite önerilir",
+			Reason:       fmt.Sprintf("%dp yüksek bit hızlı kaynak — orijinal görüntü kalitesi önerilir", height),
+			OptionalNote: "m menüsü → Çözünürlük",
 		}
 	case height >= 1080 && kbps > 0 && kbps < 1200:
 		return CinemaAdvice{
 			SuggestAnime4K: "hızlı",
-			Reason:         fmt.Sprintf("%dp düşük bitrate (%.0f kbps) — hafif Anime4K sıkıştırma temizliği faydalı olabilir", height, kbps),
-			OptionalNote:   "İsteğe bağlı · m menüsünden tek tuşla açıp kapatabilirsin",
+			Reason:         fmt.Sprintf("%dp düşük bit hızı (%.0f kbps) — Anime4K Hızlı profili sıkıştırma izlerini azaltır", height, kbps),
+			OptionalNote:   "m menüsü → Kalite ve Akıcılık",
 		}
 	case height > 0 && height <= 720:
 		return CinemaAdvice{
 			SuggestUpscale: "1080p",
 			SuggestAnime4K: "hızlı",
-			Reason:         fmt.Sprintf("%dp kaynak — isteğe bağlı AMD FSR 1080p keskinleştirme önerilebilir", height),
-			OptionalNote:   "İsteğe bağlı · orijinal kalitede rahatça izleyebilirsin",
+			Reason:         fmt.Sprintf("%dp kaynak — AMD FSR 1080p ölçekleme profili uygulanabilir", height),
+			OptionalNote:   "m menüsü → Çözünürlük",
 		}
 	default:
 		return CinemaAdvice{
-			Reason:       "Orijinal görüntü kalitesi aktif",
-			OptionalNote: "İsteğe bağlı profiller için m menüsü",
+			Reason:       "Orijinal görüntü kalitesi etkin",
+			OptionalNote: "Görüntü profilleri için m menüsü",
 		}
 	}
 }

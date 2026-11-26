@@ -108,6 +108,9 @@ func probe(p source.Provider, q string) {
 	t = time.Now()
 	eps, err := p.Episodes(ctx, a, season)
 	recordStep(pid, "episodes", t, err, len(eps) == 0)
+	if err == nil && len(eps) == 0 {
+		err = source.ErrNotFound
+	}
 	if !step("bölümler", t, err, fmt.Sprintf("%d bölüm, ilk: %q", len(eps), epTitle(eps))) {
 		return
 	}
@@ -157,8 +160,9 @@ func epTitle(e []source.Episode) string {
 }
 
 func trunc(s string, n int) string {
-	if len(s) <= n {
+	rs := []rune(s)
+	if len(rs) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return string(rs[:n]) + "…"
 }

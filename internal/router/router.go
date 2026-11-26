@@ -47,12 +47,12 @@ func DetectFakeQuality(claimedHeight int, realBitrateBps int64) (isFake bool, no
 	}
 	kbps := float64(realBitrateBps) / 1000.0
 	switch {
+	case claimedHeight >= 2160 && kbps < 3500:
+		return true, fmt.Sprintf("sahte 4K (gerçek ~%.0f kbps)", kbps)
 	case claimedHeight >= 1080 && kbps < 950:
 		return true, fmt.Sprintf("sahte 1080p (gerçek ~%.0f kbps)", kbps)
 	case claimedHeight >= 720 && kbps < 450:
 		return true, fmt.Sprintf("sahte 720p (gerçek ~%.0f kbps)", kbps)
-	case claimedHeight >= 2160 && kbps < 3500:
-		return true, fmt.Sprintf("sahte 4K (gerçek ~%.0f kbps)", kbps)
 	}
 	return false, ""
 }
@@ -65,10 +65,9 @@ type Router struct {
 }
 
 var (
-	defaultOnce sync.Once
-	defaultR    *Router
-	defaultDir  string
-	defaultMu   sync.Mutex
+	defaultR   *Router
+	defaultDir string
+	defaultMu  sync.Mutex
 )
 
 // Default returns the process-wide router backed by CacheDir/isp-router.json.

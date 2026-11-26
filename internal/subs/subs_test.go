@@ -14,6 +14,10 @@ func TestOpenSubtitlesFlow(t *testing.T) {
 	t.Setenv("ANICLITR_HOME", t.TempDir())
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/file/22" {
+			fmt.Fprint(w, "1\n00:00:01,000 --> 00:00:02,000\nMerhaba\n")
+			return
+		}
 		if r.Header.Get("Api-Key") != "k" {
 			http.Error(w, "no key", http.StatusUnauthorized)
 			return
@@ -31,8 +35,6 @@ func TestOpenSubtitlesFlow(t *testing.T) {
 			}})
 		case "/download":
 			fmt.Fprintf(w, `{"link":"%s/file/22","file_name":"b.srt"}`, srv.URL)
-		case "/file/22":
-			fmt.Fprint(w, "1\n00:00:01,000 --> 00:00:02,000\nMerhaba\n")
 		}
 	}))
 	defer srv.Close()

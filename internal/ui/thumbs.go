@@ -6,27 +6,67 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"aniclitr/internal/config"
 	"aniclitr/internal/netx"
 )
 
-// thumbPath: where mpv keeps the frame you stopped at for an anime.
+type thumbEntry struct {
+	url string
+	at  time.Time
+}
+
+var (
+	thumbMu    sync.Mutex
+	thumbCache = map[string]thumbEntry{}
+)
+
+// thumbPath returns where mpv stores the last watched frame for an anime
+// without touching the filesystem.
 func thumbPath(animeKey string) string {
 	dir := filepath.Join(config.CacheDir(), "kareler")
-	_ = os.MkdirAll(dir, 0o755)
 	return filepath.Join(dir, strings.NewReplacer(":", "_", "/", "_", "\\", "_").Replace(animeKey)+".jpg")
 }
 
-// thumbURL is the poster-cache URL of that frame ("" if none yet). The
-// modification time is part of it so a newer frame replaces the old one.
-func thumbURL(animeKey string) string {
+// thumbPathForWrite ensures the thumbnail directory exists before mpv writes a frame.
+func thumbPathForWrite(animeKey string) string {
 	p := thumbPath(animeKey)
-	st, err := os.Stat(p)
-	if err != nil || st.Size() == 0 {
-		return ""
+	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	return p
+}
+
+// invalidateThumb clears the cached stat entry for animeKey (called after playback saves a new frame).
+func invalidateThumb(animeKey string) {
+	thumbMu.Lock()
+	delete(thumbCache, animeKey)
+	thumbMu.Unlock()
+}
+
+// thumbURL is the poster-cache URL of that frame ("" if none yet). Results are
+// cached briefly in memory so 60 FPS views never invoke os.Stat per frame.
+func thumbURL(animeKey string) string {
+	now := time.Now()
+	thumbMu.Lock()
+	if e, ok := thumbCache[animeKey]; ok && now.Sub(e.at) < 5*time.Second {
+		thumbMu.Unlock()
+		return e.url
 	}
-	return fmt.Sprintf("file://%s?t=%d", p, st.ModTime().Unix())
+	thumbMu.Unlock()
+
+	p := thumbPath(animeKey)
+	url := ""
+	if st, err := os.Stat(p); err == nil && st.Size() > 0 {
+		url = fmt.Sprintf("file://%s?t=%d", p, st.ModTime().Unix())
+	}
+	thumbMu.Lock()
+	if len(thumbCache) > 256 {
+		clear(thumbCache)
+	}
+	thumbCache[animeKey] = thumbEntry{url: url, at: now}
+	thumbMu.Unlock()
+	return url
 }
 
 // posterBytes loads an image: local files directly, remote ones through a

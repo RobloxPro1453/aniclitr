@@ -101,12 +101,17 @@ func (p *playing) novaView(a *App, w, h int) string {
 	}
 	if a.party != nil {
 		chips = append(chips, fg(cOK).Background(colorOf(cSurface)).Bold(true).Render(fmt.Sprintf(" ◈ oda · %d ", a.party.PeerCount())))
+	} else if a.relayParty != nil {
+		chips = append(chips, fg(cOK).Background(colorOf(cSurface)).Bold(true).Render(" ◈ oda · "+a.relayParty.Code()+" "))
 	}
 	if p.prefetched != nil {
 		chips = append(chips, fg(cOK).Background(colorOf(cSurface)).Render(" ⚡ sıradaki hazır "))
 	}
 	if len(chips) > 0 {
 		info = append(info, wrapChips(chips, tw)...)
+	}
+	if ts := p.torrentStatusLine(); ts != "" {
+		info = append(info, fg(cSky).Render("✦ ")+stSub.Render(truncate(ts, max(8, tw-2))))
 	}
 
 	segs := aniskip.ForDuration(p.segs, p.dur)

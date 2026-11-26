@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"aniclitr/internal/netx"
 	"aniclitr/internal/pathx"
@@ -115,8 +116,9 @@ func Install(ctx context.Context, name string) error {
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			msg := strings.TrimSpace(string(out))
-			if len(msg) > 120 {
-				msg = msg[len(msg)-120:]
+			rs := []rune(msg)
+			if len(rs) > 120 {
+				msg = string(rs[len(rs)-120:])
 			}
 			return fmt.Errorf("%s kurulamadı: %v (%s)", name, err, msg)
 		}
@@ -149,7 +151,8 @@ func installYtDlpDirect(ctx context.Context) error {
 		return err
 	}
 	req.Header.Set("User-Agent", netx.UserAgent)
-	resp, err := netx.Client.Do(req)
+	dlClient := &http.Client{Timeout: 3 * time.Minute}
+	resp, err := dlClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -166,19 +169,27 @@ func installYtDlpDirect(ctx context.Context) error {
 		dstName = "yt-dlp.exe"
 	}
 	dst := filepath.Join(dir, dstName)
-	tmp := dst + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	f, err := os.CreateTemp(dir, dstName+".*.tmp")
 	if err != nil {
 		return err
 	}
-	n, err := io.Copy(f, resp.Body)
+	tmp := f.Name()
+	_ = f.Chmod(0o755)
+	n, err := io.Copy(f, io.LimitReader(resp.Body, 128<<20))
 	closeErr := f.Close()
 	if err != nil || closeErr != nil || n < 100<<10 {
 		_ = os.Remove(tmp)
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
 		if err == nil {
 			err = errors.New("yt-dlp indirmesi eksik")
 		}
 		return err
 	}
-	return os.Rename(tmp, dst)
+	if err := os.Rename(tmp, dst); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }

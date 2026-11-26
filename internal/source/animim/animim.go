@@ -287,7 +287,7 @@ func (Provider) Resolve(ctx context.Context, v source.Variant) (*source.Stream, 
 	var idx int
 	fmt.Sscanf(parts[2], "%d", &idx)
 	for _, f := range det.Videos {
-		if f.ID != parts[1] || idx >= len(f.VideoURLs) {
+		if f.ID != parts[1] || idx < 0 || idx >= len(f.VideoURLs) {
 			continue
 		}
 		vu := f.VideoURLs[idx]

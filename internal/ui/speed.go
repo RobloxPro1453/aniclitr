@@ -52,7 +52,7 @@ const dwellAfter = 450 * time.Millisecond
 func (s *animeScreen) dwell(a *App) tea.Cmd {
 	s.dwellGen++
 	eps := s.episodes(a)
-	if s.cur >= len(eps) {
+	if s.cur < 0 || s.cur >= len(eps) {
 		return nil
 	}
 	gen, key := s.dwellGen, varKey(s.an, eps[s.cur])
@@ -61,7 +61,7 @@ func (s *animeScreen) dwell(a *App) tea.Cmd {
 
 func (s *animeScreen) onDwell(a *App, m dwellMsg) tea.Cmd {
 	eps := s.episodes(a)
-	if m.gen != s.dwellGen || s.cur >= len(eps) || varKey(s.an, eps[s.cur]) != m.key {
+	if m.gen != s.dwellGen || s.cur < 0 || s.cur >= len(eps) || varKey(s.an, eps[s.cur]) != m.key {
 		return nil
 	}
 	if _, ok := a.dl.Local(s.an.Key(), eps[s.cur].Season, eps[s.cur].Number); ok {
@@ -76,7 +76,7 @@ func (s *animeScreen) onDwell(a *App, m dwellMsg) tea.Cmd {
 // warm resolves the preferred fansub's first working-looking host.
 func (s *animeScreen) warm(a *App, key string) tea.Cmd {
 	eps := s.episodes(a)
-	if s.cur >= len(eps) || varKey(s.an, eps[s.cur]) != key || a.top() != screen(s) {
+	if s.cur < 0 || s.cur >= len(eps) || varKey(s.an, eps[s.cur]) != key || a.top() != screen(s) {
 		return nil
 	}
 	vs := a.variants[key]

@@ -202,6 +202,10 @@ func LabTest(ctx context.Context, w io.Writer, pluginID, rawURL, fixturePath str
 func LabScaffold(w io.Writer, id, domain string) int {
 	id = strings.ToLower(strings.TrimSpace(id))
 	domain = strings.ToLower(strings.TrimSpace(domain))
+	if id == "" || domain == "" || strings.ContainsAny(id, `/\..`) {
+		fmt.Fprintln(w, "✗ Geçersiz eklenti kimliği veya alan adı.")
+		return 2
+	}
 	m := Manifest{
 		Schema:  1,
 		ID:      id,
@@ -231,6 +235,6 @@ func LabScaffold(w io.Writer, id, domain string) int {
 		return 1
 	}
 	fmt.Fprintf(w, "✓ Eklenti şablonu oluşturuldu: %s\n", dst)
-	fmt.Fprintln(w, "  Derleme gerekmez — düzenleyip 'aniclitr lab validate' ile doğrulayabilirsin.")
+	fmt.Fprintln(w, "  Derleme gerekmez — düzenleyip 'aniclitr lab validate' ile doğrulayabilirsiniz.")
 	return 0
 }

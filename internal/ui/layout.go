@@ -56,6 +56,9 @@ func truncate(s string, n int) string {
 
 // fit returns s padded/truncated to exactly w cells.
 func fit(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
 	sw := plainWidth(s)
 	if sw > w {
 		return ansi.Truncate(s, w, "")
@@ -72,6 +75,12 @@ func fit(s string, w int) string {
 
 // block normalises lines to a w×h rectangle.
 func block(lines []string, w, h int) []string {
+	if h <= 0 {
+		return nil
+	}
+	if w < 0 {
+		w = 0
+	}
 	out := make([]string, h)
 	blank := ""
 	if w <= len(spaceRun) {
@@ -93,6 +102,9 @@ func block(lines []string, w, h int) []string {
 func hjoin(gap int, cols ...[]string) []string {
 	if len(cols) == 0 {
 		return nil
+	}
+	if gap < 0 {
+		gap = 0
 	}
 	h := len(cols[0])
 	sep := strings.Repeat(" ", gap)
@@ -121,6 +133,9 @@ func hjoin(gap int, cols ...[]string) []string {
 
 // vrule is a 1-column divider.
 func vrule(h int) []string {
+	if h <= 0 {
+		return nil
+	}
 	out := make([]string, h)
 	bar := stFaint.Render("│")
 	for i := range out {
@@ -149,8 +164,17 @@ func wrap(text string, w int) []string {
 					line = ""
 				}
 				cut := ansi.Truncate(word, w, "")
+				if cut == "" {
+					rs := []rune(word)
+					if len(rs) == 0 {
+						break
+					}
+					cut = string(rs[:1])
+					word = string(rs[1:])
+				} else {
+					word = strings.TrimPrefix(word, cut)
+				}
 				out = append(out, cut)
-				word = strings.TrimPrefix(word, cut)
 			}
 			switch {
 			case line == "":
@@ -455,8 +479,11 @@ func scroll(cursor, offset, h, n int) int {
 
 // scrollbar draws a thin indicator column for a list.
 func scrollbar(h, offset, n int) []string {
+	if h <= 0 {
+		return nil
+	}
 	out := make([]string, h)
-	if n <= h || h <= 0 {
+	if n <= h {
 		for i := range out {
 			out[i] = " "
 		}

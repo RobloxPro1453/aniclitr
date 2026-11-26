@@ -115,6 +115,11 @@ type toolsDoneMsg struct {
 	failed    []string
 }
 
+type envProbeMsg struct {
+	pathOn       bool
+	missingTools int
+}
+
 type deferredInitMsg struct{}
 
 // ---- app ----
@@ -173,8 +178,15 @@ type App struct {
 	transDir int   // +1 push (enter from right), -1 pop
 	help     bool
 
-	path    pathOps // aniclitr on PATH (pathui.go)
-	lib     *store.Library
+	path         pathOps // aniclitr on PATH (pathui.go)
+	pathOn       bool
+	pathProbed   bool
+	toolsMissing int
+	toolsProbed  bool
+	shelfCache   []dlShow
+	shelfAt      time.Time
+	shelfValid   bool
+	lib          *store.Library
 	libRev  int               // library revision libMemo belongs to
 	libMemo map[string]libHit // libItem answers (same.go)
 
@@ -492,6 +504,9 @@ func (a *App) push(s screen) tea.Cmd {
 	a.stack = append(a.stack, s)
 	a.slide(+1)
 	a.syncBrowseDiscord()
+	if _, isSet := s.(*settings); isSet {
+		return tea.Batch(a.tick(), a.probeEnv())
+	}
 	return a.tick()
 }
 
@@ -707,7 +722,9 @@ func (a *App) pop() {
 		left := a.top()
 		a.stack = a.stack[:len(a.stack)-1]
 		a.slide(-1)
-		switch left.(type) {
+		switch s := left.(type) {
+		case *torrentScreen:
+			s.closeStream()
 		case *library, *discover, *results, *downloads, *charactersScreen:
 			trimMemory() // poster-heavy screens leave garbage behind
 		}
@@ -910,6 +927,9 @@ func (a *App) fetchEpisodes(an source.Anime, season int) tea.Cmd {
 		return nil
 	}
 	p := source.Get(an.Source)
+	if p == nil {
+		return nil
+	}
 	a.episodes[key] = nil
 	return run(40*time.Second, func(ctx context.Context) tea.Msg {
 		t0 := time.Now()
@@ -927,6 +947,9 @@ func (a *App) fetchVariants(an source.Anime, ep source.Episode) tea.Cmd {
 		return nil
 	}
 	p := source.Get(an.Source)
+	if p == nil {
+		return nil
+	}
 	a.variants[key] = nil
 	return run(30*time.Second, func(ctx context.Context) tea.Msg {
 		t0 := time.Now()
@@ -944,6 +967,9 @@ func (a *App) resolve(src string, v source.Variant) tea.Cmd {
 		return nil
 	}
 	p := source.Get(src)
+	if p == nil {
+		return nil
+	}
 	a.resolved[v.URL] = &resolveState{loading: true}
 	return tea.Batch(a.tick(), run(60*time.Second, func(ctx context.Context) tea.Msg {
 		t0 := time.Now()
@@ -1036,6 +1062,24 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		defer func() {
 			if !skipPaint {
 				a.paint()
+				// compose() inside paint() may start a glide or schedule a
+				// poster reload; ensure the tick/reload cmds are attached on
+				// this same Update return so highlights never stick.
+				var extra []tea.Cmd
+				if reloads := a.posters.takeReloads(); len(reloads) > 0 {
+					extra = append(extra, reloads...)
+				}
+				if a.needsTick() {
+					if t := a.tick(); t != nil {
+						extra = append(extra, t)
+					}
+				}
+				if len(extra) > 0 {
+					if cmd != nil {
+						extra = append([]tea.Cmd{cmd}, extra...)
+					}
+					cmd = tea.Batch(extra...)
+				}
 			}
 		}()
 	}
@@ -1096,6 +1140,9 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			}
 			if a.party != nil {
 				a.party.Close()
+			}
+			if a.relayParty != nil {
+				a.relayParty.Close()
 			}
 			if a.rpc != nil {
 				a.rpc.Close()
@@ -1249,6 +1296,7 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		a.notify(m.text, m.kind)
 		cmds = append(cmds, a.tick())
 	case dlMsg:
+		a.invalidateShelf()
 		a.onDL()
 		a.samplePulse()
 		cmds = append(cmds, a.waitDL(), a.tick(), a.offlineCovers()) // new shelf cards get their covers
@@ -1299,6 +1347,7 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		}
 	case toolsDoneMsg:
 		a.toolsBusy = false
+		cmds = append(cmds, a.probeEnv())
 		switch {
 		case len(m.installed) > 0 && len(m.failed) == 0:
 			a.notify("✓ araçlar kuruldu: "+strings.Join(m.installed, ", "), "ok")
@@ -1308,6 +1357,11 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			a.notify("kurulamadı: "+strings.Join(m.failed, ", ")+" (aniclitr kur ile terminalden dene)", "err")
 		}
 		cmds = append(cmds, a.tick())
+	case envProbeMsg:
+		a.pathOn = m.pathOn
+		a.pathProbed = true
+		a.toolsMissing = m.missingTools
+		a.toolsProbed = true
 	case malOpenMsg:
 		cmds = append(cmds, a.onMalOpen(m))
 	case urlOpenMsg:
@@ -1336,7 +1390,7 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		cmds = append(cmds, a.tick())
 	case deferredInitMsg:
 		a.syncBrowseDiscord()
-		cmds = append(cmds, a.loadSchedule(), a.checkHealth(), a.checkUpdate(false), a.scanLocalMediaAsync(), guard("indirme-tara", func() tea.Msg {
+		cmds = append(cmds, a.probeEnv(), a.loadSchedule(), a.checkHealth(), a.checkUpdate(false), a.scanLocalMediaAsync(), guard("indirme-tara", func() tea.Msg {
 			a.dl.ScanDisk()
 			return nil
 		}), a.organizeLooseDownloads())

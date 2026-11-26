@@ -28,7 +28,11 @@ type dlShow struct {
 }
 
 // offlineShelf groups finished downloads by anime, newest first.
+// Cached briefly on App so 60 FPS views do not stat every downloaded video per frame.
 func offlineShelf(a *App) []dlShow {
+	if a.shelfValid && time.Since(a.shelfAt) < 3*time.Second {
+		return a.shelfCache
+	}
 	by := map[string]*dlShow{}
 	for _, j := range a.dl.Jobs() {
 		if j.State != download.Done {
@@ -62,7 +66,14 @@ func offlineShelf(a *App) []dlShow {
 		out = append(out, *s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].latest > out[j].latest })
+	a.shelfCache = out
+	a.shelfAt = time.Now()
+	a.shelfValid = true
 	return out
+}
+
+func (a *App) invalidateShelf() {
+	a.shelfValid = false
 }
 
 func fileOK(p string) bool {
@@ -104,10 +115,12 @@ func (d *downloads) libKey(a *App, k tea.KeyMsg) (tea.Cmd, bool) {
 			if d.epCur < len(show.eps) {
 				j := show.eps[d.epCur]
 				a.dl.Remove(j.ID, true)
+				a.invalidateShelf()
 				a.notify(fmt.Sprintf("%s S%d·B%d diskten silindi", j.Title, j.Season, j.Episode), "ok")
 			}
 		case "X":
 			n := a.dl.RemoveAnime(show.key)
+			a.invalidateShelf()
 			d.openShow = ""
 			a.notify(fmt.Sprintf("%s (%d bölüm) tümüyle diskten silindi", show.title, n), "ok")
 		default:
@@ -135,6 +148,7 @@ func (d *downloads) libKey(a *App, k tea.KeyMsg) (tea.Cmd, bool) {
 			sh := shows[d.libCur]
 			if d.confirmShow == sh.key && time.Since(d.confirmAt) < 4*time.Second {
 				n := a.dl.RemoveAnime(sh.key)
+				a.invalidateShelf()
 				d.confirmShow = ""
 				a.notify(fmt.Sprintf("%s (%d bölüm) diskten silindi", sh.title, n), "ok")
 			} else {

@@ -355,7 +355,8 @@ func (m *Manager) For(animeKey string, season, ep int) (Job, bool) {
 	return *best, true
 }
 
-// ForAnime returns the latest job for an episode matching by key or anime title.
+// ForAnime returns the latest job for an episode matching by key or anime title
+// from the in-memory index (zero disk stat per frame; LocalFor verifies disk on play).
 func (m *Manager) ForAnime(an source.Anime, season, ep int) (Job, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -369,9 +370,6 @@ func (m *Manager) ForAnime(an source.Anime, season, ep int) (Job, bool) {
 		}
 	}
 	if best == nil {
-		return Job{}, false
-	}
-	if best.State == Done && !fileExists(best.Path) {
 		return Job{}, false
 	}
 	return *best, true
@@ -718,7 +716,7 @@ func (m *Manager) resolve(ctx context.Context, j *Job) (*source.Stream, source.Q
 				}
 			}
 			if len(mine) == 0 {
-				return nil, source.Quality{}, fmt.Errorf("bu bölümde “%s” fansubu yok — başka fansubla tekrar dene", shortName(j.prefFansub))
+				return nil, source.Quality{}, fmt.Errorf("bu bölümde “%s” fansubu yok — başka fansub ile tekrar deneyin", shortName(j.prefFansub))
 			}
 			vs = mine
 		}
@@ -972,7 +970,10 @@ func (m *Manager) native(ctx context.Context, j *Job, st *source.Stream, q sourc
 			done += int64(n)
 		}
 		if el := time.Since(last); el > 500*time.Millisecond || rerr != nil {
-			sp := float64(done-lastDone) / el.Seconds()
+			var sp float64
+			if sec := el.Seconds(); sec > 0 {
+				sp = float64(done-lastDone) / sec
+			}
 			last, lastDone = time.Now(), done
 			eta := time.Duration(0)
 			if sp > 0 && total > done {

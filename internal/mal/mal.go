@@ -134,27 +134,40 @@ func (c *Client) Login(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("yerel port %d açılamadı: %w", Port, err)
 	}
+	defer ln.Close()
 	codeCh := make(chan string, 1)
 	errCh := make(chan error, 1)
-	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/callback" {
-			http.NotFound(w, r)
-			return
-		}
-		q := r.URL.Query()
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		switch {
-		case q.Get("state") != state:
-			fmt.Fprint(w, page("Bir şeyler ters gitti", "Güvenlik doğrulaması tutmadı. aniclitr'de tekrar dene."))
-			errCh <- errors.New("state uyuşmadı")
-		case q.Get("error") != "":
-			fmt.Fprint(w, page("İzin verilmedi", "aniclitr'e dönebilirsin."))
-			errCh <- errors.New("izin verilmedi: " + q.Get("error"))
-		default:
-			fmt.Fprint(w, page("Bağlandı ✓", "MyAnimeList hesabın aniclitr'e bağlandı. Bu sekmeyi kapatıp terminale dönebilirsin."))
-			codeCh <- q.Get("code")
-		}
-	})}
+	srv := &http.Server{
+		ReadHeaderTimeout: 10 * time.Second,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/callback" {
+				http.NotFound(w, r)
+				return
+			}
+			q := r.URL.Query()
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			switch {
+			case q.Get("state") != state:
+				fmt.Fprint(w, page("Doğrulama başarısız", "Güvenlik doğrulaması eşleşmedi. aniclitr içinde tekrar deneyin."))
+				select {
+				case errCh <- errors.New("state uyuşmadı"):
+				default:
+				}
+			case q.Get("error") != "":
+				fmt.Fprint(w, page("İzin verilmedi", "Bu sekmeyi kapatıp aniclitr'e dönebilirsiniz."))
+				select {
+				case errCh <- errors.New("izin verilmedi: " + q.Get("error")):
+				default:
+				}
+			default:
+				fmt.Fprint(w, page("Bağlandı ✓", "MyAnimeList hesabınız aniclitr'e bağlandı. Bu sekmeyi kapatıp terminale dönebilirsiniz."))
+				select {
+				case codeCh <- q.Get("code"):
+				default:
+				}
+			}
+		}),
+	}
 	go func() { _ = srv.Serve(ln) }()
 	defer func() {
 		sctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -192,7 +205,9 @@ func (c *Client) Login(ctx context.Context) error {
 	}
 	if me, err := c.Me(ctx); err == nil {
 		c.mu.Lock()
-		c.tok.User = me
+		if c.tok != nil {
+			c.tok.User = me
+		}
 		c.mu.Unlock()
 		c.save()
 	}
@@ -204,14 +219,20 @@ func page(title, msg string) string {
 }
 
 func (c *Client) exchange(ctx context.Context, form url.Values) error {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return err
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("MAL token: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
@@ -246,10 +267,13 @@ func (c *Client) access(ctx context.Context) (string, error) {
 		return t.Access, nil
 	}
 	if err := c.exchange(ctx, url.Values{"client_id": {c.ClientID}, "grant_type": {"refresh_token"}, "refresh_token": {t.Refresh}}); err != nil {
-		return "", fmt.Errorf("oturum yenilenemedi (tekrar bağlan): %w", err)
+		return "", fmt.Errorf("oturum yenilenemedi (tekrar bağlanın): %w", err)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.tok == nil {
+		return "", ErrNotConnected
+	}
 	return c.tok.Access, nil
 }
 
@@ -267,7 +291,10 @@ func (c *Client) do(ctx context.Context, method, path string, form url.Values, o
 	if !strings.HasPrefix(u, "http") {
 		u = apiBase + path
 	}
-	req, _ := http.NewRequestWithContext(ctx, method, u, body)
+	req, err := http.NewRequestWithContext(ctx, method, u, body)
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Authorization", "Bearer "+tok)
 	if form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -277,10 +304,13 @@ func (c *Client) do(ctx context.Context, method, path string, form url.Values, o
 		return err
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err != nil {
+		return err
+	}
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
-		return fmt.Errorf("MAL: yetki reddedildi (tekrar bağlan)")
+		return fmt.Errorf("MAL: yetki reddedildi (tekrar bağlanın)")
 	case resp.StatusCode >= 300:
 		return fmt.Errorf("MAL: HTTP %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}

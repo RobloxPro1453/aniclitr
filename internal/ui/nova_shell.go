@@ -213,13 +213,15 @@ func (a *App) novaHeader() string {
 // novaRule is the line under the top bar: a quiet rule that fills with the
 // accent as downloads progress.
 func (a *App) novaRule() string {
+	w := max(0, a.w)
 	frac, _, ok := a.dlProgress()
 	if !ok || frac <= 0 {
-		return stFaint.Render(strings.Repeat("─", a.w))
+		return stFaint.Render(strings.Repeat("─", w))
 	}
-	n := int(frac * float64(a.w))
+	frac = clamp01(frac)
+	n := clamp(int(frac*float64(w)), 0, w)
 	return fg(mix(hex(cAccent), hex(cSky), frac).hex()).Render(strings.Repeat("━", n)) +
-		stFaint.Render(strings.Repeat("─", a.w-n))
+		stFaint.Render(strings.Repeat("─", w-n))
 }
 
 // ---- bottom bar ----

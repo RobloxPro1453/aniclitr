@@ -122,7 +122,7 @@ func ConnectRelay(ctx context.Context, relayBase, code, nick string, client *htt
 		chatOn:    true,
 	}
 	go rr.subscribeLoop(rctx)
-	_ = rr.publish(relayPacket{Type: "join", PeerID: rr.peerID, Nick: rr.nick})
+	go func() { _ = rr.publish(relayPacket{Type: "join", PeerID: rr.peerID, Nick: rr.nick}) }()
 	return rr, nil
 }
 
@@ -194,8 +194,8 @@ func (r *RelayRoom) Close() {
 	}
 	r.closed = true
 	r.mu.Unlock()
-	_ = r.publish(relayPacket{Type: "leave", PeerID: r.peerID, Nick: r.nick})
 	r.cancel()
+	go func() { _ = r.publish(relayPacket{Type: "leave", PeerID: r.peerID, Nick: r.nick}) }()
 }
 
 func (r *RelayRoom) appendChat(m ChatMessage) {
@@ -246,11 +246,16 @@ func (r *RelayRoom) subscribeLoop(ctx context.Context) {
 			return
 		}
 		resp, err := r.client.Do(req)
-		if err != nil {
+		if err != nil || resp.StatusCode >= 400 {
+			if resp != nil {
+				resp.Body.Close()
+			}
+			t := time.NewTimer(2 * time.Second)
 			select {
 			case <-ctx.Done():
+				t.Stop()
 				return
-			case <-time.After(2 * time.Second):
+			case <-t.C:
 				continue
 			}
 		}

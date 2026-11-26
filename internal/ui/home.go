@@ -129,13 +129,13 @@ func (h *home) update(a *App, msg tea.Msg) tea.Cmd {
 		if m.err != nil && len(h.feed) > 0 {
 			// offline: keep showing the cached feed
 			a.notify("akış yenilenemedi — son kayıtlı akış gösteriliyor", "warn")
-			a.addNotice(notice{key: "offline", kind: "warn", text: "çevrimdışısın — indirdiklerini internetsiz izleyebilirsin",
+			a.addNotice(notice{key: "offline", kind: "warn", text: "çevrimdışı — indirilenler internetsiz izlenebilir",
 				action: func(a *App) tea.Cmd { return a.openDownloads() }})
 			h.feedOK = true
 			return nil
 		}
 		if m.err != nil {
-			a.addNotice(notice{key: "offline", kind: "warn", text: "çevrimdışısın — indirdiklerini internetsiz izleyebilirsin",
+			a.addNotice(notice{key: "offline", kind: "warn", text: "çevrimdışı — indirilenler internetsiz izlenebilir",
 				action: func(a *App) tea.Cmd { return a.openDownloads() }})
 		}
 		h.feed, h.feedErr, h.feedOK, h.feedAt = m.items, m.err, true, time.Now()
@@ -328,7 +328,7 @@ func (h *home) key(a *App, k tea.KeyMsg) tea.Cmd {
 			return a.openURL(q)
 		}
 		if len([]rune(q)) < 2 {
-			a.notify("en az 2 harf yaz", "warn")
+			a.notify("en az 2 karakter girin", "warn")
 			return a.tick()
 		}
 		a.flash()

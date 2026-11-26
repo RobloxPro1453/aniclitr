@@ -175,6 +175,17 @@ func (l *Library) saveLocked() {
 	}
 }
 
+func cloneItem(it *Item) Item {
+	c := *it
+	if len(it.Lists) > 0 {
+		c.Lists = append([]string(nil), it.Lists...)
+	}
+	if len(it.Genres) > 0 {
+		c.Genres = append([]string(nil), it.Genres...)
+	}
+	return c
+}
+
 // Get returns a copy of the item.
 func (l *Library) Get(key string) (Item, bool) {
 	l.mu.Lock()
@@ -183,9 +194,7 @@ func (l *Library) Get(key string) (Item, bool) {
 	if !ok {
 		return Item{}, false
 	}
-	c := *it
-	c.Lists = append([]string(nil), it.Lists...)
-	return c, true
+	return cloneItem(it), true
 }
 
 // All returns every item, most recently updated first.
@@ -194,9 +203,7 @@ func (l *Library) All() []Item {
 	defer l.mu.Unlock()
 	out := make([]Item, 0, len(l.Items))
 	for _, it := range l.Items {
-		c := *it
-		c.Lists = append([]string(nil), it.Lists...)
-		out = append(out, c)
+		out = append(out, cloneItem(it))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	return out

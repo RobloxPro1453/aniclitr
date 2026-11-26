@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -102,11 +103,29 @@ func (c *AuthClient) save() error {
 		return err
 	}
 	p := sessionPath()
-	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
-	return os.Rename(tmp, p)
+	f, err := os.CreateTemp(filepath.Dir(p), filepath.Base(p)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	_ = f.Chmod(0o600)
+	if _, err := f.Write(b); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, p); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // LoginWithToken validates a pasted AniList OAuth token via Viewer query and saves it.
@@ -161,7 +180,7 @@ const h = new URLSearchParams(location.hash.slice(1));
 const t = h.get("access_token");
 if (t) {
   fetch("/token?access_token=" + encodeURIComponent(t)).then(() => {
-    document.getElementById("s").textContent = "Bağlandı! Bu sekmeyi kapatıp terminale dönebilirsin.";
+    document.getElementById("s").textContent = "Bağlandı. Bu sekmeyi kapatıp terminale dönebilirsiniz.";
   });
 } else {
   document.getElementById("s").textContent = "Erişim jetonu alınamadı — AniList'te Redirect URL olarak http://localhost:47616/callback tanımlı mı?";
@@ -181,7 +200,7 @@ if (t) {
 		http.Error(w, "missing token", http.StatusBadRequest)
 	})
 
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			select {
@@ -248,7 +267,7 @@ func (c *AuthClient) authGQL(ctx context.Context, query string, vars map[string]
 			Message string `json:"message"`
 		} `json:"errors"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&env); err != nil {
 		return err
 	}
 	if len(env.Errors) > 0 {

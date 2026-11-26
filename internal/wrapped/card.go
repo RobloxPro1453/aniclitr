@@ -143,7 +143,7 @@ func ExportPNG(r Report, dst string) (string, error) {
 
 	// Footer watermark.
 	drawText(img, 64, H-78, "GITHUB.COM/ROBLOXPRO1453/ANICLITR", 2, muted)
-	drawText(img, W-220, H-78, "ANICLITR V1.2", 2, pink)
+	drawText(img, W-220, H-78, "ANICLITR V2.0", 2, pink)
 
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil && filepath.Dir(dst) != "." {
 		return "", err
@@ -152,8 +152,12 @@ func ExportPNG(r Report, dst string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 	if err := png.Encode(f, img); err != nil {
+		_ = f.Close()
+		_ = os.Remove(dst)
+		return "", err
+	}
+	if err := f.Close(); err != nil {
 		return "", err
 	}
 	return dst, nil
@@ -300,15 +304,17 @@ func foldASCII(s string) string {
 }
 
 func padRight(s string, n int) string {
-	if len(s) >= n {
-		return s[:n]
+	rs := []rune(s)
+	if len(rs) >= n {
+		return string(rs[:n])
 	}
-	return s + strings.Repeat(" ", n-len(s))
+	return s + strings.Repeat(" ", n-len(rs))
 }
 
 func cutASCII(s string, n int) string {
-	if len(s) <= n {
+	rs := []rune(s)
+	if len(rs) <= n {
 		return s
 	}
-	return s[:max(1, n-2)] + ".."
+	return string(rs[:max(1, n-2)]) + ".."
 }

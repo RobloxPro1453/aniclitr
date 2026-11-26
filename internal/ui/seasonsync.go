@@ -296,7 +296,7 @@ func (a *App) maybeAskSeasonSync(an source.Anime) {
 			a.cfg.SeasonSync[an.Key()] = yes
 			_ = a.cfg.Save()
 			if !yes {
-				a.notify("yalnızca ilk sezon eşitlenecek · fikrini r menüsünden değiştirebilirsin", "ok")
+				a.notify("yalnızca ilk sezon eşitlenecek · tercihinizi r menüsünden değiştirebilirsiniz", "ok")
 				return nil
 			}
 			k := a.backfill(an)

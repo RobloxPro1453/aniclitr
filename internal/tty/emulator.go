@@ -80,6 +80,10 @@ func (e *Emulator) Feed(s string) {
 				for j < len(s) && (s[j] < 0x40 || s[j] > 0x7e) {
 					j++
 				}
+				if j >= len(s) {
+					i = len(s)
+					continue
+				}
 				params := s[i+2 : j]
 				switch s[j] {
 				case 'H':
@@ -101,6 +105,10 @@ func (e *Emulator) Feed(s string) {
 				continue
 			case 'P': // DCS: a sixel picture at the cursor
 				end := strings.Index(s[i:], "\x1b\\")
+				if end < 0 {
+					i = len(s)
+					continue
+				}
 				data := s[i : i+end+2]
 				var pw, ph int
 				fmt.Sscanf(data, "\x1bPq%d;%d", &pw, &ph)
@@ -113,6 +121,10 @@ func (e *Emulator) Feed(s string) {
 				continue
 			case ']':
 				end := strings.Index(s[i:], "\x1b\\")
+				if end < 0 {
+					i = len(s)
+					continue
+				}
 				i += end + 2
 				continue
 			case '7':

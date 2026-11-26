@@ -275,8 +275,8 @@ func isNumericOnly(s string) bool {
 	return true
 }
 
-// Lookup finds a local video file matching any of titles for (season, ep).
-// Verifies the file still exists on disk before returning true.
+// Lookup finds a local video file matching any of titles for (season, ep)
+// from the in-memory index without hitting disk on every UI frame.
 func (idx *Index) Lookup(titles []string, season, ep int) (EpisodeFile, bool) {
 	if idx == nil || ep <= 0 {
 		return EpisodeFile{}, false
@@ -314,10 +314,8 @@ func (idx *Index) Lookup(titles []string, season, ep int) (EpisodeFile, bool) {
 			}
 		}
 		if sc >= 0.82 && sc > bestScore {
-			if _, err := os.Stat(ef.Path); err == nil {
-				bestScore = sc
-				best = ef
-			}
+			bestScore = sc
+			best = ef
 		}
 	}
 	return best, bestScore >= 0.82

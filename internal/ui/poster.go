@@ -274,6 +274,9 @@ func dominant(img image.Image) rgb {
 			sr, sg, sb, sw = sr+fr*w, sg+fg*w, sb+fb*w, sw+w
 		}
 	}
+	if sw == 0 {
+		return hex(cAccent)
+	}
 	c := rgb{sr / sw, sg / sw, sb / sw}
 	return liftAccent(c)
 }
@@ -339,6 +342,9 @@ func hsl(h, s, l float64) rgb {
 }
 
 func (p *posterCache) scaledFor(url string, w, h int) *image.RGBA {
+	if w <= 0 || h <= 0 {
+		return nil
+	}
 	st, ok := p.items[url]
 	if url == "" || !ok || st.img == nil {
 		return nil
@@ -350,6 +356,9 @@ func (p *posterCache) scaledFor(url string, w, h int) *image.RGBA {
 	}
 	src := st.img
 	sb := src.Bounds()
+	if sb.Dx() <= 0 || sb.Dy() <= 0 {
+		return nil
+	}
 	pw, ph := w, h*2
 	ta := float64(pw) / float64(ph)
 	sa := float64(sb.Dx()) / float64(sb.Dy())
@@ -428,6 +437,9 @@ func writeRGBEsc(b *strings.Builder, prefix string, r, g, bl uint8) {
 // halfblocks renders img (optionally blended over under, or over the
 // placeholder surface when under is nil and alpha<1).
 func halfblocks(img, under *image.RGBA, w, h int, alpha float64) []string {
+	if w <= 0 || h <= 0 {
+		return nil
+	}
 	surf := hex(cSurface)
 	px := func(x, y int) color.RGBA {
 		c := img.RGBAAt(x, y)
@@ -482,6 +494,9 @@ func halfblocks(img, under *image.RGBA, w, h int, alpha float64) []string {
 
 // placeholder is a quiet card; a soft light sweeps across it while loading.
 func placeholder(w, h int, loading bool, frame int) []string {
+	if w <= 0 || h <= 0 {
+		return nil
+	}
 	lines := make([]string, h)
 	base := hex(cSurface)
 	hi := hex(cShade)

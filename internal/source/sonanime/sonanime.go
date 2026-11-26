@@ -143,6 +143,9 @@ func title(ctx context.Context, slug string, fresh bool) (apiAnime, error) {
 		return apiAnime{}, source.ErrNotFound
 	}
 	cacheMu.Lock()
+	if len(cache) > 128 {
+		clear(cache)
+	}
 	cache[slug] = cached{t: t, at: time.Now()}
 	cacheMu.Unlock()
 	return t, nil

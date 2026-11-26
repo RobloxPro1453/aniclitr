@@ -89,6 +89,12 @@ type canvas struct {
 var spareCanvas *canvas
 
 func newCanvas(w, h int) *canvas {
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
 	c := spareCanvas
 	spareCanvas = nil
 	if c == nil || cap(c.cells) < w*h {

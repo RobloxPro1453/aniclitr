@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	"aniclitr/internal/backup"
 	"aniclitr/internal/shaders"
 	"aniclitr/internal/source"
-	"aniclitr/internal/tools"
 )
 
 type setting struct {
@@ -68,12 +68,12 @@ func newSettings() *settings {
 			run:   func(a *App) tea.Cmd { return a.startTour() },
 		},
 		setting{
-			label: "Terminalden aç", desc: "aniclitr'i %LOCALAPPDATA%\\Programs\\aniclitr klasörüne kurar ve bu klasörü kullanıcı PATH'ine ekler; böylece her terminalde aniclitr komutuyla açılır. Yönetici izni gerekmez. Otomatik güncellenen kopya budur.",
-			on:  func(a *App) bool { return a.path.Has() },
-			run: func(a *App) tea.Cmd { return a.togglePath(!a.path.Has()) },
+			label: "Terminalden aç", desc: "aniclitr'i %LOCALAPPDATA%\\Programs\\aniclitr klasörüne kurar ve kullanıcı PATH'ine ekler; böylece her terminalde aniclitr komutuyla açılır. Yönetici izni gerektirmez.",
+			on:  func(a *App) bool { return a.hasPath() },
+			run: func(a *App) tea.Cmd { return a.togglePath(!a.hasPath()) },
 		},
 		setting{
-			label: "Otomatik güncelle", desc: "Kurulu kopya açılışta GitHub'daki son sürümü denetler. Yeni sürüm varsa indirilir, SHA-256 özetiyle doğrulanır ve bir sonraki açılışta etkinleşir.",
+			label: "Otomatik güncelle", desc: "Kurulu kopya açılışta yeni sürüm denetler; bulunan güncelleme SHA-256 ile doğrulanır ve sonraki açılışta etkinleşir.",
 			on:  func(a *App) bool { return a.cfg.AutoUpdate },
 			act: func(a *App, _ int) { a.cfg.AutoUpdate = !a.cfg.AutoUpdate },
 		},
@@ -83,26 +83,30 @@ func newSettings() *settings {
 			run:   func(a *App) tea.Cmd { return a.checkUpdate(true) },
 		},
 		setting{
-			label: "Verileri yedekle", desc: "Ayarlar, izleme geçmişi, kitaplık ve eşlemeleri tek bir taşınabilir JSON dosyasına yedekler (OAuth jetonları hariç). Geri yüklemek için: aniclitr geri-yukle <dosya.json>.",
+			label: "Verileri yedekle", desc: "Ayarlar, izleme geçmişi, kitaplık ve eşlemeleri taşınabilir bir JSON dosyasına dışa aktarır (OAuth jetonları hariç). Geri yüklemek için: aniclitr geri-yukle <dosya.json>.",
 			value: func(a *App) string { return "dışa aktar" },
 			run: func(a *App) tea.Cmd {
-				sum, err := backup.Export("", Version)
-				if err != nil {
-					a.notify("yedeklenemedi: "+err.Error(), "err")
-					return a.tick()
-				}
-				a.notify("yedeklendi: "+sum.Path, "ok")
-				return a.tick()
+				ver := Version
+				return tea.Batch(a.tick(), run(15*time.Second, func(context.Context) tea.Msg {
+					sum, err := backup.Export("", ver)
+					if err != nil {
+						return toastMsg{text: "yedeklenemedi: " + err.Error(), kind: "err"}
+					}
+					return toastMsg{text: "yedeklendi: " + sum.Path, kind: "ok"}
+				}))
 			},
 		},
 		setting{
-			label: "Eksik araçları kur", desc: "Eksik yardımcı araçları (mpv, yt-dlp, aria2c, ffmpeg) tek tuşla otomatik kurar. Terminalden aniclitr kur ile de çalıştırılabilir.",
+			label: "Eksik araçları kur", desc: "Eksik yardımcı araçları (mpv, yt-dlp, aria2c, ffmpeg) otomatik olarak kurar. Terminalden aniclitr kur komutuyla da çalıştırılabilir.",
 			value: func(a *App) string {
 				if a.toolsBusy {
 					return "kuruluyor…"
 				}
-				if m := tools.Missing(); len(m) > 0 {
-					return fmt.Sprintf("%d eksik", len(m))
+				if !a.toolsProbed {
+					return "denetleniyor…"
+				}
+				if a.toolsMissing > 0 {
+					return fmt.Sprintf("%d eksik", a.toolsMissing)
 				}
 				return "hepsi kurulu ✓"
 			},
@@ -116,7 +120,7 @@ func newSettings() *settings {
 				}
 				return "bağlı değil"
 			},
-			act: func(a *App, _ int) { a.stack = append(a.stack, newMalScreen(a)) },
+			run: func(a *App) tea.Cmd { return a.push(newMalScreen(a)) },
 		},
 		setting{
 			label: "AniList", desc: "Kitaplığı AniList hesabınızla OAuth üzerinden iki yönlü eşitler: durum, puan, bölüm ilerlemesi ve özel listeler.",
@@ -126,7 +130,7 @@ func newSettings() *settings {
 				}
 				return "bağlı değil"
 			},
-			act: func(a *App, _ int) { a.stack = append(a.stack, newAniListScreen(a)) },
+			run: func(a *App) tea.Cmd { return a.push(newAniListScreen(a)) },
 		},
 		setting{
 			label: "Discord Rich Presence", desc: "İzlediğin animeyi, bölümü, canlı ilerleme çubuğunu ve kapak görselini Discord'da gösterir (ekstra ayar gerekmez; özel başlık için config.json → discord_app_id).",
@@ -221,16 +225,16 @@ func newSettings() *settings {
 		toggle("İndirme hız grafiği", "İndirilenler ekranında anlık indirme hızının canlı mini grafiğini (▁▂▃▅▇) gösterir.", func(a *App) *bool { return &a.cfg.SpeedGraph }),
 		setting{
 			label: "Etkileşimli OP/ED kartı",
-			desc:  "Açıkken (önerilen) mpv ekranında 'Opening atlansın mı? [Enter]' kartı çıkar; kapalıyken Binge modunda otomatik atlar.",
+			desc:  "Açıkken oynatıcıda açılış ve bitiş jeneriği için atlama kartı gösterilir; kapalıyken maraton modunda otomatik atlanır.",
 			on:    func(a *App) bool { return !a.cfg.AutoSkipBinge },
 			act:   func(a *App, _ int) { a.cfg.AutoSkipBinge = !a.cfg.AutoSkipBinge },
 		},
-		cycle("Ses Stüdyosu profili", "mpv gerçek zamanlı ses motoru: referans (temiz), gece (patlama baskılama / diyalog net), kulaklık (BS2B sahne genişletme).", []string{"referans", "gece", "kulaklık"}, func(a *App) *string { return &a.cfg.AudioProfile }, nil),
-		toggle("Akıllı sinema önerisi", "İsteğe bağlıdır, asla zorlamaz: açılan videonun çözünürlük ve bitrate profiline göre hafif öneri gösterir.", func(a *App) *bool { return &a.cfg.CinemaSuggest }),
-		toggle("Öngörülü ön-yükleme", "Açılışta 'Devam Et' ilk sıradaki bölüm için arka planda hafif önbellek hazırlığı yapar.", func(a *App) *bool { return &a.cfg.PreloadNext }),
+		cycle("Ses Stüdyosu profili", "Oynatıcı ses profili: referans (doğal), gece (dengeli dinamik aralık ve net diyalog), kulaklık (geniş stereo sahne).", []string{"referans", "gece", "kulaklık"}, func(a *App) *string { return &a.cfg.AudioProfile }, nil),
+		toggle("Görüntü profili önerisi", "Açılan videonun çözünürlük ve bit hızına göre uygun FSR ve Anime4K profili önerir.", func(a *App) *bool { return &a.cfg.CinemaSuggest }),
+		toggle("Öngörülü ön-yükleme", "Açılışta sıradaki bölüm için arka planda bağlantı ve akış bilgilerini önceden hazırlar.", func(a *App) *bool { return &a.cfg.PreloadNext }),
 		setting{
 			label: "Yerel disk arşivini tara",
-			desc:  "Sunucu açmadan indirme ve harici disk klasörlerindeki (config.json → local_dirs) .mkv/.mp4 animeleri tarar.",
+			desc:  "İndirme klasöründeki ve config.json → local_dirs dizinlerindeki .mkv/.mp4 anime dosyalarını tarar.",
 			value: func(a *App) string {
 				if a.local == nil {
 					return "tara"
@@ -268,7 +272,7 @@ func newSettings() *settings {
 		toggle("Tam ekran başlat", "Oynatıcı tam ekran açılır.", func(a *App) *bool { return &a.cfg.Fullscreen }),
 		setting{
 			label: "Çözünürlük yükseltme (FSR)",
-			desc:  "AI'sız AMD FidelityFX FSR 1.0 ile monitörüne uygun gerçek çözünürlük ölçekleme (kapalı · otomatik · 1080p · 2K · 4K). mpv içinde m tuşundan anında değiştirilebilir.",
+			desc:  "AMD FidelityFX FSR 1.0 ile monitör çözünürlüğüne uygun ölçekleme (kapalı · otomatik · 1080p · 2K · 4K). Oynatıcıda m menüsünden değiştirilebilir.",
 			value: func(a *App) string { return shaders.ShortResLabel(a.cfg.UpscaleRes) },
 			act: func(a *App, dir int) {
 				if dir < 0 {
@@ -280,7 +284,7 @@ func newSettings() *settings {
 		},
 		setting{
 			label: "Kalite iyileştirme (Anime4K)",
-			desc:  "Resmi MIT Anime4K v4 CNN shader'ları ile pürüzsüz, cam gibi anime çizgi onarımı (kapalı · hızlı · cam · sinema). Piksel piksel keskinleştirme yapmaz.",
+			desc:  "Anime4K v4 CNN gölgelendiricileri ile çizgi onarımı ve gürültü azaltma (kapalı · hızlı · cam · sinema).",
 			value: func(a *App) string { return shaders.ShortLabel(a.cfg.Anime4K) },
 			act: func(a *App, dir int) {
 				if dir < 0 {
@@ -412,8 +416,22 @@ func (s *settings) update(a *App, msg tea.Msg) tea.Cmd {
 		a.pop()
 	case "up", "k":
 		s.cur = max(0, s.cur-1)
+		return a.tick()
 	case "down", "j":
 		s.cur = clamp(s.cur+1, 0, len(s.items)-1)
+		return a.tick()
+	case "pgup":
+		s.cur = max(0, s.cur-8)
+		return a.tick()
+	case "pgdown":
+		s.cur = clamp(s.cur+8, 0, len(s.items)-1)
+		return a.tick()
+	case "home":
+		s.cur = 0
+		return a.tick()
+	case "end":
+		s.cur = max(0, len(s.items)-1)
+		return a.tick()
 	case "enter", " ", "right", "l", "left", "h":
 		dir := 1
 		if k.String() == "left" || k.String() == "h" {
@@ -441,14 +459,12 @@ func (s *settings) update(a *App, msg tea.Msg) tea.Cmd {
 // settingGroup files a setting under a heading.
 func settingGroup(label string) int {
 	switch {
-	case label == "MyAnimeList" || label == "AniList" || label == "Discord Rich Presence" || label == "Masaüstü bildirimleri" || label == "Tanıtım turu" || label == "Terminalden aç" || label == "Otomatik güncelle" || label == "Güncellemeleri denetle" || label == "Verileri yedekle" || label == "Eksik araçları kur":
+	case label == "MyAnimeList" || label == "AniList" || label == "Discord Rich Presence" || label == "Masaüstü bildirimleri" || label == "Tanıtım turu" || label == "Terminalden aç" || label == "Otomatik güncelle" || label == "Güncellemeleri denetle" || label == "Verileri yedekle" || label == "Eksik araçları kur" || label == "Yerel disk arşivini tara":
 		return 0
 	case strings.HasPrefix(label, "Kaynak:") || label == "Arşiv modu":
 		return 3
-	case label == "OP/ED otomatik atla" || label == "Etkileşimli OP/ED kartı" || label == "Ses Stüdyosu profili" || label == "Akıllı sinema önerisi" || label == "Öngörülü ön-yükleme" || label == "Filler bölümleri atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Görüntü yükseltme (1080p/2K/4K)" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu" || label == "Sunucu sırası":
+	case label == "OP/ED otomatik atla" || label == "Etkileşimli OP/ED kartı" || label == "Ses Stüdyosu profili" || label == "Görüntü profili önerisi" || label == "Öngörülü ön-yükleme" || label == "Filler bölümleri atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Çözünürlük yükseltme (FSR)" || label == "Kalite iyileştirme (Anime4K)" || label == "Akıcılık (Frame-Gen)" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu" || label == "Sunucu sırası":
 		return 2
-	case label == "Yerel disk arşivini tara":
-		return 0
 	}
 	return 1
 }

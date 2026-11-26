@@ -101,6 +101,10 @@ func (in *input) handle(k tea.KeyMsg) bool {
 
 // view draws the field inside a rounded frame of width w (3 rows).
 func (in *input) view(w int, focused bool, frame int) []string {
+	if w < 8 {
+		w = 8
+	}
+	in.pos = clamp(in.pos, 0, len(in.value))
 	border := cFaint
 	if focused {
 		border = cAccent

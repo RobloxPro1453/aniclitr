@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"aniclitr/internal/pathx"
+	"aniclitr/internal/tools"
 	"aniclitr/internal/update"
 )
 
@@ -35,6 +36,27 @@ func (realPath) Installed() string      { return pathx.Installed() }
 
 var newPathOps = func() pathOps { return realPath{} }
 
+// hasPath returns the cached PATH installation status without touching the
+// Windows Registry or filesystem inside view() frames. Test fakes are read
+// directly since they are pure in-memory fields.
+func (a *App) hasPath() bool {
+	if _, real := a.path.(realPath); !real {
+		return a.path.Has()
+	}
+	return a.pathOn
+}
+
+// probeEnv checks PATH and missing tools off the UI goroutine.
+func (a *App) probeEnv() tea.Cmd {
+	p := a.path
+	return guard("ortam", func() tea.Msg {
+		return envProbeMsg{
+			pathOn:       p.Has(),
+			missingTools: len(tools.Missing()),
+		}
+	})
+}
+
 // togglePath installs aniclitr and puts it on PATH (or takes it off).
 func (a *App) togglePath(on bool) tea.Cmd {
 	var err error
@@ -43,13 +65,17 @@ func (a *App) togglePath(on bool) tea.Cmd {
 	} else {
 		err = a.path.Remove()
 	}
+	if err == nil {
+		a.pathOn = on
+		a.pathProbed = true
+	}
 	a.cfg.PathAsked = true
 	_ = a.cfg.Save()
 	switch {
 	case err != nil:
 		a.notifyErr("PATH", err)
 	case on:
-		a.notify("kuruldu — yeni bir terminal açıp aniclitr yazman yeter", "ok")
+		a.notify("kuruldu — yeni bir terminal açıp aniclitr yazmanız yeterli", "ok")
 		a.flash()
 		return tea.Batch(a.tick(), a.officialInstall())
 	default:

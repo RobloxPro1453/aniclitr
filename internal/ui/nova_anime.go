@@ -217,6 +217,28 @@ func (s *animeScreen) novaEpisodesStage(a *App, w, h int, acc string) []string {
 		}
 		out = append(out, keycap("r")+" "+stMuted.Render("tekrar dene")+"   "+keycap("esc")+" "+stMuted.Render("geri"))
 		return block(out, w, h)
+	case s.catalog:
+		out := []string{
+			"",
+			fg(acc).Render(spinner(a.frame/2)) + " " + stText.Bold(true).Render("Tüm kaynaklarda aranıyor…"),
+			stMuted.Render(truncate("AnimeciX · AnimeTR · AniHub · SonAnime · Animim · HiAnime", w)),
+			"",
+			stMuted.Render(truncate("En uygun kaynak otomatik seçilecek; ardından s ile kaynak değiştirebilirsiniz.", w)),
+			"",
+			keycap("T") + " " + fg(cWarn).Render("Nyaa.si Torrent ile anlık izle"),
+		}
+		return block(out, w, h)
+	case s.catalogEmpty:
+		out := []string{
+			"",
+			stWarn.Bold(true).Render("Bu anime etkin izleme kaynaklarında bulunamadı."),
+			stMuted.Render(truncate("Farklı bir kaynakta veya Nyaa.si torrent arşivinde arayabilirsiniz.", w)),
+			"",
+			keycap("T") + " " + fg(cWarn).Bold(true).Render("Nyaa.si Torrent ile anlık izle"),
+			keycap("s") + " " + stSub.Render("tüm kaynakları tara"),
+			keycap("r") + " " + stMuted.Render("tekrar dene") + "   " + keycap("esc") + " " + stMuted.Render("geri"),
+		}
+		return block(out, w, h)
 	case s.gate:
 		out := []string{
 			"",
@@ -466,6 +488,6 @@ func (s *animeScreen) novaSourceStrip(a *App, w int) []string {
 	if n := len(s.srcs); n > 1 {
 		left += stMuted.Render(fmt.Sprintf("  ·  %d kaynak", n))
 	}
-	right := keycap("s") + " " + stMuted.Render("kaynak seç")
+	right := keycap("s") + " " + stSub.Render("kaynak seç ▾")
 	return []string{row2(left, right, w), ""}
 }

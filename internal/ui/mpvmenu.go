@@ -499,13 +499,13 @@ func (p *playing) buildQuickMenuASS(a *App) string {
 	switch p.qmenu.page {
 	case menuRes:
 		breadcrumb = "MENÜ / ÇÖZÜNÜRLÜK"
-		subHdr = "AMD FSR · AI'SIZ"
+		subHdr = "AMD FIDELITYFX FSR 1.0"
 		rows = []studioRow{
 			{idx: "01", label: "Kapalı", note: "orijinal video", active: curRes == shaders.ResOff},
 			{idx: "02", label: "Otomatik", note: "monitör çözünürlüğü", active: curRes == shaders.ResAuto},
-			{idx: "03", label: "1080p", note: "1920×1080 gerçek ölçek", active: curRes == shaders.Res1080},
-			{idx: "04", label: "2K", note: "2560×1440 gerçek ölçek", active: curRes == shaders.Res2K},
-			{idx: "05", label: "4K", note: "3840×2160 gerçek ölçek", active: curRes == shaders.Res4K},
+			{idx: "03", label: "1080p", note: "1920×1080 ölçekleme", active: curRes == shaders.Res1080},
+			{idx: "04", label: "2K", note: "2560×1440 ölçekleme", active: curRes == shaders.Res2K},
+			{idx: "05", label: "4K", note: "3840×2160 ölçekleme", active: curRes == shaders.Res4K},
 		}
 		footHint = `{\1c&HF0F0F2&}↑↓{\1c&H84848E&} seç    {\1c&HF0F0F2&}Enter/1-5{\1c&H84848E&} uygula    {\1c&HF0F0F2&}Esc/←{\1c&H84848E&} üst menü`
 	case menuQuality:
@@ -513,15 +513,15 @@ func (p *playing) buildQuickMenuASS(a *App) string {
 		subHdr = "ANIME4K v4 · GPU"
 		rows = []studioRow{
 			{section: "KALİTE İYİLEŞTİRME · ANIME4K v4 CNN", idx: "01", label: "Kapalı", note: "orijinal doku", active: curEnh == shaders.Off},
-			{idx: "02", label: "Hızlı", note: "CNN-S · iGPU dostu", active: curEnh == shaders.Fast},
-			{idx: "03", label: "Cam Gibi", note: "CNN-Soft · pürüzsüz netlik", active: curEnh == shaders.Clear},
-			{idx: "04", label: "Sinema", note: "Çift CNN · derin onarım", active: curEnh == shaders.Cinema},
+			{idx: "02", label: "Hızlı", note: "CNN-S · düşük GPU yükü", active: curEnh == shaders.Fast},
+			{idx: "03", label: "Cam Gibi", note: "CNN-Soft · dengeli netlik", active: curEnh == shaders.Clear},
+			{idx: "04", label: "Sinema", note: "Çift CNN · yüksek netlik", active: curEnh == shaders.Cinema},
 			{section: "AKICILIK · FRAME-GEN (GPU)", idx: "05", label: "Hareket Yumuşatma", right: shaders.ShortFGLabel(curFG), active: curFG != shaders.FGOff, slider: true},
 		}
 		footHint = `{\1c&HF0F0F2&}↑↓{\1c&H84848E&} seç    {\1c&HF0F0F2&}Enter/←→{\1c&H84848E&} uygula    {\1c&HF0F0F2&}Esc{\1c&H84848E&} üst menü`
 	case menuSubs:
-		breadcrumb = "MENÜ / ALTYAZI & STÜDYO"
-		subHdr = "ANISUB · KARAR MATRİSİ · TİPOGRAFİ"
+		breadcrumb = "MENÜ / ALTYAZI & TİPOGRAFİ"
+		subHdr = "ANISUB · SENKRON · TİPOGRAFİ"
 		sz := a.cfg.SubFontSize
 		if sz <= 0 {
 			sz = 48
@@ -534,14 +534,14 @@ func (p *playing) buildQuickMenuASS(a *App) string {
 			{idx: "01", label: "AniSub Altyazı Seçici", right: "aç", submenu: true},
 			{idx: "02", label: "Altyazı Senkronu", right: player.FormatSubDelay(p.subDelay), active: math.Abs(p.subDelay) >= 0.05, slider: true},
 			{idx: "03", label: "Senkronu Sıfırla", right: "0,0 sn"},
-			{section: "MÜHENDİSLİK · TİPOGRAFİ STÜDYOSU", idx: "04", label: "Oto-Hizala (Karar Matrisi)", note: "VAD + sahne + FPS", right: "çalıştır"},
+			{section: "OTOMATİK HİZALAMA · TİPOGRAFİ", idx: "04", label: "Otomatik Hizala", note: "ses + sahne + FPS", right: "çalıştır"},
 			{idx: "05", label: "Altyazı Boyutu", right: fmt.Sprintf("%d pt", sz), active: sz != 48, slider: true},
 			{idx: "06", label: "Dikey Konum", right: fmt.Sprintf("%%%d", sp), active: sp != 96, slider: true},
 		}
 		footHint = `{\1c&HF0F0F2&}↑↓{\1c&H84848E&} seç    {\1c&HF0F0F2&}←→{\1c&H84848E&} ayarla    {\1c&HF0F0F2&}Enter{\1c&H84848E&} uygula    {\1c&HF0F0F2&}Esc{\1c&H84848E&} üst menü`
 	case menuPlayback:
-		breadcrumb = "MENÜ / SES & STÜDYO"
-		subHdr = "AUDIO STUDIO · KLİP"
+		breadcrumb = "MENÜ / SES & KLİP"
+		subHdr = "SES PROFİLİ · KLİP"
 		rows = []studioRow{
 			{idx: "01", label: "Ses Seviyesi", right: volTxt, active: p.muted || vol != 100, slider: true},
 			{idx: "02", label: "Oynatma Hızı", right: fmt.Sprintf("%.2g×", curSp), active: curSp != 1.0, slider: true},

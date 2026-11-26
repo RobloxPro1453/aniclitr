@@ -104,6 +104,7 @@ type Session struct {
 	cmd             *exec.Cmd
 	conn            net.Conn
 	wmu             sync.Mutex
+	done            chan struct{}
 	action          atomic.Value
 	subMu           sync.Mutex
 	subDelay        float64
@@ -144,7 +145,7 @@ func Start(o Options) (*Session, error) {
 		return nil, fmt.Errorf("mpv başlatılamadı: %w", err)
 	}
 	ch := make(chan Event, 64)
-	s := &Session{Events: ch, events: ch, cmd: cmd, initSpeed: o.Speed, interactiveSkip: o.InteractiveSkip}
+	s := &Session{Events: ch, events: ch, cmd: cmd, done: make(chan struct{}), initSpeed: o.Speed, interactiveSkip: o.InteractiveSkip}
 	s.action.Store("")
 	s.nextLabel, s.thumb = o.NextLabel, o.Thumb
 	go s.run(sock, o.Segments)
@@ -152,6 +153,7 @@ func Start(o Options) (*Session, error) {
 }
 
 func buildArgs(o Options, sock string) []string {
+	isLocalStream := strings.HasPrefix(o.Quality.URL, "http://127.0.0.1:") || strings.HasPrefix(o.Quality.URL, "http://localhost:")
 	args := []string{
 		"--force-media-title=" + o.Title,
 		"--title=" + o.Title + " — aniclitr",
@@ -160,12 +162,29 @@ func buildArgs(o Options, sock string) []string {
 		"--no-terminal",
 		"--screenshot-format=jpg", "--screenshot-jpeg-quality=72",
 		"--keep-open=no",
-		"--hls-bitrate=max",
 		"--cache=yes",
-		"--demuxer-max-bytes=256MiB",
-		"--demuxer-readahead-secs=90",
-		"--network-timeout=30",
 		"--osd-font-size=36",
+	}
+	if isLocalStream {
+		// Local BitTorrent HTTP Range stream: skip yt-dlp hook, give peers time
+		// to connect and buffer opening pieces, and keep seeks resilient.
+		args = append(args,
+			"--ytdl=no",
+			"--demuxer-max-bytes=128MiB",
+			"--demuxer-max-back-bytes=32MiB",
+			"--demuxer-readahead-secs=60",
+			"--network-timeout=120",
+			"--cache-pause=yes",
+			"--cache-pause-wait=2",
+			"--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5",
+		)
+	} else {
+		args = append(args,
+			"--hls-bitrate=max",
+			"--demuxer-max-bytes=256MiB",
+			"--demuxer-readahead-secs=90",
+			"--network-timeout=30",
+		)
 	}
 	ua := ""
 	if o.Stream != nil {
@@ -268,13 +287,23 @@ func (s *Session) sendNamed(cmd map[string]any) {
 	_, _ = s.conn.Write(append(b, '\n'))
 }
 
-// Quit asks mpv to close.
+// Quit asks mpv to close gracefully, falling back to Process.Kill after 3s if stuck.
 func (s *Session) Quit() {
 	s.send("quit")
+	done := s.done
+	if done == nil {
+		return
+	}
 	go func() {
-		time.Sleep(3 * time.Second)
-		if s.cmd.ProcessState == nil && s.cmd.Process != nil {
-			_ = s.cmd.Process.Kill()
+		t := time.NewTimer(3 * time.Second)
+		defer t.Stop()
+		select {
+		case <-done:
+			return
+		case <-t.C:
+			if s.cmd != nil && s.cmd.Process != nil {
+				_ = s.cmd.Process.Kill()
+			}
 		}
 	}()
 }
@@ -504,7 +533,7 @@ func (s *Session) SwitchStream(rawURL, referer, ua string, startSec float64) {
 	} else {
 		s.send("loadfile", rawURL, "replace")
 	}
-	s.send("show-text", "⚡ Yedek kaynağa geçildi (kaldığın yerden devam)", 2800)
+	s.send("show-text", "⚡ Yedek sunucuya geçildi", 2800)
 }
 
 // AudioProfileFilter returns the mpv --af filter chain for a named Audio Studio
@@ -717,7 +746,13 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 		}
 	}()
 	exited := make(chan error, 1)
-	go func() { exited <- s.cmd.Wait() }()
+	go func() {
+		err := s.cmd.Wait()
+		if s.done != nil {
+			close(s.done)
+		}
+		exited <- err
+	}()
 
 	// Wait for the IPC endpoint (mpv needs a moment to create it).
 	deadline := time.Now().Add(8 * time.Second)
@@ -1055,8 +1090,12 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 		}
 	}
 	err := <-exited
-	if s.conn != nil {
-		s.conn.Close()
+	s.wmu.Lock()
+	c := s.conn
+	s.conn = nil
+	s.wmu.Unlock()
+	if c != nil {
+		c.Close()
 	}
 	act, _ := s.action.Load().(string)
 	if (err != nil || (pos == 0 && dur == 0 && !eof)) && act == "" {

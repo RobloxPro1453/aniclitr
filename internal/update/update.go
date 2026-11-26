@@ -176,12 +176,17 @@ func Install(ctx context.Context, r Release, exe string) error {
 	if runtime.GOOS != "windows" {
 		_ = os.Chmod(tmp.Name(), 0o755)
 	}
-	old, err := moveAside(exe)
-	if err != nil {
-		return fmt.Errorf("eski sürüm kenara alınamadı: %w", err)
+	var old string
+	if _, statErr := os.Stat(exe); statErr == nil {
+		old, err = moveAside(exe)
+		if err != nil {
+			return fmt.Errorf("eski sürüm kenara alınamadı: %w", err)
+		}
 	}
 	if err := os.Rename(tmp.Name(), exe); err != nil {
-		_ = os.Rename(old, exe) // put the working one back
+		if old != "" {
+			_ = os.Rename(old, exe) // put the working one back
+		}
 		return fmt.Errorf("yeni sürüm yerine konamadı: %w", err)
 	}
 	return nil

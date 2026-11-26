@@ -21,7 +21,7 @@ const (
 	MinScore              = 0.80
 	BorderScore           = 0.73
 	AmbiguityGap          = 0.05
-	 exactTieEpsilon      = 1e-9
+	exactTieEpsilon       = 1e-9
 	yearBonus             = 0.05
 	formatBonus           = 0.03
 	formatMismatchPenalty = -0.15
@@ -270,13 +270,18 @@ func Score(candTitles []string, candSeason, candYear int, candKind string, w Wan
 
 // ScoreCandidate evaluates a full Candidate (including optional MalID, Poster, Eps) against Want.
 func ScoreCandidate(c Candidate, w Want) float64 {
-	// Curd signal: cover URL contains the tracker ID directly.
+	// Curd signal: cover URL contains the tracker ID directly (delimited to avoid numeric false positives).
 	if c.Poster != "" {
 		if w.MalID > 0 && strings.Contains(c.Poster, "/"+strconv.Itoa(w.MalID)+".") {
 			return 1.0
 		}
-		if w.AniListID > 0 && strings.Contains(c.Poster, strconv.Itoa(w.AniListID)) {
-			return 1.0
+		if w.AniListID > 0 {
+			aid := strconv.Itoa(w.AniListID)
+			if strings.Contains(c.Poster, "/bx"+aid+"-") ||
+				strings.Contains(c.Poster, "/b"+aid+"-") ||
+				strings.Contains(c.Poster, "/"+aid+".") {
+				return 1.0
+			}
 		}
 	}
 

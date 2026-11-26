@@ -159,10 +159,14 @@ func (s *Syncer) Pull(ctx context.Context) (int, error) {
 		switch {
 		case !ok:
 			// on MAL but not here yet: shelve it (opened later on a source)
+			st := fromMal[e.Status]
+			if st == "" {
+				st = store.Planned
+			}
 			s.Lib.Upsert(store.Item{
 				Source: "mal", AnimeID: strconv.Itoa(e.ID), MalID: e.ID,
 				Title: e.Title, Poster: e.Picture, Kind: kind(e.MediaType), Year: e.Year, EpCount: e.NumEpisodes,
-				Status: fromMal[e.Status], Score: e.Score, Watched: e.Watched, Lists: e.Tags,
+				Status: st, Score: e.Score, Watched: e.Watched, Lists: e.Tags,
 				AddedAt: e.Updated, UpdatedAt: e.Updated, MalSeen: e.Updated,
 			})
 			changed++

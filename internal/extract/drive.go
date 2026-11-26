@@ -35,7 +35,10 @@ func Drive(ctx context.Context, embed string) (*source.Stream, error) {
 			Err:       err,
 		}
 	}
-	h := st.Qualities[0].Height
+	h := 0
+	if len(st.Qualities) > 0 {
+		h = st.Qualities[0].Height
+	}
 	if u, err := url.Parse(embed); err == nil {
 		u.Path = strings.TrimSuffix(strings.TrimSuffix(u.Path, "/preview"), "/view") + "/view"
 		embed = u.String()

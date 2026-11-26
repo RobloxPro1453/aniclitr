@@ -159,7 +159,39 @@ func (h *History) Totals() (eps int, secs float64) {
 	return
 }
 
-// Get returns a copy of the entry for key, if any.
+func cloneEntry(e *Entry) Entry {
+	c := *e
+	if e.Watched != nil {
+		c.Watched = make(map[string]bool, len(e.Watched))
+		for k, v := range e.Watched {
+			c.Watched[k] = v
+		}
+	}
+	if e.Progress != nil {
+		c.Progress = make(map[string]int, len(e.Progress))
+		for k, v := range e.Progress {
+			c.Progress[k] = v
+		}
+	}
+	if e.Notes != nil {
+		c.Notes = make(map[string]string, len(e.Notes))
+		for k, v := range e.Notes {
+			c.Notes[k] = v
+		}
+	}
+	if e.EpScores != nil {
+		c.EpScores = make(map[string]int, len(e.EpScores))
+		for k, v := range e.EpScores {
+			c.EpScores[k] = v
+		}
+	}
+	if len(e.Bookmarks) > 0 {
+		c.Bookmarks = append([]Bookmark(nil), e.Bookmarks...)
+	}
+	return c
+}
+
+// Get returns a deep copy of the entry for key, if any.
 func (h *History) Get(key string) (Entry, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -167,16 +199,16 @@ func (h *History) Get(key string) (Entry, bool) {
 	if !ok {
 		return Entry{}, false
 	}
-	return *e, true
+	return cloneEntry(e), true
 }
 
-// Recent lists entries, newest first.
+// Recent lists deep-copied entries, newest first.
 func (h *History) Recent() []Entry {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	out := make([]Entry, 0, len(h.Entries))
 	for _, e := range h.Entries {
-		out = append(out, *e)
+		out = append(out, cloneEntry(e))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	return out

@@ -88,7 +88,7 @@ func (a *App) waitRelayParty() tea.Cmd {
 func (p *playing) runAutoSubSync(a *App) tea.Cmd {
 	subPath := p.activeSubPath
 	if subPath == "" {
-		a.notify("önce bir dış altyazı yükle (y tuşu), sonra oto-hizala", "warn")
+		a.notify("önce y tuşuyla bir altyazı yükleyin", "warn")
 		return a.tick()
 	}
 	mediaURL := p.q.URL
@@ -97,7 +97,7 @@ func (p *playing) runAutoSubSync(a *App) tea.Cmd {
 	}
 	id := p.id
 	if p.sess != nil {
-		p.sess.ShowOSD("⚙ Karar Matrisi Altyazı Hizalama çalışıyor…", 4000)
+		p.sess.ShowOSD("⚙ Altyazı otomatik hizalanıyor…", 4000)
 	}
 	return run(45*time.Second, func(ctx context.Context) tea.Msg {
 		raw, err := os.ReadFile(subPath)
@@ -165,7 +165,7 @@ func (p *playing) tryServerlessFailover(a *App) bool {
 	p.st = pick.Stream
 	p.q = pick.Quality
 	p.sess.SwitchStream(pick.Quality.URL, pick.Stream.Referer, pick.Stream.UserAgent, p.pos)
-	a.notify("⚡ Sunucusuz yedek geçiş: "+pick.Host+" (kaldığın saniyeden devam)", "ok")
+	a.notify("⚡ Yedek sunucuya geçildi: "+pick.Host, "ok")
 	return true
 }
 
@@ -278,7 +278,7 @@ func (p *playing) maybeSuggestSeriesScore(a *App) {
 		return
 	}
 	avgStr := strings.ReplaceAll(fmt.Sprintf("%.1f", avg), ".", ",")
-	a.notify(fmt.Sprintf("★ Bölümlere verdiğin puanların ortalaması %s (%d böl.) — anime sayfasında G ile seri puanı %d yap", avgStr, cnt, sug), "ok")
+	a.notify(fmt.Sprintf("★ Bölüm puanı ortalaması %s (%d böl.) — seri puanını %d olarak işlemek için G", avgStr, cnt, sug), "ok")
 }
 
 // renderHeatmap365 draws a compact GitHub-style 365-day watching heatmap.
@@ -312,11 +312,11 @@ func renderHeatmap365(a *App, w int) []string {
 	return out
 }
 
-// renderTasteDNA draws the pure-local zero-AI mathematical Taste DNA summary.
+// renderTasteDNA draws the local viewing profile & taste summary.
 func renderTasteDNA(a *App, w int) []string {
 	prof := dna.Build(a.lib.All(), nil)
 	var out []string
-	out = append(out, sectionTitle("yerel zevk dna'sı (saf matematik)", w, false))
+	out = append(out, sectionTitle("izleme profili ve zevk analizi", w, false))
 	out = append(out, fg(cAccent).Bold(true).Render("◈ "+prof.SignatureLine))
 	meta := fmt.Sprintf("tamamlama %%%.0f  ·  bırakma %%%.0f  ·  sapma σ=%.2f",
 		prof.CompletionRate*100, prof.DropRate*100, prof.StdDevScore)

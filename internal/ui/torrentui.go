@@ -97,6 +97,9 @@ func (s *torrentScreen) closeStream() {
 	s.files = nil
 	s.opening = false
 	s.fCur, s.fOff = 0, 0
+	if s.focus == 2 {
+		s.focus = 1
+	}
 }
 
 func (s *torrentScreen) crumb() string {
@@ -229,8 +232,9 @@ func (s *torrentScreen) streamFile(a *App, idx int) tea.Cmd {
 	if fansub == "" {
 		fansub = "Nyaa.si"
 	}
-	pl := newPlaying(an, ep, []source.Episode{ep}, fansub, "Gömülü Torrent", st, st.Qualities[0])
-	a.notify("▶ gömülü torrent akışı mpv'de başlatılıyor…", "ok")
+	pl := newPlaying(an, ep, []source.Episode{ep}, fansub, "Torrent Akışı", st, st.Qualities[0])
+	pl.torrentSess = s.sess
+	a.notify("▶ torrent akışı mpv'de başlatılıyor…", "ok")
 	return tea.Batch(a.push(pl), pl.start(a))
 }
 

@@ -332,6 +332,10 @@ func (s *bookmarksScreen) update(a *App, msg tea.Msg) tea.Cmd {
 		}
 	case "enter":
 		if s.cur >= 0 && s.cur < len(bms) {
+			if source.Get(s.an.Source) == nil {
+				a.notify("önce bir izleme kaynağı seçin (s)", "warn")
+				return a.tick()
+			}
 			bm := bms[s.cur]
 			// Store desired resume position and jump straight into playback
 			a.hist.Update(s.an, func(e *store.Entry) {
@@ -349,7 +353,7 @@ func (s *bookmarksScreen) update(a *App, msg tea.Msg) tea.Cmd {
 				}
 			}
 			pk := newPicker(s.an, targetEp, s.eps, true)
-			a.notify(fmt.Sprintf("★ %s anına zıplanıyor…", clock(bm.Pos)), "ok")
+			a.notify(fmt.Sprintf("★ %s konumuna gidiliyor…", clock(bm.Pos)), "ok")
 			return tea.Batch(a.push(pk), pk.start(a))
 		}
 	}
@@ -363,7 +367,7 @@ func (s *bookmarksScreen) view(a *App, w, h int) string {
 	bodyH := max(6, h-len(head)-2)
 	var rows []string
 	if len(bms) == 0 {
-		rows = append(rows, center(stMuted.Render("Henüz sahne yer imi yok. İzlerken mpv içinde Shift+B tuşuna bas."), cw))
+		rows = append(rows, center(stMuted.Render("Henüz sahne yer imi yok. İzlerken oynatıcıda Shift+B tuşuna basın."), cw))
 	} else {
 		s.off = scroll(s.cur, s.off, bodyH, len(bms))
 		for i := s.off; i < len(bms) && len(rows) < bodyH; i++ {

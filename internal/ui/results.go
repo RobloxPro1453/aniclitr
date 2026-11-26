@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"aniclitr/internal/anilist"
 	"aniclitr/internal/diag"
 	"aniclitr/internal/match"
 	"aniclitr/internal/source"
@@ -25,12 +26,22 @@ type srcState struct {
 
 type hoverMsg struct{ key string }
 
-// entry is one anime, possibly found on several sources. main is the copy
-// from the highest-ranked source (AnimeciX first); alts are the others.
+type catalogSearchMsg struct {
+	gen   int
+	items []anilist.Media
+	err   error
+}
+
+// entry is one anime row in search results. In AniList catalog mode (default),
+// main has Source == "anilist" with rich metadata and score, independent of
+// streaming sites; when opened, animeScreen searches all streaming providers in
+// parallel. In direct-source fallback mode, main is the top provider hit and
+// alts are the other providers carrying the same anime.
 type entry struct {
-	main source.Anime
-	alts []source.Anime
-	keys map[string]bool
+	main  source.Anime
+	alts  []source.Anime
+	keys  map[string]bool
+	score int // AniList average score (0..100), shown in catalog mode
 }
 
 func (e entry) all() []source.Anime { return append([]source.Anime{e.main}, e.alts...) }
@@ -50,39 +61,79 @@ func titleKeys(a source.Anime) []string {
 	return match.TitleKeys(a)
 }
 
+func catalogAnime(m anilist.Media) source.Anime {
+	title := m.Name()
+	alt := ""
+	if m.Title.English != "" && !strings.EqualFold(m.Title.English, title) {
+		alt = m.Title.English
+	} else if m.Title.Romaji != "" && !strings.EqualFold(m.Title.Romaji, title) {
+		alt = m.Title.Romaji
+	}
+	return source.Anime{
+		Source:      "anilist",
+		ID:          strconv.Itoa(m.ID),
+		MalID:       m.IDMal,
+		Title:       title,
+		AltTitle:    alt,
+		Titles:      m.AllTitles(),
+		Poster:      m.Poster(),
+		Year:        m.SeasonYear,
+		Kind:        anilist.FormatTR(m.Format),
+		EpCount:     m.Episodes,
+		Genres:      m.Genres,
+		Description: anilist.CleanDescription(m.Description),
+	}
+}
+
 type results struct {
-	query    string
-	gen      int
-	order    []string // provider ids in rank order
-	states   map[string]*srcState
-	byProv   map[string][]source.Anime
-	items    []entry
-	cur      int
-	off      int
-	descOff  int
-	revealAt time.Time
-	posterAt tween
-	prevPost string
-	curPost  string
-	gl       glide
+	query        string
+	gen          int
+	catalogMode  bool // default: source-agnostic AniList catalog search
+	catalogBusy  bool
+	catalogErr   error
+	order        []string // provider ids in rank order (fallback / direct mode)
+	states       map[string]*srcState
+	byProv       map[string][]source.Anime
+	items        []entry
+	cur          int
+	off          int
+	descOff      int
+	revealAt     time.Time
+	posterAt     tween
+	prevPost     string
+	curPost      string
+	gl           glide
 }
 
 var searchGen int
 
 func newResults(q string) *results {
 	searchGen++
-	return &results{query: q, gen: searchGen, states: map[string]*srcState{}, byProv: map[string][]source.Anime{}}
+	return &results{
+		query:       q,
+		gen:         searchGen,
+		catalogMode: true,
+		states:      map[string]*srcState{},
+		byProv:      map[string][]source.Anime{},
+	}
 }
 
 func (r *results) crumb() string { return "“" + r.query + "”" }
 
 func (r *results) hints() []hint {
-	return []hint{{"enter", "aç"}, {"↑↓", "gez"}, {"a", "kitaplığa ekle"}, {"J K", "özeti kaydır"}, {"/", "yeni arama"}, {"alt+a", "arşiv"}, {"esc", "geri"}}
+	modeHint := hint{"alt+s", "kaynaklarda ara"}
+	if !r.catalogMode {
+		modeHint = hint{"alt+s", "katalogda ara"}
+	}
+	return []hint{{"enter", "aç"}, {"↑↓", "gez"}, {"a", "kitaplık"}, {"T", "torrent"}, modeHint, {"/", "yeni arama"}, {"esc", "geri"}}
 }
 
 func (r *results) animating(a *App) bool {
 	if a.top() != screen(r) {
 		return false
+	}
+	if r.catalogBusy {
+		return true
 	}
 	for _, s := range r.states {
 		if s.loading {
@@ -92,10 +143,30 @@ func (r *results) animating(a *App) bool {
 	return revealing(r.revealAt, 30, a.motion()) || r.posterAt.active()
 }
 
-// start fires one search per enabled provider, concurrently.
+// start runs the source-agnostic AniList catalog search by default so every
+// anime appears cleanly independent of streaming sources.
 func (r *results) start(a *App) tea.Cmd {
+	if !r.catalogMode {
+		return r.startProviders(a)
+	}
+	r.catalogBusy = true
+	r.catalogErr = nil
+	gen, q := r.gen, r.query
+	return tea.Batch(a.tick(), run(18*time.Second, func(ctx context.Context) tea.Msg {
+		ms, err := anilist.SearchCatalog(ctx, q)
+		return catalogSearchMsg{gen: gen, items: ms, err: err}
+	}))
+}
+
+// startProviders fires one search per enabled streaming provider concurrently
+// (used as automatic fallback if AniList is unreachable or when requested).
+func (r *results) startProviders(a *App) tea.Cmd {
+	r.catalogMode = false
+	r.catalogBusy = false
 	var cmds []tea.Cmd
 	r.order = nil
+	r.states = map[string]*srcState{}
+	r.byProv = map[string][]source.Anime{}
 	for _, p := range source.All() {
 		in := p.Info()
 		if !a.cfg.Enabled(in.ID, in.Legacy) {
@@ -187,7 +258,7 @@ func (r *results) onMove(a *App) tea.Cmd {
 			cmds = append(cmds, a.posters.want(x.Poster))
 		}
 	}
-	if it.main.Description == "" {
+	if it.main.Description == "" && source.Get(it.main.Source) != nil {
 		key := it.main.Key()
 		cmds = append(cmds, tea.Tick(130*time.Millisecond, func(time.Time) tea.Msg { return hoverMsg{key} }))
 	}
@@ -196,6 +267,40 @@ func (r *results) onMove(a *App) tea.Cmd {
 
 func (r *results) update(a *App, msg tea.Msg) tea.Cmd {
 	switch m := msg.(type) {
+	case catalogSearchMsg:
+		if m.gen != r.gen {
+			return nil
+		}
+		r.catalogBusy = false
+		r.catalogErr = m.err
+		if m.err != nil || len(m.items) == 0 {
+			// Seamless fallback to direct provider search when AniList is unavailable
+			// or returns zero hits (e.g., Turkish-only alias).
+			return r.startProviders(a)
+		}
+		r.items = make([]entry, 0, len(m.items))
+		for _, md := range m.items {
+			an := catalogAnime(md)
+			ks := map[string]bool{}
+			for _, k := range titleKeys(an) {
+				ks[k] = true
+			}
+			r.items = append(r.items, entry{main: an, keys: ks, score: md.Score})
+		}
+		if q := strings.TrimSpace(r.query); q != "" {
+			sort.SliceStable(r.items, func(i, j int) bool {
+				ri := searchTitleRelevance(q, r.items[i].main)
+				rj := searchTitleRelevance(q, r.items[j].main)
+				if ri != rj {
+					return ri > rj
+				}
+				return r.items[i].score > r.items[j].score
+			})
+		}
+		r.cur = 0
+		r.off = 0
+		r.revealAt = time.Now()
+		return tea.Batch(r.onMove(a), a.tick())
 	case searchMsg:
 		if m.gen != r.gen {
 			return nil
@@ -240,11 +345,25 @@ func (r *results) update(a *App, msg tea.Msg) tea.Cmd {
 				hm.focus = 0
 				hm.in.Set(r.query)
 			}
+		case "alt+s":
+			nr := newResults(r.query)
+			nr.catalogMode = !r.catalogMode
+			a.pop()
+			return tea.Batch(a.push(nr), nr.start(a))
 		case "alt+a":
 			cmd := toggleLegacy(a)
 			nr := newResults(r.query)
+			nr.catalogMode = false
 			a.pop()
 			return tea.Batch(cmd, a.push(nr), nr.start(a))
+		case "T":
+			q := r.query
+			if it, ok := r.selected(); ok {
+				q = it.main.Title
+			}
+			a.flash()
+			ts := newTorrentScreen(q)
+			return tea.Batch(a.push(ts), ts.start(a))
 		case "up", "k":
 			return r.move(a, -1)
 		case "down", "j":
@@ -296,27 +415,37 @@ func (r *results) view(a *App, w, ht int) string {
 		lw = inner * 50 / 100
 		rw = inner - lw - kitGap
 	}
-	var chips []string
-	for _, id := range r.order {
-		s := r.states[id]
-		c := sourceColor(id)
-		var st string
-		switch {
-		case s.loading:
-			st = fg(c).Render(spinner(a.frame / 2))
-		case s.err != nil:
-			st = stErr.Render("✗")
-		default:
-			st = fg(c).Render(strconv.Itoa(s.count))
+	var status, sub string
+	if r.catalogMode {
+		if r.catalogBusy {
+			status = fg(cAccent).Render(spinner(a.frame/2)) + " " + stSub.Render("AniList kataloğu aranıyor…")
+		} else {
+			status = fg(cAccent).Render("◈") + " " + stSub.Render("AniList Kataloğu") + stFaint.Render("  ·  ") + stMuted.Render(fmt.Sprintf("%d anime", len(r.items)))
 		}
-		name := stSub.Render(s.info.Name)
-		if s.info.Lang == "en" {
-			name += stMuted.Render(" en")
+		sub = "Kaynaktan bağımsız genel katalog · seçilen anime tüm kaynaklarda otomatik aranır"
+	} else {
+		var chips []string
+		for _, id := range r.order {
+			s := r.states[id]
+			c := sourceColor(id)
+			var st string
+			switch {
+			case s.loading:
+				st = fg(c).Render(spinner(a.frame / 2))
+			case s.err != nil:
+				st = stErr.Render("✗")
+			default:
+				st = fg(c).Render(strconv.Itoa(s.count))
+			}
+			name := stSub.Render(s.info.Name)
+			if s.info.Lang == "en" {
+				name += stMuted.Render(" en")
+			}
+			chips = append(chips, st+" "+name)
 		}
-		chips = append(chips, st+" "+name)
+		status = strings.Join(chips, stFaint.Render("   "))
+		sub = fmt.Sprintf("%d sonuç · kaynaklarda doğrudan arama", len(r.items))
 	}
-	status := strings.Join(chips, stFaint.Render("   "))
-	sub := fmt.Sprintf("%d sonuç · farklı kaynaklardaki aynı anime tek satırda gösterilir", len(r.items))
 	page := pageHeadIn("“"+r.query+"”", sub, status, inner, ht)
 	h := ht - len(page)
 	listH := h - 2
@@ -329,15 +458,15 @@ func (r *results) view(a *App, w, ht int) string {
 			left = append(left, "  "+fg(c).Render("●")+"  "+fg(c).Render(strings.Repeat("▬", 12+int(hash(i+3)*20))))
 		}
 	case len(r.items) == 0:
-		left = append(left, stSub.Render("Hiçbir kaynakta sonuç yok."), "")
+		left = append(left, stSub.Render("Sonuç bulunamadı."), "")
 		for _, id := range r.order {
 			if s := r.states[id]; s.err != nil {
 				left = append(left, stErr.Render("✗ ")+stSub.Render(s.info.Name+": ")+stMuted.Render(truncate(shortErr(s.err), lw-24)))
 			}
 		}
-		left = append(left, "", stMuted.Render("Yazımı değiştirmeyi dene: japonca / ingilizce ad, ya da daha kısa bir kelime."))
+		left = append(left, "", stMuted.Render("Japonca veya İngilizce adla ya da daha kısa bir kelimeyle tekrar arayın."))
 		if !a.cfg.Legacy {
-			left = append(left, stMuted.Render("Eski seriler için ")+stText.Render("alt+a")+stMuted.Render(" ile TürkAnime arşivini de ara."))
+			left = append(left, stMuted.Render("Eski seriler için ")+stText.Render("alt+a")+stMuted.Render(" ile TürkAnime arşivini tarayın."))
 		}
 	default:
 		r.cur = clamp(r.cur, 0, len(r.items)-1)
@@ -345,7 +474,7 @@ func (r *results) view(a *App, w, ht int) string {
 		var rows []string
 		band := r.gl.row(a, r.cur)
 		for i := r.off; i < len(r.items) && len(rows) < listH; i++ {
-			line := resultRow(r.items[i], lw-5, i == band, reveal(r.revealAt, i-r.off, a.motion()))
+			line := resultRow(a, r.items[i], lw-5, i == band, reveal(r.revealAt, i-r.off, a.motion()))
 			if i == r.cur {
 				line = anchor() + line
 			}
@@ -388,7 +517,7 @@ func row2(left, right string, w int) string {
 	return fit(truncate(left, w-rw-1), w-rw) + right
 }
 
-func resultRow(e entry, w int, sel bool, rv float64) string {
+func resultRow(a *App, e entry, w int, sel bool, rv float64) string {
 	if rv <= 0 {
 		return ""
 	}
@@ -398,15 +527,34 @@ func resultRow(e entry, w int, sel bool, rv float64) string {
 	if sel {
 		bg, bar, tc = cBand, sp("▌ ", cAccent), cAccent
 	}
-	left := []span{bar, span{t: it.Title, c: tc, bold: sel}}
-	if it.AltTitle != "" && w > 70 {
+	left := []span{bar}
+	if a != nil {
+		if li, ok := a.libItem(it); ok {
+			left = append(left, sp(statusIcon(li.Status)+" ", statusColor(li.Status)))
+		}
+	}
+	left = append(left, span{t: it.Title, c: tc, bold: sel})
+	if it.AltTitle != "" && w > 72 {
 		left = append(left, sp("  "+it.AltTitle, cMuted))
 	}
 	var right []span
+	if it.Source == "anilist" {
+		if it.Kind != "" && w > 48 {
+			right = append(right, sp(it.Kind+"  ", cMuted))
+		}
+		if it.Year > 0 {
+			right = append(right, sp(strconv.Itoa(it.Year)+"  ", cSub))
+		}
+		if e.score > 0 {
+			right = append(right, sp(fmt.Sprintf("★%.1f ", float64(e.score)/10), cWarn))
+		}
+		right = append(right, sp(" ", cText))
+		return row(w, bg, left, right)
+	}
 	if it.Year > 0 {
 		right = append(right, sp(strconv.Itoa(it.Year)+"  ", cSub))
 	}
-	// one dot per source carrying this anime, in source colours
+	// Direct provider mode: one dot per source carrying this anime
 	for _, x := range e.all() {
 		right = append(right, sp("●", sourceColor(x.Source)))
 	}
@@ -514,6 +662,8 @@ func detailPane(a *App, it source.Anime, alts []source.Anime, w, h, descOff int,
 			}
 		}
 		text = append(text, "", stMuted.Render("kaynaklar  ")+strings.Join(srcs, "  "))
+	} else if it.Source == "anilist" {
+		text = append(text, "", stMuted.Render("Enter ile açıldığında tüm izleme kaynaklarında aranır"))
 	}
 	desc := it.Description
 	if desc == "" {
@@ -553,6 +703,8 @@ func metaLine(it source.Anime) string {
 	var parts []string
 	if src := source.Get(it.Source); src != nil {
 		parts = append(parts, fg(sourceColor(it.Source)).Render("● ")+stSub.Render(src.Info().Name))
+	} else if it.Source == "anilist" {
+		parts = append(parts, fg(cAccent).Render("◈ ")+stSub.Render("AniList"))
 	}
 	if it.Year > 0 {
 		parts = append(parts, stSub.Render(strconv.Itoa(it.Year)))

@@ -468,7 +468,7 @@ func (p *playing) subLines(a *App, w int) []string {
 	if p.subs.local {
 		body = append(body,
 			stText.Bold(true).Render("Yerel altyazı dosyası (.ass · .srt · .ssa · .vtt)"),
-			stMuted.Render("Dosya yolunu yapıştır veya sürükle-bırak (tırnaklar otomatik temizlenir):"),
+			stMuted.Render("Dosya yolunu yapıştırın veya sürükleyip bırakın (tırnaklar otomatik temizlenir):"),
 		)
 		body = append(body, p.subs.localIn.view(max(16, innerW), true, a.frame)...)
 		body = append(body, "", keycap("enter")+" "+stSub.Render("mpv'ye yükle")+"   "+keycap("esc")+" "+stMuted.Render("listeye dön"))
@@ -479,12 +479,12 @@ func (p *playing) subLines(a *App, w int) []string {
 	case p.subs.busy && len(p.subs.rs) == 0:
 		body = append(body,
 			fg(acc).Render(spinner(a.frame/2))+stSub.Render(" AniSub arşivi taranıyor…"),
-			stMuted.Render("Hazır dosyan varsa l tuşuyla hemen yükleyebilirsin."),
+			stMuted.Render("Yerel altyazı dosyası için l tuşunu kullanabilirsiniz."),
 		)
 	case p.subs.err != "" && len(p.subs.rs) == 0:
 		body = append(body,
 			stErr.Render("✗ "+truncate(p.subs.err, max(8, innerW-2))),
-			stMuted.Render("r ile tekrar ara ya da l ile bilgisayarından .ass/.srt seç."),
+			stMuted.Render("r ile tekrar arayın veya l ile bilgisayarınızdan .ass/.srt seçin."),
 		)
 	}
 

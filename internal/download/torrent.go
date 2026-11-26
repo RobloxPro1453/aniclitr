@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -103,19 +104,32 @@ func (m *Manager) doTorrent(ctx context.Context, j *Job, req *TorrentRequest) er
 	}
 	defer func() { _ = os.RemoveAll(stageDir) }()
 
+	st := storage.NewFile(stageDir)
 	cfg := torrent.NewDefaultClientConfig()
 	cfg.DataDir = stageDir
-	cfg.DefaultStorage = storage.NewFile(stageDir)
-	cfg.NoUpload = true
+	cfg.DefaultStorage = st
+	cfg.NoUpload = false
 	cfg.Seed = false
+	cfg.DisableIPv6 = true
 	cfg.ListenPort = 0
+	cfg.EstablishedConnsPerTorrent = 80
+	cfg.HalfOpenConnsPerTorrent = 40
 	cfg.Slogger = slog.New(slog.DiscardHandler)
 
 	cl, err := torrent.NewClient(cfg)
 	if err != nil {
+		_ = st.Close()
 		return fmt.Errorf("torrent motoru açılamadı: %w", err)
 	}
-	defer cl.Close()
+	clientClosed := false
+	closeClient := func() {
+		if !clientClosed {
+			clientClosed = true
+			cl.Close()
+			_ = st.Close()
+		}
+	}
+	defer closeClient()
 
 	var tor *torrent.Torrent
 	if u := strings.TrimSpace(req.TorrentURL); u != "" {
@@ -134,6 +148,7 @@ func (m *Manager) doTorrent(ctx context.Context, j *Job, req *TorrentRequest) er
 		}
 		return err
 	}
+	tor.AddTrackers(torrentFallbackTrackers(req.Magnet))
 
 	select {
 	case <-tor.GotInfo():
@@ -183,6 +198,7 @@ func (m *Manager) doTorrent(ctx context.Context, j *Job, req *TorrentRequest) er
 	defer tk.Stop()
 	lastAt := time.Now()
 	var lastDone int64
+	var speed float64
 
 	for {
 		var done int64
@@ -191,7 +207,6 @@ func (m *Manager) doTorrent(ctx context.Context, j *Job, req *TorrentRequest) er
 		}
 		now := time.Now()
 		dt := now.Sub(lastAt).Seconds()
-		speed := j.Speed
 		if dt >= 0.4 {
 			speed = float64(max(int64(0), done-lastDone)) / dt
 			lastAt, lastDone = now, done
@@ -216,8 +231,8 @@ func (m *Manager) doTorrent(ctx context.Context, j *Job, req *TorrentRequest) er
 		}
 	}
 
-	// Close client before moving files on Windows so all file handles are released.
-	cl.Close()
+	// Close client & bolt storage before moving files on Windows so all handles are released.
+	closeClient()
 
 	// Organize every downloaded video into <DownloadDir>/<CanonicalSeries>/SxxEyy [Group] [Res].mkv.
 	var firstVideo string
@@ -262,4 +277,36 @@ func (m *Manager) doTorrent(ctx context.Context, j *Job, req *TorrentRequest) er
 		go m.ScanDisk()
 	}
 	return nil
+}
+
+func torrentFallbackTrackers(magnet string) [][]string {
+	defaults := []string{
+		"http://nyaa.tracker.wf:7777/announce",
+		"udp://tracker.opentrackr.org:1337/announce",
+		"udp://open.stealth.si:80/announce",
+		"udp://exodus.desync.com:6969/announce",
+		"udp://tracker.torrent.eu.org:451/announce",
+		"udp://tracker.openbittorrent.com:6969/announce",
+	}
+	seen := map[string]bool{}
+	var tiers [][]string
+	add := func(tr string) {
+		tr = strings.TrimSpace(tr)
+		if tr == "" || seen[tr] {
+			return
+		}
+		seen[tr] = true
+		tiers = append(tiers, []string{tr})
+	}
+	if magnet != "" {
+		if u, err := url.Parse(magnet); err == nil {
+			for _, tr := range u.Query()["tr"] {
+				add(tr)
+			}
+		}
+	}
+	for _, tr := range defaults {
+		add(tr)
+	}
+	return tiers
 }

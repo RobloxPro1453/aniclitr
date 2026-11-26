@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -67,6 +68,17 @@ func onOff(b bool) string {
 	return "aç"
 }
 
+func openFolder(dir string) {
+	switch runtime.GOOS {
+	case "windows":
+		_ = exec.Command("explorer", dir).Start()
+	case "darwin":
+		_ = exec.Command("open", dir).Start()
+	default:
+		_ = exec.Command("xdg-open", dir).Start()
+	}
+}
+
 func (a *App) paletteItems() []palItem {
 	var out []palItem
 	add := func(icon, label, group, note string, run func(a *App) tea.Cmd) {
@@ -87,7 +99,7 @@ func (a *App) paletteItems() []palItem {
 	add("↓", "Eksik yardımcı araçları kur", "ayar", "mpv/yt-dlp/aria2c", func(a *App) tea.Cmd { return a.installMissingTools() })
 	add(ic("archive"), "İndirme klasörünü aç", "indirme", "", func(a *App) tea.Cmd {
 		_ = os.MkdirAll(a.dl.Dir(), 0o755)
-		_ = exec.Command("explorer", a.dl.Dir()).Start()
+		openFolder(a.dl.Dir())
 		return nil
 	})
 	add(ic("star"), "MyAnimeList", "ekran", "bağlan / eşitle", func(a *App) tea.Cmd { return a.push(newMalScreen(a)) })
@@ -364,11 +376,7 @@ func (p *palette) filter(a *App) {
 					group: "sorgu",
 					note:  note,
 					run: func(a *App) tea.Cmd {
-						if it.Source == "mal" || it.Source == "anilist" {
-							return a.openByMal(it.MalID, []string{it.Title}, it.Poster)
-						}
-						sc := newAnime(it.Anime(), a.siblings(it.Anime()), 0, 0)
-						return tea.Batch(a.push(sc), sc.start(a))
+						return a.openItem(it)
 					},
 				},
 				score: 200 - i,
@@ -501,7 +509,7 @@ func (p *palette) draw(a *App, lines []string) []string {
 	}
 	sel := p.gl.row(a, p.cur)
 	if len(p.hits) == 0 {
-		box = append(box, bs.Render("│")+" "+fit(stMuted.Render("  eşleşme yok — enter ile aramayı dene"), inner+1)+bs.Render("│"))
+		box = append(box, bs.Render("│")+" "+fit(stMuted.Render("  eşleşme yok — enter ile aramayı deneyin"), inner+1)+bs.Render("│"))
 	}
 	lastGroup := ""
 	for i := off; i < len(p.hits) && i < off+maxRows; i++ {

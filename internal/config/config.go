@@ -185,11 +185,30 @@ func (c Config) Enabled(id string, legacy bool) bool {
 	return !ok || on
 }
 
-// WriteAtomic writes via a temp file + rename so crashes never corrupt data.
+// WriteAtomic writes via a unique temp file in the target directory + rename
+// so crashes or concurrent saves never corrupt data.
 func WriteAtomic(p string, b []byte) error {
-	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	dir := filepath.Dir(p)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.Rename(tmp, p)
+	f, err := os.CreateTemp(dir, filepath.Base(p)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	if _, err := f.Write(b); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, p); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }

@@ -297,11 +297,15 @@ func (h *home) novaView(a *App, w, ht int) string {
 		line := fmt.Sprintf("Sezon %d · Bölüm %s", e.Season, source.EpNum(e.Episode))
 		if strings.EqualFold(e.Kind, "film") {
 			line = "Film"
-		} else if e.Source == "mal" {
+		} else if e.Source == "mal" || e.Source == "anilist" {
+			tag := "MAL"
+			if e.Source == "anilist" {
+				tag = "AniList"
+			}
 			if e.Watched[store.EpKey(e.Season, e.Episode)] {
-				line = fmt.Sprintf("MAL listenden · Bölüm %s bitti", source.EpNum(e.Episode))
+				line = fmt.Sprintf("%s · Bölüm %s bitti", tag, source.EpNum(e.Episode))
 			} else {
-				line = "MAL listenden · izliyor"
+				line = tag + " · izliyor"
 			}
 		}
 		detail := stText.Render(line)
@@ -342,7 +346,7 @@ func (h *home) novaView(a *App, w, ht int) string {
 			}
 		}
 	} else {
-		out = append(out, center(stMuted.Render("henüz bir şey izlemedin · yukarıya bir ad yaz ya da Keşfet'e göz at"), w))
+		out = append(out, center(stMuted.Render("henüz izleme kaydı yok · arama yapın veya Keşfet'e göz atın"), w))
 	}
 	out = append(out, "", center(h.novaDock(items, dock, gw), w))
 

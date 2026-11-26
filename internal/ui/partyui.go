@@ -39,14 +39,14 @@ func defaultNick() string {
 func newPartyScreen() *partyScreen {
 	p := &partyScreen{
 		codeIn: input{placeholder: "oda kodu (ör. ANI-7K4M-9P2Q)"},
-		nickIn: input{placeholder: "takma ad (isteğe bağlı)"},
-		chatIn: input{placeholder: "canlı sohbet mesajı yaz… (mpv ekranında görünür)"},
+		nickIn: input{placeholder: "görünen ad"},
+		chatIn: input{placeholder: "canlı sohbet mesajı yazın…"},
 	}
 	p.nickIn.Set(defaultNick())
 	return p
 }
 
-func (p *partyScreen) crumb() string { return "birlikte izle 2.0" }
+func (p *partyScreen) crumb() string { return "birlikte izle" }
 
 func (p *partyScreen) typing() bool { return p.joining || p.chatting }
 
@@ -115,7 +115,7 @@ func (p *partyScreen) update(a *App, msg tea.Msg) tea.Cmd {
 			}
 			a.relayParty = rr
 			p.joining = false
-			a.notify("◈ sunucusuz odaya bağlanıldı: "+rr.Code(), "ok")
+			a.notify("◈ odaya bağlanıldı: "+rr.Code(), "ok")
 			return tea.Batch(a.waitRelayParty(), a.tick())
 		default:
 			if p.focus == 0 {
@@ -195,16 +195,16 @@ func (p *partyScreen) view(a *App, w, h int) string {
 
 	if a.relayParty != nil {
 		body = append(body,
-			center(pill("◈ WATCH PARTY 2.0 · SUNUCUSUZ AKTİF ODA", cOK), iw),
+			center(pill("◈ BİRLİKTE İZLE · AKTİF ODA", cOK), iw),
 			"",
-			row2("  "+stMuted.Render("Paylaşılabilir Oda Kodu"), fg(cAccent).Bold(true).Render(a.relayParty.Code()+"  "), iw),
-			row2("  "+stMuted.Render("mpv Canlı Sohbet Katmanı"), stText.Render(map[bool]string{true: "açık (Alt+H gizle)  ", false: "gizli (Alt+H aç)  "}[a.chatVisible]), iw),
+			row2("  "+stMuted.Render("Oda Kodu"), fg(cAccent).Bold(true).Render(a.relayParty.Code()+"  "), iw),
+			row2("  "+stMuted.Render("Oynatıcı Sohbet Katmanı"), stText.Render(map[bool]string{true: "açık (Alt+H gizle)  ", false: "gizli (Alt+H aç)  "}[a.chatVisible]), iw),
 			"",
 			stFaint.Render(strings.Repeat("─", iw)),
 		)
 		msgs := a.relayParty.Messages()
 		if len(msgs) == 0 {
-			body = append(body, "", "  "+stMuted.Render("Henüz sohbet mesajı yok. t ile yaz veya 1-5 ile tepki gönder."))
+			body = append(body, "", "  "+stMuted.Render("Henüz mesaj yok. Sohbet için t, tepki için 1-5 tuşlarını kullanın."))
 		} else {
 			start := max(0, len(msgs)-5)
 			for _, m := range msgs[start:] {
@@ -224,32 +224,32 @@ func (p *partyScreen) view(a *App, w, h int) string {
 		)
 	} else if p.joining {
 		body = append(body,
-			center(pill("◈ ODA KODUNA KATIL", cAccent2), iw),
+			center(pill("◈ ODAYA KATIL", cAccent2), iw),
 			"",
-			"  "+stMuted.Render("Oda Kodu (sıfır port yönlendirme):"),
+			"  "+stMuted.Render("Oda Kodu:"),
 		)
 		for _, l := range p.codeIn.view(iw-4, p.focus == 0, a.frame) {
 			body = append(body, "  "+l)
 		}
-		body = append(body, "", "  "+stMuted.Render("Takma adın:"))
+		body = append(body, "", "  "+stMuted.Render("Görünen ad:"))
 		for _, l := range p.nickIn.view(iw-4, p.focus == 1, a.frame) {
 			body = append(body, "  "+l)
 		}
 		body = append(body, "", center(keycap("enter")+" "+fg(cOK).Bold(true).Render("Bağlan")+"   "+keycap("tab")+" "+stMuted.Render("alan")+"   "+keycap("esc")+" "+stMuted.Render("iptal"), iw))
 	} else {
 		body = append(body,
-			center(pill("◈ BİRLİKTE İZLE 2.0 (WATCH PARTY)", cAccent), iw),
+			center(pill("◈ BİRLİKTE İZLE", cAccent), iw),
 			"",
-			center(gradient("Sunucusuz · Sıfır Port Yönlendirme · Canlı mpv Sohbeti", brand, true), iw),
+			center(gradient("Oda Koduyla Eşzamanlı İzleme · Canlı Sohbet", brand, true), iw),
 			"",
 		)
-		for _, l := range wrap("Bilgisayarında hiçbir yerel sunucu veya port açmaz. Tek tuşla oda kodu üret, arkadaşına gönder; duraklatma, sarma ve canlı ASS sohbet/tepkiler (Alt+H) her iki mpv ekranında anında eşitlenir.", iw-4) {
+		for _, l := range wrap("Oda kodu oluşturup paylaşın; duraklatma, sarma ve canlı sohbet mesajları (Alt+H) tüm katılımcıların oynatıcılarında eşzamanlı olarak çalışır.", iw-4) {
 			body = append(body, "  "+stSub.Render(l))
 		}
 		body = append(body,
 			"",
-			"  "+keycap("h")+"  "+stText.Bold(true).Render("Oda kodu oluştur")+stMuted.Render(" — ANI-XXXX-XXXX kodu üretir ve kopyalar"),
-			"  "+keycap("j")+"  "+stText.Bold(true).Render("Oda koduna katıl")+stMuted.Render(" — arkadaşının paylaştığı koda bağlanır"),
+			"  "+keycap("h")+"  "+stText.Bold(true).Render("Oda kodu oluştur")+stMuted.Render(" — yeni oda kodu üretir ve panoya kopyalar"),
+			"  "+keycap("j")+"  "+stText.Bold(true).Render("Odaya katıl")+stMuted.Render(" — paylaşılan oda koduna bağlanır"),
 			"",
 		)
 	}
@@ -257,7 +257,7 @@ func (p *partyScreen) view(a *App, w, h int) string {
 	innerLines := append([]string{""}, body...)
 	innerLines = append(innerLines, "")
 	panelH := min(h-2, max(12, len(innerLines)+2))
-	boxed := panel("birlikte izle 2.0", innerLines, cw, panelH, true, cAccent)
+	boxed := panel("birlikte izle", innerLines, cw, panelH, true, cAccent)
 
 	top := max(0, (h-len(boxed))/2)
 	out := make([]string, 0, h)

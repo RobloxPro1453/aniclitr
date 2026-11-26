@@ -203,7 +203,14 @@ func parseASSTime(s string) (float64, bool) {
 		return 0, false
 	}
 	sec, err3 := strconv.Atoi(secParts[0])
-	cs, err4 := strconv.Atoi(secParts[1])
+	frac := secParts[1]
+	for len(frac) < 2 {
+		frac += "0"
+	}
+	if len(frac) > 2 {
+		frac = frac[:2]
+	}
+	cs, err4 := strconv.Atoi(frac)
 	if err3 != nil || err4 != nil {
 		return 0, false
 	}

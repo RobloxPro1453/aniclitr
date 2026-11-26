@@ -49,7 +49,7 @@ type aniListScreen struct {
 type aniListLoginMsg struct{ err error }
 
 func newAniListScreen(a *App) *aniListScreen {
-	s := &aniListScreen{in: input{placeholder: "AniList Client ID (veya erişim jetonu) yapıştır"}}
+	s := &aniListScreen{in: input{placeholder: "AniList Client ID veya erişim jetonu girin"}}
 	s.in.Set(a.cfg.AniListClientID)
 	return s
 }
@@ -78,10 +78,16 @@ func (s *aniListScreen) update(a *App, msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		s.err = ""
-		a.alsync.Start()
+		if a.alsync != nil {
+			a.alsync.Start()
+		}
 		a.anchorOK = false
 		a.celebrate(70)
-		a.notify("AniList bağlandı: "+a.al.User()+" · listen çekiliyor", "ok")
+		u := ""
+		if a.al != nil {
+			u = a.al.User()
+		}
+		a.notify("AniList bağlandı: "+u+" · listeniz eşitleniyor", "ok")
 		return a.tick()
 	case tea.KeyMsg:
 		switch m.String() {
@@ -92,26 +98,26 @@ func (s *aniListScreen) update(a *App, msg tea.Msg) tea.Cmd {
 			_ = mal.OpenBrowser("https://anilist.co/settings/developer")
 			return nil
 		case "ctrl+s":
-			if a.al.Connected() {
+			if a.al != nil && a.al.Connected() && a.alsync != nil {
 				a.alsync.SyncNow()
 				a.notify("AniList eşitleniyor…", "ok")
 				return a.tick()
 			}
 			return nil
 		case "ctrl+x":
-			if a.al.Connected() {
+			if a.al != nil && a.al.Connected() {
 				a.al.Disconnect()
 				a.notify("AniList bağlantısı kesildi", "warn")
 				return a.tick()
 			}
 			return nil
 		case "enter":
-			if s.waiting {
+			if s.waiting || a.al == nil {
 				return nil
 			}
 			val := strings.TrimSpace(s.in.Value())
 			if val == "" {
-				s.err = "AniList Client ID veya erişim jetonu gir"
+				s.err = "AniList Client ID veya erişim jetonu girin"
 				return nil
 			}
 			s.waiting, s.err = true, ""
@@ -139,8 +145,11 @@ func (s *aniListScreen) view(a *App, w, h int) string {
 	cw := min(78, w-4)
 	head := pageHeadCol("AniList", "Kitaplık, puan, bölüm ilerlemesi ve özel listeleri iki yönlü eşitle", "", cw, w, h)
 	var body []string
-	if a.al.Connected() {
-		st := a.alsync.Status()
+	if a.al != nil && a.al.Connected() {
+		var st anilist.SyncStatus
+		if a.alsync != nil {
+			st = a.alsync.Status()
+		}
 		line := stOK.Render("● bağlı  ·  ") + stBold.Render(a.al.User())
 		if st.Busy {
 			line += stAccent.Render("   " + spinner(a.frame/2) + " eşitleniyor…")
@@ -154,9 +163,9 @@ func (s *aniListScreen) view(a *App, w, h int) string {
 
 	body = append(body,
 		stBold.Render("Tek seferlik kurulum"),
-		stSub.Render("1. anilist.co/settings/developer sayfasında 'Create New Client' seç (ctrl+y)."),
-		stSub.Render("2. Redirect URL olarak şunu yaz:  ")+stAccent.Render(anilist.CallbackURL),
-		stSub.Render("3. Oluşan Client ID'yi aşağıya yapıştırıp enter'a bas (veya doğrudan erişim jetonu yapıştır)."),
+		stSub.Render("1. anilist.co/settings/developer sayfasında 'Create New Client' seçeneğini açın (ctrl+y)."),
+		stSub.Render("2. Redirect URL alanına şu adresi girin:  ")+stAccent.Render(anilist.CallbackURL),
+		stSub.Render("3. Oluşan Client ID'yi aşağıya yapıştırıp enter tuşuna basın (veya erişim jetonu girin)."),
 		"",
 	)
 	body = append(body, s.in.view(cw-2, !s.waiting, a.frame)...)
@@ -167,7 +176,7 @@ func (s *aniListScreen) view(a *App, w, h int) string {
 		body = append(body, "", stErr.Render("✗ "+truncate(s.err, cw-4)))
 	}
 	body = append(body, "",
-		stMuted.Render("Not: AniList jetonun anilist.json içinde yalnızca yerel kalır, taşınabilir yedeklere eklenmez."),
+		stMuted.Render("Not: AniList erişim jetonu yalnızca yerel anilist.json dosyasında saklanır, yedeklere eklenmez."),
 	)
 	var lines []string
 	for _, l := range body {

@@ -230,7 +230,7 @@ aniclitr --version                sürüm`)
 			logx.Errorf("eklenti yükleme uyarısı: %v", err)
 		}
 	} else {
-		logx.Infof("eklenti motoru: %d sıfır-derleme çözücü yüklendi", len(packs))
+		logx.Infof("eklenti motoru: %d çözücü paketi yüklendi", len(packs))
 	}
 	logx.Infof("aniclitr %s · WT_SESSION=%v TERM=%q COLORTERM=%q", version, os.Getenv("WT_SESSION") != "", os.Getenv("TERM"), os.Getenv("COLORTERM"))
 
@@ -266,6 +266,7 @@ aniclitr --version                sürüm`)
 	if cfg.Renderer == "klasik" {
 		// fallback: Bubble Tea's own line renderer (posters may blink)
 		_, err = tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
+		app.Close()
 	} else {
 		// default: our cell renderer (internal/tty) — double/mailbox buffered,
 		// absolute addressing, self-healing, pictures as a separate layer

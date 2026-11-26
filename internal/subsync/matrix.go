@@ -216,7 +216,7 @@ func filterSpeechCues(cues []Cue) []Cue {
 func buildCueGrid(cues []Cue, hop float64) []float64 {
 	maxT := 0.0
 	for _, c := range cues {
-		if c.End > maxT {
+		if c.End > maxT && c.End <= 6*3600 {
 			maxT = c.End
 		}
 	}

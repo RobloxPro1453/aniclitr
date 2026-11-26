@@ -117,6 +117,7 @@ func tonightPicks(a *App, budget int, feed []source.FeedItem) []tonightPick {
 }
 
 func (d *discover) tonightKey(a *App, k tea.KeyMsg) (tea.Cmd, bool) {
+	picks := tonightPicks(a, d.budget, homeFeed(a))
 	switch k.String() {
 	case "+", "=":
 		d.budget = min(300, d.budget+30)
@@ -125,10 +126,9 @@ func (d *discover) tonightKey(a *App, k tea.KeyMsg) (tea.Cmd, bool) {
 	case "up", "k":
 		d.cur[tTonight] = max(0, d.cur[tTonight]-1)
 	case "down", "j":
-		d.cur[tTonight]++
+		d.cur[tTonight] = clamp(d.cur[tTonight]+1, 0, max(0, len(picks)-1))
 	case "enter":
-		picks := tonightPicks(a, d.budget, homeFeed(a))
-		if c := d.cur[tTonight]; c < len(picks) {
+		if c := d.cur[tTonight]; c >= 0 && c < len(picks) {
 			p := picks[c]
 			a.flash()
 			if p.item != nil && p.item.FromMal() {
@@ -144,18 +144,20 @@ func (d *discover) tonightKey(a *App, k tea.KeyMsg) (tea.Cmd, bool) {
 }
 
 func homeFeed(a *App) []source.FeedItem {
-	if h, ok := a.stack[0].(*home); ok {
-		return h.feed
+	if len(a.stack) > 0 {
+		if h, ok := a.stack[0].(*home); ok {
+			return h.feed
+		}
 	}
 	return nil
 }
 
 func (d *discover) tonightView(a *App, w, h int) []string {
 	picks := tonightPicks(a, d.budget, homeFeed(a))
-	head := stMuted.Render("ne kadar vaktin var?  ") + stBold.Render(fmt.Sprintf("%d dk", d.budget)) + stMuted.Render("   (+ / -)")
+	head := stMuted.Render("ne kadar vaktiniz var?  ") + stBold.Render(fmt.Sprintf("%d dk", d.budget)) + stMuted.Render("   (+ / -)")
 	out := []string{head, ""}
 	if len(picks) == 0 {
-		return append(out, stMuted.Render("Henüz öneri için veri yok: bir şeyler izle ya da kitaplığına planlananlar ekle."))
+		return append(out, stMuted.Render("Henüz öneri için veri yok: birkaç bölüm izleyin veya kitaplığınıza planlananlar ekleyin."))
 	}
 	c := &d.cur[tTonight]
 	*c = clamp(*c, 0, len(picks)-1)
@@ -193,7 +195,12 @@ type genreMsg struct {
 }
 
 func (d *discover) genreName() (string, string) {
-	g := anilist.Genres[d.genre%len(anilist.Genres)]
+	n := len(anilist.Genres)
+	if n == 0 {
+		return "", ""
+	}
+	idx := ((d.genre % n) + n) % n
+	g := anilist.Genres[idx]
 	return g[0], g[1]
 }
 
@@ -269,7 +276,7 @@ func (d *discover) genreHeader(w int) string {
 func (d *discover) tonightCard(a *App, w, h int) []string {
 	picks := tonightPicks(a, d.budget, homeFeed(a))
 	c := d.cur[tTonight]
-	if c >= len(picks) {
+	if c < 0 || c >= len(picks) {
 		return panel("ayrıntı", nil, w, h, false, cAccent)
 	}
 	p := picks[c]

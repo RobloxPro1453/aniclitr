@@ -139,7 +139,9 @@ func (a *App) setTheme(t Theme) {
 	}
 	a.themeName = t.Name
 	a.coverAt = "-" // re-evaluate the cover tint on top of the new theme
-	a.gfx.retheme()
+	if a.gfx != nil {
+		a.gfx.retheme()
+	}
 	a.oscUntil = time.Now().Add(300 * time.Millisecond)
 }
 

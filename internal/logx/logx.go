@@ -21,6 +21,10 @@ var (
 func Init(dir string) {
 	mu.Lock()
 	defer mu.Unlock()
+	if f != nil {
+		_ = f.Close()
+		f = nil
+	}
 	path = filepath.Join(dir, "aniclitr.log")
 	if st, err := os.Stat(path); err == nil && st.Size() > 2<<20 {
 		_ = os.Rename(path, path+".1")
@@ -30,7 +34,11 @@ func Init(dir string) {
 }
 
 // Path is where the log lives (for error messages).
-func Path() string { return path }
+func Path() string {
+	mu.Lock()
+	defer mu.Unlock()
+	return path
+}
 
 func write(level, msg string) {
 	if f == nil {

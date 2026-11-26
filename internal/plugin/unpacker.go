@@ -15,8 +15,6 @@ var (
 	reToken  = regexp.MustCompile(`\b[0-9a-zA-Z]+\b`)
 )
 
-const base62Alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-
 // UnpackAll finds and unpacks every Dean Edwards P.A.C.K.E.R block in src,
 // returning the concatenated unpacked JS (or empty string if none matched).
 func UnpackAll(src string) string {
@@ -32,7 +30,7 @@ func UnpackAll(src string) string {
 		payload := unescapePackerQuotes(m[1])
 		radix, err1 := strconv.Atoi(m[2])
 		count, err2 := strconv.Atoi(m[3])
-		if err1 != nil || err2 != nil || radix < 2 || radix > 62 {
+		if err1 != nil || err2 != nil || radix < 2 || radix > 62 || count < 0 || count > 65536 {
 			continue
 		}
 		symtab := strings.Split(unescapePackerQuotes(m[4]), "|")
@@ -88,6 +86,9 @@ func parseBase(s string, radix int) (int, bool) {
 			}
 		}
 		if d < 0 || d >= radix {
+			return 0, false
+		}
+		if val > 1<<20 {
 			return 0, false
 		}
 		val = val*radix + d

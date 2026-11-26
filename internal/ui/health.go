@@ -107,6 +107,9 @@ func (s *sourcesScreen) update(a *App, msg tea.Msg) tea.Cmd {
 		a.notify("kaynaklar yoklanıyor…", "")
 		return a.checkHealth()
 	case " ", "enter":
+		if len(ps) == 0 || s.cur < 0 || s.cur >= len(ps) {
+			return nil
+		}
 		in := ps[s.cur].Info()
 		if in.Legacy {
 			return toggleLegacy(a)
@@ -177,7 +180,7 @@ func (s *sourcesScreen) view(a *App, w, h int) string {
 		out = append(out, "")
 	}
 	out = append(out, center(stFaint.Render(strings.Repeat("─", cw)), w),
-		center(fit(stMuted.Render("Arama bütün açık kaynaklarda paralel yapılır; biri düşerse sonuçlar diğerlerinden gelir."), cw), w))
+		center(fit(stMuted.Render("Katalog araması AniList üzerinden yapılır; seçilen anime tüm açık kaynaklarda paralel olarak aranır."), cw), w))
 	return strings.Join(out, "\n")
 }
 

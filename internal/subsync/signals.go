@@ -166,6 +166,7 @@ func extractSceneCuts(ctx context.Context, ffmpeg, mediaPath string) []float64 {
 	_ = cmd.Run()
 	var cuts []float64
 	sc := bufio.NewScanner(&stderr)
+	sc.Buffer(make([]byte, 32<<10), 512<<10)
 	for sc.Scan() {
 		line := sc.Text()
 		if !strings.Contains(line, "pts_time:") {

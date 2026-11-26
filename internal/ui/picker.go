@@ -362,6 +362,11 @@ func (p *picker) tryPlay(a *App) tea.Cmd {
 		return nil
 	}
 	if p.pendHost >= 0 {
+		if p.pendHost >= len(g.vs) {
+			p.pending = false
+			p.pendHost = -1
+			return nil
+		}
 		v := g.vs[p.pendHost]
 		st := a.resolved[v.URL]
 		switch {
@@ -472,13 +477,16 @@ func (p *picker) tryPlay(a *App) tea.Cmd {
 	if a.cfg.AutoFallback {
 		return p.offerRecovery(a)
 	}
-	a.notify("hiçbir fansubun kaynağı açılmadı — biraz sonra tekrar dene ya da s ile başka siteye geç", "err")
+	a.notify("hiçbir fansubun kaynağı açılmadı — biraz sonra tekrar deneyin veya s ile başka kaynağa geçin", "err")
 	return nil
 }
 
 func (p *picker) play(a *App, v source.Variant, st *source.Stream, q source.Quality) tea.Cmd {
-	g := p.group()
-	pl := newPlaying(p.an, p.ep, p.eps, g.name, v.Host, st, q)
+	fan := v.Fansub
+	if g := p.group(); g != nil {
+		fan = g.name
+	}
+	pl := newPlaying(p.an, p.ep, p.eps, fan, v.Host, st, q)
 	pl.vurl = v.URL
 	pl.attempt = p.attempt
 	// replace the picker with the player; returning lands on the episode list
@@ -543,31 +551,38 @@ func (p *picker) key(a *App, k tea.KeyMsg) tea.Cmd {
 	case "left", "h", "shift+tab":
 		p.focus = 0
 	case "d":
-		if p.hCur < len(rows) {
+		if p.hCur >= 0 && p.hCur < len(rows) {
 			r := rows[p.hCur]
-			v := p.group().vs[r.vi]
-			req := download.Request{Anime: p.an, Ep: p.ep, Variant: &v, PrefFansub: p.group().name, Strict: true}
-			if st := a.resolved[v.URL]; r.qi >= 0 && st != nil && st.st != nil {
+			g := p.group()
+			if g == nil || r.vi < 0 || r.vi >= len(g.vs) {
+				return nil
+			}
+			v := g.vs[r.vi]
+			req := download.Request{Anime: p.an, Ep: p.ep, Variant: &v, PrefFansub: g.name, Strict: true}
+			if st := a.resolved[v.URL]; r.qi >= 0 && st != nil && st.st != nil && r.qi < len(st.st.Qualities) {
 				req.PrefQual = st.st.Qualities[r.qi].Label
 			}
 			return p.queue(a, req)
 		}
 	case "enter", " ":
-		if p.hCur >= len(rows) {
+		if p.hCur < 0 || p.hCur >= len(rows) {
 			return nil
 		}
 		r := rows[p.hCur]
 		g := p.group()
+		if g == nil || r.vi < 0 || r.vi >= len(g.vs) {
+			return nil
+		}
 		v := g.vs[r.vi]
 		st := a.resolved[v.URL]
 		if p.dlMode > 0 {
 			req := download.Request{Anime: p.an, Ep: p.ep, Variant: &v, PrefFansub: g.name, Strict: true}
-			if r.qi >= 0 && st != nil && st.st != nil {
+			if r.qi >= 0 && st != nil && st.st != nil && r.qi < len(st.st.Qualities) {
 				req.PrefQual = st.st.Qualities[r.qi].Label
 			}
 			return p.queue(a, req)
 		}
-		if r.qi >= 0 && st != nil && st.st != nil {
+		if r.qi >= 0 && st != nil && st.st != nil && r.qi < len(st.st.Qualities) {
 			return p.play(a, v, st.st, st.st.Qualities[r.qi])
 		}
 		if st != nil && st.err != nil {

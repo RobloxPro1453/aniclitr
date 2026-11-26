@@ -134,8 +134,9 @@ func (f *feedScreen) view(a *App, w, ht int) string {
 		return feedRows(a, items, f.off, f.gl.row(a, f.cur), h.feedAt, lw, bodyH)
 	}
 	var detail pane
-	if f.cur < len(items) {
-		it := items[clamp(f.cur, 0, len(items)-1)]
+	if len(items) > 0 {
+		f.cur = clamp(f.cur, 0, len(items)-1)
+		it := items[f.cur]
 		detail = pane{title: "seçili bölüm", acc: a.posters.accent(it.Anime.Poster, cAccent).hex(), draw: func(w, h int) []string { return feedCard(a, it, w, h) }}
 	}
 	tag := ""

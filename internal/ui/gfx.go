@@ -165,6 +165,9 @@ func marker(id int) string { return "\x1b_kz" + strconv.Itoa(id) + "\x1b\\" }
 
 // place reserves a w×h cell area for url and returns its placeholder lines.
 func (g *gfx) place(url string, w, h int) []string {
+	if w <= 0 || h <= 0 {
+		return nil
+	}
 	id := len(g.reqs)
 	g.reqs = append(g.reqs, placeReq{url: url, w: w, h: h})
 	// the reserved area is painted in the ground colour (not plain blanks):
@@ -197,7 +200,7 @@ func (g *gfx) finish(lines []string, suppress bool) []string {
 			id, err := strconv.Atoi(l[k+4 : k+end])
 			col := ansi.StringWidth(l[:k])
 			l = l[:k] + l[k+end+2:]
-			if err == nil && id < len(g.reqs) && !suppress {
+			if err == nil && id >= 0 && id < len(g.reqs) && !suppress {
 				places = append(places, placement{placeReq: g.reqs[id], row: i, col: col})
 			}
 		}
@@ -319,6 +322,9 @@ func encodeSixel(src image.Image, pw, ph, cw int, bg string) string {
 
 // coverCrop picks the centred source rectangle with the target aspect.
 func coverCrop(sb image.Rectangle, w, h int) image.Rectangle {
+	if w <= 0 || h <= 0 || sb.Dx() <= 0 || sb.Dy() <= 0 {
+		return sb
+	}
 	ta := float64(w) / float64(h)
 	sa := float64(sb.Dx()) / float64(sb.Dy())
 	switch {
@@ -338,6 +344,12 @@ func coverCrop(sb image.Rectangle, w, h int) image.Rectangle {
 // covers get soft rounded edges.
 func roundCorners(img *image.RGBA, r int, bg rgb) {
 	b := img.Bounds()
+	if maxR := min(b.Dx()/2, b.Dy()/2); r > maxR {
+		r = maxR
+	}
+	if r <= 0 {
+		return
+	}
 	for y := 0; y < r; y++ {
 		for x := 0; x < r; x++ {
 			dx, dy := float64(r-x)-.5, float64(r-y)-.5

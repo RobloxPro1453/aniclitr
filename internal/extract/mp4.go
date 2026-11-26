@@ -63,6 +63,13 @@ var containerBoxes = map[string]bool{
 }
 
 func scanBoxes(b []byte, m *MP4Meta) {
+	scanBoxesDepth(b, m, 0)
+}
+
+func scanBoxesDepth(b []byte, m *MP4Meta, depth int) {
+	if depth > 16 {
+		return
+	}
 	for len(b) >= 8 {
 		size := int64(binary.BigEndian.Uint32(b[0:4]))
 		typ := string(b[4:8])
@@ -77,10 +84,10 @@ func scanBoxes(b []byte, m *MP4Meta) {
 			size = int64(len(b))
 		}
 		if size < hdrLen || !isPrintableFourCC(typ) {
-			// If we started mid-file (e.g. tail range read), scan forward for "moov".
-			idx := strings.Index(string(b[1:]), "moov")
-			if idx >= 3 {
-				b = b[idx-3:]
+			// If we started mid-file (e.g. tail range read), scan strictly forward for "moov".
+			idx := strings.Index(string(b[5:]), "moov")
+			if idx >= 0 {
+				b = b[1+idx:]
 				continue
 			}
 			return
@@ -100,7 +107,7 @@ func scanBoxes(b []byte, m *MP4Meta) {
 			parseStsd(payload, m)
 		default:
 			if containerBoxes[typ] {
-				scanBoxes(payload, m)
+				scanBoxesDepth(payload, m, depth+1)
 			}
 		}
 

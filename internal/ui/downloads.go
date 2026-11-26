@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -128,6 +127,10 @@ type downloads struct {
 	diskTotal int64
 	diskOK    bool
 	diskAt    time.Time
+
+	toolsChecked bool
+	hasAria      bool
+	hasYt        bool
 }
 
 func newDownloads() *downloads { return &downloads{confirm: -1, jobSpeeds: map[int][]float64{}} }
@@ -202,7 +205,7 @@ func (d *downloads) update(a *App, msg tea.Msg) tea.Cmd {
 		if d.cur < len(jobs) && jobs[d.cur].Path != "" {
 			dir = filepath.Dir(jobs[d.cur].Path)
 		}
-		_ = exec.Command("explorer", dir).Start()
+		openFolder(dir)
 	case "c":
 		for _, j := range jobs {
 			if j.State == download.Done || j.State == download.Canceled {
@@ -282,7 +285,11 @@ func (d *downloads) view(a *App, w, h int) string {
 		sub = "İndirme kuyruğu"
 	}
 	out := pageHeadIn("İndirilenler", sub, strings.Join(stats, stFaint.Render("  ·  ")), inner, h)
-	aria, yt := download.Tools()
+	if !d.toolsChecked {
+		d.hasAria, d.hasYt = download.Tools()
+		d.toolsChecked = true
+	}
+	aria, yt := d.hasAria, d.hasYt
 	tools := []string{}
 	if aria {
 		tools = append(tools, stOK.Render("●")+stMuted.Render(" aria2c"))

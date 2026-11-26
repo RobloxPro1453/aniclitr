@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -169,7 +170,11 @@ func FetchFranchise(ctx context.Context, malID int) (FranchiseTree, error) {
 	var nodes []FranchiseNode
 	rootTitle := ""
 
+loop:
 	for len(queue) > 0 && len(visited) < 12 {
+		if ctx.Err() != nil {
+			break
+		}
 		cur := queue[0]
 		queue = queue[1:]
 		if visited[cur] {
@@ -190,6 +195,10 @@ func FetchFranchise(ctx context.Context, malID int) (FranchiseTree, error) {
 		resp, err := netx.Client.Do(req)
 		if err != nil {
 			break
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			continue
 		}
 		var out struct {
 			Data struct {
@@ -223,7 +232,7 @@ func FetchFranchise(ctx context.Context, malID int) (FranchiseTree, error) {
 				} `json:"Media"`
 			} `json:"data"`
 		}
-		_ = json.NewDecoder(resp.Body).Decode(&out)
+		_ = json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&out)
 		resp.Body.Close()
 
 		m := out.Data.Media
@@ -273,10 +282,12 @@ func FetchFranchise(ctx context.Context, malID int) (FranchiseTree, error) {
 			}
 		}
 		if len(queue) > 0 {
+			t := time.NewTimer(300 * time.Millisecond)
 			select {
 			case <-ctx.Done():
-				break
-			case <-time.After(300 * time.Millisecond):
+				t.Stop()
+				break loop
+			case <-t.C:
 			}
 		}
 	}

@@ -259,6 +259,10 @@ func (r *Room) hostClientLoop(c net.Conn) {
 				nick = "Misafir"
 			}
 			r.mu.Lock()
+			if r.closed || r.clients == nil {
+				r.mu.Unlock()
+				return
+			}
 			r.clients[c] = nick
 			peers := 1 + len(r.clients)
 			r.mu.Unlock()

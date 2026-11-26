@@ -99,7 +99,7 @@ func (h *home) items(a *App) []mItem {
 		mItem{id: "discover", icon: ic("calendar"), label: "Keşfet", desc: "takvim, sezon, öneriler",
 			run: func(a *App) tea.Cmd {
 				if a.offline {
-					a.notify("keşfet internet ister — şu an çevrimdışısın", "warn")
+					a.notify("keşfet internet gerektirir — şu an çevrimdışısınız", "warn")
 					return a.tick()
 				}
 				return a.openDiscover()
@@ -232,8 +232,12 @@ func (h *home) menuKey(a *App, k tea.KeyMsg) tea.Cmd {
 		}
 	case "delete", "x":
 		if i := recentIdx(it); i >= 0 && i < len(recent) {
-			if recent[i].Source == "mal" {
-				a.notify("MAL listende izliyor — durumu a ile değiştirebilirsin", "warn")
+			if recent[i].Source == "mal" || recent[i].Source == "anilist" {
+				lbl := "MAL"
+				if recent[i].Source == "anilist" {
+					lbl = "AniList"
+				}
+				a.notify(lbl+" listenizde izleniyor — durumu a tuşuyla değiştirebilirsiniz", "warn")
 				return a.tick()
 			}
 			// the card stands for the show on every source: remove them all,

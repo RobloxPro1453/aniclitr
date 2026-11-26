@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -52,9 +53,12 @@ type animeScreen struct {
 	// for on the switched-on sources (gate), and opened on the off one,
 	// marked, only when no other has it (offSrc). explicit skips that: the
 	// user named this very source (a pasted link, "open on X").
-	gate     bool
-	offSrc   bool
-	explicit bool
+	gate         bool
+	offSrc       bool
+	explicit     bool
+	catalog      bool         // opened from source-agnostic AniList catalog; resolving streaming providers
+	catalogEmpty bool         // catalog lookup finished with 0 streaming providers matched
+	catalogMeta  source.Anime // preserved AniList metadata (poster, synopsis, MAL ID, genres) across switches
 }
 
 // srcOn reports whether an's source is switched on in Settings.
@@ -110,6 +114,12 @@ func (s *animeScreen) animating(a *App) bool {
 	if a.top() != screen(s) {
 		return false
 	}
+	if s.catalog && s.looking {
+		return true
+	}
+	if s.catalogEmpty {
+		return false
+	}
 	if !s.ready && s.detailErr == nil {
 		return true
 	}
@@ -124,10 +134,23 @@ func (s *animeScreen) accent(a *App) string { return a.posters.accent(s.an.Poste
 
 func (s *animeScreen) start(a *App) tea.Cmd {
 	if !s.ordered {
+		s.ordered = true
+		// Source-agnostic catalog item (AniList/MAL): display full metadata
+		// immediately and search all enabled streaming sources in parallel.
+		if s.base.Source == "anilist" || s.base.Source == "mal" || source.Get(s.base.Source) == nil {
+			s.catalog = true
+			s.catalogEmpty = false
+			s.catalogMeta = s.base
+			s.looking, s.lookKey = true, s.base.Key()
+			var cmds []tea.Cmd
+			if a.cfg.Posters && s.an.Poster != "" {
+				cmds = append(cmds, a.posters.want(s.an.Poster))
+			}
+			return tea.Batch(append(cmds, a.findAltsIn(s.base, true), a.tick())...)
+		}
 		// however it was opened (the shelf card stands for the source you
 		// used last), the show opens on the best source: switched-on ones
 		// first, the primary on top; `s` still reaches every other one
-		s.ordered = true
 		if len(s.srcs) == 1 {
 			s.srcs = append(s.srcs, a.siblings(s.base)...)
 		}
@@ -153,6 +176,68 @@ func (s *animeScreen) start(a *App) tea.Cmd {
 		}
 	}
 	return s.load(a)
+}
+
+// finishCatalog binds matched streaming sources onto an AniList catalog anime,
+// selecting the highest-ranked provider automatically while keeping every
+// other matched source one keypress away in the `s` dropdown menu.
+func (s *animeScreen) finishCatalog(a *App, alts []source.Anime) tea.Cmd {
+	s.catalog = false
+	s.looking = false
+	s.looked = true
+	if len(alts) == 0 {
+		s.catalogEmpty = true
+		s.srcs = nil
+		a.notify("etkin izleme kaynaklarında bulunamadı · T ile torrentten izleyebilirsiniz", "warn")
+		return a.tick()
+	}
+	s.catalogEmpty = false
+	ranked := rankSources(a, alts)
+	s.srcs = ranked
+	s.srcIdx = 0
+	best := ranked[0]
+	s.base = best
+	s.an = mergeCatalogFallback(best, s.catalogMeta)
+	if len(ranked) > 1 {
+		a.notify(fmt.Sprintf("✓ %d kaynak bulundu · %s açıldı (s ile değiştir)", len(ranked), srcName(best.Source)), "ok")
+	} else {
+		a.notify("✓ "+srcName(best.Source)+" kaynağında bulundu", "ok")
+	}
+	return s.load(a)
+}
+
+// mergeCatalogFallback fills empty metadata fields on a provider hit from the
+// canonical AniList catalog entry so switching sources never loses cover art,
+// synopsis, MAL ID, or genres.
+func mergeCatalogFallback(dst, meta source.Anime) source.Anime {
+	if meta.ID == "" {
+		return dst
+	}
+	if dst.MalID == 0 {
+		dst.MalID = meta.MalID
+	}
+	if dst.Poster == "" {
+		dst.Poster = meta.Poster
+	}
+	if dst.Description == "" {
+		dst.Description = meta.Description
+	}
+	if len(dst.Genres) == 0 {
+		dst.Genres = meta.Genres
+	}
+	if dst.Year == 0 {
+		dst.Year = meta.Year
+	}
+	if dst.AltTitle == "" {
+		dst.AltTitle = meta.AltTitle
+	}
+	if dst.Kind == "" {
+		dst.Kind = meta.Kind
+	}
+	if len(dst.Titles) == 0 {
+		dst.Titles = meta.Titles
+	}
+	return dst
 }
 
 func (s *animeScreen) load(a *App) tea.Cmd {
@@ -199,7 +284,7 @@ func (s *animeScreen) ensure(a *App) tea.Cmd {
 	if !ok || d.ID == "" {
 		return nil
 	}
-	s.an = userMal(merge(s.base, d)) // a hand-picked MAL match wins
+	s.an = userMal(mergeCatalogFallback(merge(s.base, d), s.catalogMeta)) // a hand-picked MAL match wins
 	s.an.Title = firstNonEmpty(d.Title, s.base.Title)
 	s.ready = true
 	alignCmd := a.wantAlign(s.an)
@@ -315,9 +400,9 @@ func (s *animeScreen) switchTo(a *App, idx int) tea.Cmd {
 	s.srcIdx = idx
 	nb := s.srcs[s.srcIdx]
 	// keep the cursor on the same episode on the new source; the lookup
-	// state survives the switch
-	*s = animeScreen{srcs: s.srcs, srcIdx: s.srcIdx, base: nb, an: nb, wantSeason: season, wantEp: ep,
-		looking: s.looking, looked: s.looked, lookKey: s.lookKey, ordered: true}
+	// state and AniList catalog metadata survive the switch
+	*s = animeScreen{srcs: s.srcs, srcIdx: s.srcIdx, base: nb, an: mergeCatalogFallback(nb, s.catalogMeta), wantSeason: season, wantEp: ep,
+		looking: s.looking, looked: s.looked, lookKey: s.lookKey, ordered: true, catalogMeta: s.catalogMeta}
 	if a.motion() {
 		s.switchAt = newTween(300 * time.Millisecond)
 	}
@@ -356,11 +441,19 @@ func (a *App) findAltsIn(an source.Anime, onlyOn bool) tea.Cmd {
 	if an.MalID > 0 {
 		cachedByMal = match.Default().ByMal(an.MalID)
 	}
+	wantTarget := match.Want{
+		Titles: an.AllTitles(),
+		Year:   an.Year,
+		Kind:   an.Kind,
+		Eps:    an.EpCount,
+		MalID:  an.MalID,
+	}
 	key := an.Key()
-	return run(45*time.Second, func(ctx context.Context) tea.Msg {
+	return run(30*time.Second, func(ctx context.Context) tea.Msg {
 		found := make([]source.Anime, len(provs)) // one per source, rank order kept
 		var wg sync.WaitGroup
 		for i, p := range provs {
+			i, p := i, p
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -375,16 +468,27 @@ func (a *App) findAltsIn(an source.Anime, onlyOn bool) tea.Cmd {
 					}
 					return
 				}
+				pctx, pcancel := context.WithTimeout(ctx, 8*time.Second)
+				defer pcancel()
+				var bestCand source.Anime
+				bestScore := 0.0
 				for _, q := range queries {
-					if strings.TrimSpace(q) == "" {
+					if strings.TrimSpace(q) == "" || pctx.Err() != nil {
 						continue
 					}
-					res, err := p.Search(ctx, q)
+					res, err := p.Search(pctx, q)
 					if err != nil {
 						continue
 					}
 					for _, r := range res {
 						if an.MalID != 0 && r.MalID == an.MalID {
+							found[i] = r
+							return
+						}
+						if an.Kind != "" && r.Kind != "" && an.IsMovie() != r.IsMovie() {
+							continue
+						}
+						if match.SameAnime(an, r) {
 							found[i] = r
 							return
 						}
@@ -394,7 +498,15 @@ func (a *App) findAltsIn(an source.Anime, onlyOn bool) tea.Cmd {
 								return
 							}
 						}
+						sc := match.Score(r.AllTitles(), 0, r.Year, r.Kind, wantTarget)
+						if sc >= match.MinScore && sc > bestScore {
+							bestScore = sc
+							bestCand = r
+						}
 					}
+				}
+				if bestCand.ID != "" {
+					found[i] = bestCand
 				}
 			}()
 		}
@@ -425,10 +537,16 @@ func (s *animeScreen) update(a *App, msg tea.Msg) tea.Cmd {
 		if m.key != s.lookKey || !s.looking {
 			return nil
 		}
+		if s.catalog {
+			return s.finishCatalog(a, m.alts)
+		}
 		if s.gate {
 			return s.passGate(a, m.alts)
 		}
 		s.looking, s.looked = false, true
+		if s.catalogEmpty && len(m.alts) > 0 {
+			return s.finishCatalog(a, m.alts)
+		}
 		var added []string
 		for _, x := range m.alts {
 			dup := false
@@ -625,6 +743,12 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 	case "s":
 		return s.openSources(a)
 	case "r":
+		if s.catalogEmpty {
+			s.catalog = true
+			s.catalogEmpty = false
+			s.looking, s.lookKey = true, s.base.Key()
+			return tea.Batch(a.findAlts(s.base), a.tick())
+		}
 		if s.detailErr != nil {
 			s.detailErr = nil
 			return tea.Batch(a.fetchDetails(s.base), a.tick())
@@ -833,15 +957,17 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 				a.flash()
 				return a.playLocal(j, eps)
 			}
-			// serverless hybrid local disk archive plays at 0 ms with full MAL/AniList sync
+			// hybrid local disk archive plays immediately with full MAL/AniList sync
 			if lf, ok := a.localFileFor(s.an, eps[s.cur].Season, eps[s.cur].Number); ok {
-				a.flash()
-				st := &source.Stream{Qualities: []source.Quality{{Label: lf.Resolution, URL: lf.Path}}}
-				if lf.SubPath != "" {
-					st.Subtitles = []source.Subtitle{{Label: "Yerel", URL: lf.SubPath}}
+				if _, err := os.Stat(lf.Path); err == nil {
+					a.flash()
+					st := &source.Stream{Qualities: []source.Quality{{Label: lf.Resolution, URL: lf.Path}}}
+					if lf.SubPath != "" {
+						st.Subtitles = []source.Subtitle{{Label: "Yerel", URL: lf.SubPath}}
+					}
+					pl := newPlaying(s.an, eps[s.cur], eps, "Diskte Hazır", "Yerel Disk", st, st.Qualities[0])
+					return tea.Batch(a.push(pl), pl.start(a))
 				}
-				pl := newPlaying(s.an, eps[s.cur], eps, "Diskte Hazır", "Yerel Disk", st, st.Qualities[0])
-				return tea.Batch(a.push(pl), pl.start(a))
 			}
 		}
 		if s.cur < len(eps) {
@@ -886,6 +1012,23 @@ func (s *animeScreen) view(a *App, w, ht int) string {
 			left = append(left, stSub.Render("s ile başka kaynağı dene"))
 		}
 		left = append(left, stMuted.Render("r tekrar dene · esc geri"))
+	case s.catalog:
+		left = []string{
+			"",
+			fg(s.accent(a)).Render(spinner(a.frame/2)) + " " + stText.Bold(true).Render("Tüm kaynaklarda aranıyor…"),
+			stMuted.Render("AnimeciX · AnimeTR · AniHub · SonAnime · Animim · HiAnime"),
+			"",
+			stMuted.Render("En uygun kaynak otomatik açılacak · T ile torrentten izleyebilirsiniz"),
+		}
+	case s.catalogEmpty:
+		left = []string{
+			"",
+			stWarn.Bold(true).Render("Bu anime etkin izleme kaynaklarında bulunamadı."),
+			"",
+			stText.Bold(true).Render("T") + stMuted.Render(" Nyaa.si Torrent ile anlık izle"),
+			stText.Bold(true).Render("s") + stMuted.Render(" tüm kaynaklarda tekrar ara"),
+			stText.Bold(true).Render("r") + stMuted.Render(" yeniden dene  ·  ") + stText.Bold(true).Render("esc") + stMuted.Render(" geri"),
+		}
 	case s.gate:
 		left = []string{stWarn.Render("◌ ") + stSub.Render(srcName(s.base.Source)+" ayarlarda kapalı"), "",
 			fg(s.accent(a)).Render(spinner(a.frame/2)) + stMuted.Render(" açık kaynaklarda aranıyor…"),

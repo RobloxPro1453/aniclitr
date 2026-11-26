@@ -109,7 +109,7 @@ func (o *OpenSubtitles) req(ctx context.Context, method, path string, body any) 
 		return nil, err
 	}
 	req.Header.Set("Api-Key", o.Key)
-	req.Header.Set("User-Agent", "aniclitr v0.7")
+	req.Header.Set("User-Agent", "aniclitr v2.0")
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -162,7 +162,7 @@ func (o *OpenSubtitles) Search(ctx context.Context, q Query) ([]Result, error) {
 			} `json:"attributes"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&res); err != nil {
 		return nil, err
 	}
 	var out []Result
@@ -198,7 +198,7 @@ func (o *OpenSubtitles) Download(ctx context.Context, r Result) (string, error) 
 		FileName string `json:"file_name"`
 		Message  string `json:"message"`
 	}
-	err = json.NewDecoder(resp.Body).Decode(&d)
+	err = json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&d)
 	resp.Body.Close()
 	if err != nil {
 		return "", err
@@ -206,12 +206,18 @@ func (o *OpenSubtitles) Download(ctx context.Context, r Result) (string, error) 
 	if d.Link == "" {
 		return "", fmt.Errorf("OpenSubtitles: indirme linki yok (%s)", d.Message)
 	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, d.Link, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, d.Link, nil)
+	if err != nil {
+		return "", err
+	}
 	fr, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer fr.Body.Close()
+	if fr.StatusCode >= 300 {
+		return "", fmt.Errorf("OpenSubtitles indirme: HTTP %d", fr.StatusCode)
+	}
 	b, err := io.ReadAll(io.LimitReader(fr.Body, 8<<20))
 	if err != nil {
 		return "", err
@@ -233,8 +239,9 @@ var reUnsafe = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]+`)
 
 func safe(s string) string {
 	s = reUnsafe.ReplaceAllString(s, "_")
-	if len(s) > 120 {
-		s = s[:120]
+	rs := []rune(s)
+	if len(rs) > 120 {
+		s = string(rs[:120])
 	}
 	return s
 }

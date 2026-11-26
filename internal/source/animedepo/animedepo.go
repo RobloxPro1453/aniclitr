@@ -148,7 +148,7 @@ func (Provider) Details(ctx context.Context, a source.Anime) (source.Anime, erro
 			}
 		}
 		if s, ok := info["Başlama Tarihi"].(string); ok {
-			if m := regexp.MustCompile(`\d{4}`).FindString(s); m != "" {
+			if m := reYear4.FindString(s); m != "" {
 				a.Year, _ = strconv.Atoi(m)
 			}
 		}
@@ -157,7 +157,10 @@ func (Provider) Details(ctx context.Context, a source.Anime) (source.Anime, erro
 	return a, nil
 }
 
-var reNum = regexp.MustCompile(`(\d+)\.\s*Bölüm`)
+var (
+	reNum   = regexp.MustCompile(`(\d+)\.\s*Bölüm`)
+	reYear4 = regexp.MustCompile(`\d{4}`)
+)
 
 func (Provider) Episodes(ctx context.Context, a source.Anime, season int) ([]source.Episode, error) {
 	var list [][2]string

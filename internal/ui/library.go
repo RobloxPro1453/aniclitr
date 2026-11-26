@@ -964,8 +964,8 @@ func (l *library) statsView(a *App, w, h int) []string {
 		}
 	}
 	// Include any episodes watched in history that aren't in the library yet.
-	for k, e := range a.hist.Entries {
-		if seenKeys[k] || e == nil {
+	for _, e := range a.hist.Recent() {
+		if seenKeys[e.Anime().Key()] {
 			continue
 		}
 		for _, d := range e.Watched {

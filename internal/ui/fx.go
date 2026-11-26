@@ -26,8 +26,9 @@ type glide struct {
 }
 
 // row returns the list index the band should be drawn on this frame.
-// On rapid key-repeat (holding ↓/↑), snaps cleanly so navigation feels razor-sharp;
-// on single steps, uses a crisp critically-damped 60fps spring.
+// Single-row moves and rapid key-repeat (holding ↓/↑) snap immediately so
+// keyboard navigation feels instant with zero highlight lag; multi-row jumps
+// (PgUp/PgDn/Home/End) glide smoothly across the list.
 func (g *glide) row(a *App, target int) int {
 	now := time.Now()
 	if !g.init || !a.motion() || a.picsOn {
@@ -35,10 +36,12 @@ func (g *glide) row(a *App, target int) int {
 		return target
 	}
 	if target != g.lastTarget {
-		rapid := !g.lastMove.IsZero() && now.Sub(g.lastMove) < 75*time.Millisecond
+		rapid := !g.lastMove.IsZero() && now.Sub(g.lastMove) < 180*time.Millisecond
 		g.lastTarget = target
 		g.lastMove = now
-		if rapid {
+		// Terminal cells can only highlight integer rows: a 1-row spring has no
+		// intermediate row to draw and only introduces 1–2 frames of input lag.
+		if rapid || math.Abs(float64(target)-g.pos) <= 1.05 {
 			g.pos, g.last = float64(target), now
 			return target
 		}
@@ -49,12 +52,16 @@ func (g *glide) row(a *App, target int) int {
 		dt = .1
 	}
 	d := float64(target) - g.pos
-	if math.Abs(d) > 10 { // long jumps (pgdn, home): snappy 2-row landing
-		g.pos = float64(target) - math.Copysign(2, d)
+	if math.Abs(d) <= 1.05 {
+		g.pos = float64(target)
+		return target
+	}
+	if math.Abs(d) > 10 { // long jumps (pgdn, home): snappy 3-row landing
+		g.pos = float64(target) - math.Copysign(3, d)
 		d = float64(target) - g.pos
 	}
-	g.pos += d * (1 - math.Exp(-dt*36))
-	if math.Abs(float64(target)-g.pos) < .06 {
+	g.pos += d * (1 - math.Exp(-dt*38))
+	if math.Abs(float64(target)-g.pos) < .08 {
 		g.pos = float64(target)
 	} else {
 		a.gliding = true

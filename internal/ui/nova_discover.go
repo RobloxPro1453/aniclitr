@@ -325,7 +325,7 @@ func (d *discover) novaTonightBody(a *App, w, h int) []string {
 
 	picks := tonightPicks(a, d.budget, homeFeed(a))
 	if len(picks) == 0 {
-		out = append(out, emptyState("Henüz öneri yok", "Birkaç bölüm izle ya da kitaplığına planlananlar ekle.", w, max(4, h-len(out)))...)
+		out = append(out, emptyState("Henüz öneri yok", "Birkaç bölüm izleyin veya kitaplığınıza planlananlar ekleyin.", w, max(4, h-len(out)))...)
 		return block(out, w, h)
 	}
 	c := &d.cur[tTonight]
@@ -448,16 +448,20 @@ func (d *discover) novaGenreList(a *App, w, h int) []string {
 // novaRandomBody renders the slot reel or the highlighted random showcase card.
 func (d *discover) novaRandomBody(a *App, w, h int) []string {
 	if d.rolling.active() || (d.rnd == nil && d.rndErr == nil) {
+		pool := d.rollPool
+		if len(pool) == 0 {
+			pool = []string{"Frieren", "Mushishi", "Monster", "Cowboy Bebop", "Odd Taxi"}
+		}
 		p := d.rolling.p()
 		speed := 1 - easeOutCubic(p)
-		idx := int(float64(a.frame)*(0.3+2*speed)) % max(1, len(d.rollPool))
+		idx := int(float64(a.frame)*(0.3+2*speed)) % len(pool)
 		var out []string
 		top := max(1, (h-7)/2)
 		for i := 0; i < top; i++ {
 			out = append(out, "")
 		}
 		for k := -1; k <= 1; k++ {
-			name := d.rollPool[(idx+k+len(d.rollPool))%len(d.rollPool)]
+			name := pool[(idx+k+len(pool))%len(pool)]
 			if k == 0 {
 				out = append(out, center(gradient("▸  "+name+"  ◂", brand, true), w))
 			} else {
@@ -468,7 +472,7 @@ func (d *discover) novaRandomBody(a *App, w, h int) []string {
 		return block(out, w, h)
 	}
 	if d.rndErr != nil {
-		return emptyState("Seçilemedi", d.rndErr.Error()+" · space ile tekrar dene", w, h)
+		return emptyState("Seçilemedi", d.rndErr.Error()+" · space ile tekrar deneyin", w, h)
 	}
 	m := d.rnd
 	acc := a.posters.accent(m.Poster(), cAccent).hex()

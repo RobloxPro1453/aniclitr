@@ -82,6 +82,10 @@ func (p *libPopup) update(a *App, k tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	it, inLib := a.libItem(p.an)
+	if len(rs) == 0 {
+		return nil
+	}
+	p.cur = clamp(p.cur, 0, len(rs)-1)
 	switch k.String() {
 	case "esc", "q", "a", "+":
 		a.popup = nil
@@ -135,7 +139,7 @@ func (p *libPopup) update(a *App, k tea.KeyMsg) tea.Cmd {
 			p.naming = true
 		case "remove":
 			if saved, ok := a.libItem(p.an); ok {
-				a.lib.Remove(p.an.Key())
+				a.lib.Remove(saved.Key())
 				a.remember(p.an.Title+" kitaplıktan çıkarıldı", func(a *App) { a.lib.Restore(saved) })
 			}
 			p.cur = 0

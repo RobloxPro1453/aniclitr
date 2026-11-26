@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"aniclitr/internal/extract"
 	"aniclitr/internal/netx"
@@ -116,9 +117,14 @@ type tokenData struct {
 	ExpiresAt int64  `json:"expiresAt"`
 }
 
+type cachedDetail struct {
+	data animeDetailData
+	at   time.Time
+}
+
 var (
 	cacheMu     sync.Mutex
-	detailCache = map[string]animeDetailData{}
+	detailCache = map[string]cachedDetail{}
 )
 
 func buildMediaURL(key string) string {
@@ -192,9 +198,9 @@ func fetchDetail(ctx context.Context, slug string) (animeDetailData, error) {
 		return animeDetailData{}, source.ErrNotFound
 	}
 	cacheMu.Lock()
-	if d, ok := detailCache[slug]; ok && d.Anime != nil {
+	if c, ok := detailCache[slug]; ok && c.data.Anime != nil && time.Since(c.at) < 10*time.Minute {
 		cacheMu.Unlock()
-		return d, nil
+		return c.data, nil
 	}
 	cacheMu.Unlock()
 
@@ -207,7 +213,10 @@ func fetchDetail(ctx context.Context, slug string) (animeDetailData, error) {
 		return animeDetailData{}, source.ErrNotFound
 	}
 	cacheMu.Lock()
-	detailCache[slug] = env.Data
+	if len(detailCache) > 128 {
+		clear(detailCache)
+	}
+	detailCache[slug] = cachedDetail{data: env.Data, at: time.Now()}
 	cacheMu.Unlock()
 	return env.Data, nil
 }

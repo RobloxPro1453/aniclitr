@@ -158,6 +158,10 @@ func (p *Pack) ResolveTrace(ctx context.Context, u *url.URL, hdr map[string]stri
 			tr.OK, tr.Note = true, fmt.Sprintf("%s=%s", step.Var, extract.Summarize(val, 60))
 
 		case "url_replace":
+			if idx >= len(p.stepRes) || p.stepRes[idx] == nil {
+				tr.OK, tr.Note = step.Optional, "geçersiz regex"
+				break
+			}
 			target := step.From
 			if target == "" {
 				target = "url"
@@ -275,6 +279,10 @@ func (p *Pack) ResolveTrace(ctx context.Context, u *url.URL, hdr map[string]stri
 			}
 
 		case "regex":
+			if idx >= len(p.stepRes) || p.stepRes[idx] == nil {
+				tr.OK, tr.Note = step.Optional, "geçersiz regex"
+				break
+			}
 			in := vars[fromVar]
 			m := p.stepRes[idx].FindStringSubmatch(in)
 			if len(m) == 0 {
@@ -422,6 +430,10 @@ func (p *Pack) ResolveTrace(ctx context.Context, u *url.URL, hdr map[string]stri
 			}
 
 		case "emit_regex_all":
+			if idx >= len(p.stepRes) || p.stepRes[idx] == nil {
+				tr.OK, tr.Note = step.Optional, "geçersiz regex"
+				break
+			}
 			in := vars[fromVar]
 			ref := interpolate(step.Referer, vars)
 			ua := interpolate(step.UserAgent, vars)

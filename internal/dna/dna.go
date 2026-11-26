@@ -53,7 +53,7 @@ func Build(items []store.Item, credits map[int]StaffCredit) Profile {
 	p.TotalTitles = len(items)
 	if len(items) == 0 {
 		p.CriticStyle = "Henüz Keşif Aşamasında"
-		p.SignatureLine = "Kitaplığına birkaç anime ekleyip puanladığında Zevk DNA'n otomatik oluşur."
+		p.SignatureLine = "Kitaplığınıza birkaç anime ekleyip puanladığınızda izleme profiliniz otomatik olarak oluşur."
 		return p
 	}
 

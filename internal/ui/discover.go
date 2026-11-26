@@ -240,7 +240,7 @@ func (d *discover) load(a *App) tea.Cmd {
 		}
 		return run(60*time.Second, func(ctx context.Context) tea.Msg {
 			if len(liked) == 0 {
-				return recsMsg{err: fmt.Errorf("öneri için kitaplığında puanladığın/bitirdiğin anime olmalı · m ile Ruh Hali önerilerini hemen dene")}
+				return recsMsg{err: fmt.Errorf("öneri için kitaplığınızda puanlanmış/tamamlanmış anime olmalı · m ile Ruh Hali önerilerini deneyin")}
 			}
 			items, err := anilist.Recommend(ctx, liked, have)
 			return recsMsg{items, err}
@@ -589,12 +589,18 @@ func (d *discover) key(a *App, k tea.KeyMsg) tea.Cmd {
 		}
 	case "a", "+":
 		if m := d.selected(a); m != nil {
-			if _, ok := a.lib.FindMal(m.IDMal); ok {
-				a.notify("zaten listende", "warn")
-				return nil
+			if m.IDMal > 0 {
+				if _, ok := a.lib.FindMal(m.IDMal); ok {
+					a.notify("zaten listenizde", "warn")
+					return nil
+				}
 			}
-			a.libSet(source.Anime{Source: "mal", ID: strconv.Itoa(m.IDMal), Title: m.Name(), Poster: m.Poster(), MalID: m.IDMal,
-				Year: m.SeasonYear, Genres: m.Genres, EpCount: m.Episodes, Kind: m.Format}, func(it *store.Item) { it.Status = store.Planned })
+			src, id := "mal", strconv.Itoa(m.IDMal)
+			if m.IDMal == 0 {
+				src, id = "anilist", strconv.Itoa(m.ID)
+			}
+			a.libSet(source.Anime{Source: src, ID: id, Title: m.Name(), Poster: m.Poster(), MalID: m.IDMal,
+				Year: m.SeasonYear, Genres: m.Genres, EpCount: m.Episodes, Kind: anilist.FormatTR(m.Format)}, func(it *store.Item) { it.Status = store.Planned })
 			a.notify("planlananlara eklendi: "+m.Name(), "ok")
 			a.celebrate(16)
 			return a.tick()

@@ -317,6 +317,7 @@ const frameGap = time.Second / 60
 func (w *Writer) loop() {
 	defer close(w.done)
 	heal := time.NewTimer(time.Hour)
+	defer heal.Stop()
 	for {
 		select {
 		case _, ok := <-w.wake:
