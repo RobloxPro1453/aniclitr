@@ -147,8 +147,12 @@ func (p *playing) adjustSubDelay(a *App, delta float64, reset bool) tea.Cmd {
 
 // onMpvAction handles live key actions triggered inside the mpv window (no Alt-Tab).
 func (p *playing) onMpvAction(a *App, action string) tea.Cmd {
+	if cmd, handled := p.handleQuickMenuAction(a, action); handled {
+		return cmd
+	}
 	switch {
 	case action == "aniclitr-subs":
+		p.closeQuickMenu()
 		if p.subs.open {
 			p.closeSubs()
 			return nil

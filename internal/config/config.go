@@ -33,6 +33,7 @@ type Config struct {
 	MalClientID      string          `json:"mal_client_id"`               // MyAnimeList API app (myanimelist.net/apiconfig)
 	AniListClientID  string          `json:"anilist_client_id,omitempty"` // AniList OAuth client id (anilist.co/settings/developer)
 	DiscordRPC       bool            `json:"discord_rpc"`                 // show now-playing activity in Discord
+	DiscordAppID     string          `json:"discord_app_id,omitempty"`    // optional custom Discord Application ID override
 	DesktopNotify    bool            `json:"desktop_notify"`              // OS desktop notifications for new episodes & downloads
 	CoverTheme       bool            `json:"cover_theme"`                 // tint the UI with the open anime's cover colours
 	Sounds       int             `json:"sounds"`        // UI sound volume 0-100 (0 = off)

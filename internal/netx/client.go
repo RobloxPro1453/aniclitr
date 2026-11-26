@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"time"
@@ -18,13 +19,27 @@ const UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 
 var jar, _ = cookiejar.New(nil)
 
+// Shared tuned HTTP/2 connection pool: keeps up to 16 warm connections per host
+// so parallel searches, cover art fetches, and stream resolves skip fresh TLS handshakes.
+var transport = &http.Transport{
+	Proxy:                 http.ProxyFromEnvironment,
+	DialContext:           (&net.Dialer{Timeout: 8 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+	ForceAttemptHTTP2:     true,
+	MaxIdleConns:          96,
+	MaxIdleConnsPerHost:   16,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   8 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
+}
+
 // Client follows redirects and keeps cookies.
-var Client = &http.Client{Timeout: 20 * time.Second, Jar: jar}
+var Client = &http.Client{Timeout: 20 * time.Second, Jar: jar, Transport: transport}
 
 // NoRedirect returns the redirect response itself instead of following it.
 var NoRedirect = &http.Client{
-	Timeout: 20 * time.Second,
-	Jar:     jar,
+	Timeout:   20 * time.Second,
+	Jar:       jar,
+	Transport: transport,
 	CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	},

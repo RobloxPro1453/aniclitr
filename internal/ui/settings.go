@@ -129,7 +129,7 @@ func newSettings() *settings {
 			act: func(a *App, _ int) { a.stack = append(a.stack, newAniListScreen(a)) },
 		},
 		setting{
-			label: "Discord Rich Presence", desc: "İzlediğin animeyi, bölümü ve kapak görselini yerel Discord istemcisinde profil etkinliği olarak gösterir (Discord açık değilse sessizce pas geçer).",
+			label: "Discord Rich Presence", desc: "İzlediğin animeyi, bölümü, canlı ilerleme çubuğunu ve kapak görselini Discord'da gösterir (ekstra ayar gerekmez; özel başlık için config.json → discord_app_id).",
 			on:    func(a *App) bool { return a.cfg.DiscordRPC },
 			act: func(a *App, _ int) {
 				a.cfg.DiscordRPC = !a.cfg.DiscordRPC
@@ -239,13 +239,16 @@ func newSettings() *settings {
 		toggle("Otomatik sonraki bölüm", "Bölüm bitince 6 saniyelik geri sayımın ardından aynı çeviri grubuyla sonraki bölüme geçer.", func(a *App) *bool { return &a.cfg.AutoNext }),
 		toggle("Kaynaklar arası yedek", "Bir bölümün tüm sunucuları çalışmazsa ya da bölüm o sitede yoksa diğer açık kaynaklardaki (AnimeciX, AnimeTR, AniHub) karşılığını bulup geçiş önerir.", func(a *App) *bool { return &a.cfg.AutoFallback }),
 		toggle("Tam ekran başlat", "Oynatıcı tam ekran açılır.", func(a *App) *bool { return &a.cfg.Fullscreen }),
-		cycle("Anime4K görüntü iyileştirme", "mpv GPU shader paketiyle anime çizgilerini keskinleştirir ve sıkıştırma gürültüsünü temizler (kapalı · hafif · dengeli · yüksek). Video izlerken mpv içinde Alt+4 ile anlık değiştirilebilir.",
-			shaders.Profiles, func(a *App) *string {
-				if a.cfg.Anime4K == "" {
-					a.cfg.Anime4K = shaders.Off
-				}
-				return &a.cfg.Anime4K
-			}, nil),
+		setting{
+			label: "Görüntü yükseltme (1080p/2K/4K)",
+			desc:  "Sıfır-kopya GPU shader ile netleştirme ve 2× anti-ringing yükseltme (kapalı · 1080p · 2k · 4k). Video izlerken mpv içinde m veya Tab ile açılan menüden anında seçilebilir.",
+			value: func(a *App) string { return shaders.ShortLabel(a.cfg.Anime4K) },
+			act: func(a *App, dir int) {
+				cur := shaders.Normalize(a.cfg.Anime4K)
+				n := len(shaders.Profiles)
+				a.cfg.Anime4K = shaders.Profiles[(indexOf(shaders.Profiles, cur)+dir+n)%n]
+			},
+		},
 		setting{
 			label: "Kapak görselleri", desc: "Anime kapaklarını terminalde gösterir.",
 			on:  func(a *App) bool { return a.cfg.Posters },
@@ -389,7 +392,7 @@ func settingGroup(label string) int {
 		return 0
 	case strings.HasPrefix(label, "Kaynak:") || label == "Arşiv modu":
 		return 3
-	case label == "OP/ED otomatik atla" || label == "Filler bölümleri atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Anime4K görüntü iyileştirme" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu" || label == "Sunucu sırası":
+	case label == "OP/ED otomatik atla" || label == "Filler bölümleri atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Görüntü yükseltme (1080p/2K/4K)" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu" || label == "Sunucu sırası":
 		return 2
 	}
 	return 1

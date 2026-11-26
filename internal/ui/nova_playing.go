@@ -93,8 +93,8 @@ func (p *playing) novaView(a *App, w, h int) string {
 	if math.Abs(p.subDelay) >= 0.05 {
 		chips = append(chips, fg(cWarn).Background(colorOf(cSurface)).Bold(true).Render(" senkron: "+player.FormatSubDelay(p.subDelay)+" "))
 	}
-	if a.cfg.Anime4K != "" && a.cfg.Anime4K != shaders.Off {
-		chips = append(chips, fg(cAccent2).Background(colorOf(cSurface)).Bold(true).Render(" ✦ A4K: "+a.cfg.Anime4K+" "))
+	if prof := shaders.Normalize(a.cfg.Anime4K); prof != shaders.Off {
+		chips = append(chips, fg(cAccent2).Background(colorOf(cSurface)).Bold(true).Render(" ✦ "+shaders.ShortLabel(prof)+" "))
 	}
 	if sp := a.sleep.shortPill(); sp != "" {
 		chips = append(chips, fg(cWarn).Background(colorOf(cSurface)).Bold(true).Render(" "+sp+" "))
@@ -196,11 +196,12 @@ func (p *playing) novaView(a *App, w, h int) string {
 	}
 	if len(out)+2 <= h && p.sess != nil && !p.subs.open {
 		ctrls := strings.Join([]string{
+			keycap("m") + " " + stSub.Render("hızlı menü (1080p/2K/4K)"),
 			keycap("space") + " " + stMuted.Render("duraklat"),
 			keycap("←→") + " " + stMuted.Render("10 sn"),
 			keycap("n/b") + " " + stMuted.Render("bölüm"),
-			keycap("y") + " " + stMuted.Render("altyazı (mpv içi)"),
-			keycap("z/x") + " " + stMuted.Render("senkron ±0,1s"),
+			keycap("y") + " " + stMuted.Render("altyazı"),
+			keycap("z/x") + " " + stMuted.Render("senkron"),
 			keycap("s") + " " + stMuted.Render("durdur"),
 		}, "  ")
 		out = append(out, "", center(truncate(ctrls, w-4), w))

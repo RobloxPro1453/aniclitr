@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"aniclitr/internal/match"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
@@ -66,16 +67,17 @@ func (s *suggest) changed(a *App, value string) tea.Cmd {
 	s.items = localHits(a, q)
 	s.busy = true
 	gen := s.gen
-	return tea.Tick(220*time.Millisecond, func(time.Time) tea.Msg { return sugFireMsg{gen: gen} })
+	return tea.Tick(140*time.Millisecond, func(time.Time) tea.Msg { return sugFireMsg{gen: gen} })
 }
 
-// localHits finds history/library titles matching q.
+// localHits finds history/library titles matching q, ranked by title relevance first.
 func localHits(a *App, q string) []sugItem {
 	var out []sugItem
 	seen := map[string]bool{}
 	for _, e := range a.recent() {
 		if sc, pos := fuzzy(q, e.Title); sc > 0 {
-			out = append(out, sugItem{an: e.Anime(), local: "geçmiş", score: sc + 5, pos: pos})
+			rel := match.RankTitle(q, e.Title)
+			out = append(out, sugItem{an: e.Anime(), local: "geçmiş", score: rel*10 + sc + 5, pos: pos})
 			seen[fold(e.Title)] = true
 		}
 	}
@@ -85,7 +87,8 @@ func localHits(a *App, q string) []sugItem {
 		}
 		if sc, pos := fuzzy(q, it.Title); sc > 0 {
 			it := it
-			out = append(out, sugItem{an: it.Anime(), local: "kitaplık", item: &it, score: sc, pos: pos})
+			rel := match.RankTitle(q, it.Title)
+			out = append(out, sugItem{an: it.Anime(), local: "kitaplık", item: &it, score: rel*10 + sc, pos: pos})
 			seen[fold(it.Title)] = true
 		}
 	}
@@ -130,8 +133,15 @@ func (s *suggest) result(m sugResMsg) {
 	for _, it := range s.items {
 		seen[fold(it.an.Title)] = true
 	}
+	// Rank live results by title relevance so exact matches lead autocomplete.
+	ranked := append([]source.Anime(nil), m.res...)
+	sort.SliceStable(ranked, func(i, j int) bool {
+		ri := match.RankTitle(m.q, append([]string{ranked[i].Title, ranked[i].AltTitle}, ranked[i].Titles...)...)
+		rj := match.RankTitle(m.q, append([]string{ranked[j].Title, ranked[j].AltTitle}, ranked[j].Titles...)...)
+		return ri > rj
+	})
 	n := 0
-	for _, r := range m.res {
+	for _, r := range ranked {
 		if n >= 7 || seen[fold(r.Title)] {
 			continue
 		}

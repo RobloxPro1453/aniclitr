@@ -37,6 +37,8 @@ type Activity struct {
 	LargeImage string
 	LargeText  string
 	Start      time.Time
+	End        time.Time
+	Paused     bool
 }
 
 // Client manages a lazy local IPC connection to Discord.
@@ -49,8 +51,12 @@ type Client struct {
 }
 
 // New creates a Discord RPC client (does not connect until SetActivity is called).
-func New(enabled bool) *Client {
+// Optional customAppID overrides the built-in public ID (ANICLITR_DISCORD_APP_ID wins).
+func New(enabled bool, customAppID ...string) *Client {
 	id := strings.TrimSpace(os.Getenv("ANICLITR_DISCORD_APP_ID"))
+	if id == "" && len(customAppID) > 0 {
+		id = strings.TrimSpace(customAppID[0])
+	}
 	if id == "" {
 		id = DefaultAppID
 	}
@@ -198,15 +204,25 @@ func clampDiscordStr(s string, minLen, maxLen int) string {
 
 func buildActivityFrame(pid int, act Activity, nonce string) []byte {
 	details := clampDiscordStr(act.Details, 2, 128)
-	state := clampDiscordStr(act.State, 2, 128)
-	body := map[string]any{
-		"details":  details,
-		"state":    state,
-		"type":     3, // Watching
-		"instance": false,
+	rawState := strings.TrimSpace(act.State)
+	if act.Paused && rawState != "" && !strings.HasPrefix(rawState, "❚❚") {
+		rawState = "❚❚ Duraklatıldı · " + rawState
 	}
-	if !act.Start.IsZero() {
-		body["timestamps"] = map[string]int64{"start": act.Start.Unix()}
+	state := clampDiscordStr(rawState, 2, 128)
+	body := map[string]any{
+		"name":                "aniclitr",
+		"details":             details,
+		"state":               state,
+		"type":                3, // Watching
+		"status_display_type": 2, // Show anime title (details) in sidebar instead of app name
+		"instance":            false,
+	}
+	if !act.Paused && !act.Start.IsZero() {
+		ts := map[string]int64{"start": act.Start.Unix()}
+		if !act.End.IsZero() && act.End.After(act.Start) {
+			ts["end"] = act.End.Unix()
+		}
+		body["timestamps"] = ts
 	}
 	assets := map[string]string{}
 	img := strings.TrimSpace(act.LargeImage)

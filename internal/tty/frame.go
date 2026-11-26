@@ -59,30 +59,66 @@ type Style struct {
 // SGR renders the style as one absolute sequence (always starts with a reset).
 func (s Style) SGR() string {
 	var b strings.Builder
+	b.Grow(32)
+	writeSGR(&b, s)
+	return b.String()
+}
+
+// writeSGR appends the SGR escape sequence directly into b with zero heap allocs.
+func writeSGR(b *strings.Builder, s Style) {
 	b.WriteString("\x1b[0")
-	for i, code := range []string{"1", "2", "3", "4", "7", "9"} {
-		if s.Attr&(1<<i) != 0 {
-			b.WriteByte(';')
-			b.WriteString(code)
+	if s.Attr != 0 {
+		if s.Attr&Bold != 0 {
+			b.WriteString(";1")
+		}
+		if s.Attr&Faint != 0 {
+			b.WriteString(";2")
+		}
+		if s.Attr&Italic != 0 {
+			b.WriteString(";3")
+		}
+		if s.Attr&Underline != 0 {
+			b.WriteString(";4")
+		}
+		if s.Attr&Reverse != 0 {
+			b.WriteString(";7")
+		}
+		if s.Attr&Strike != 0 {
+			b.WriteString(";9")
 		}
 	}
-	writeCol(&b, s.FG, "38")
-	writeCol(&b, s.BG, "48")
+	writeCol(b, s.FG, ";38")
+	writeCol(b, s.BG, ";48")
 	b.WriteByte('m')
-	return b.String()
+}
+
+func writeUint8(b *strings.Builder, v uint32) {
+	var buf [4]byte
+	b.Write(strconv.AppendUint(buf[:0], uint64(v&0xff), 10))
 }
 
 func writeCol(b *strings.Builder, c uint32, base string) {
 	switch {
 	case c&colRGB != 0:
-		b.WriteString(";" + base + ";2;")
-		b.WriteString(strconv.Itoa(int(c>>16) & 0xff))
+		b.WriteString(base)
+		b.WriteString(";2;")
+		writeUint8(b, c>>16)
 		b.WriteByte(';')
-		b.WriteString(strconv.Itoa(int(c>>8) & 0xff))
+		writeUint8(b, c>>8)
 		b.WriteByte(';')
-		b.WriteString(strconv.Itoa(int(c) & 0xff))
+		writeUint8(b, c)
 	case c&colIndex != 0:
-		b.WriteString(";" + base + ";5;" + strconv.Itoa(int(c&0xff)))
+		b.WriteString(base)
+		b.WriteString(";5;")
+		writeUint8(b, c)
+	}
+}
+
+var asciiGlyphs [128]string
+
+func init() {
+	for i := 0; i < 128; i++ {
+		asciiGlyphs[i] = string(byte(i))
 	}
 }
 
@@ -216,7 +252,8 @@ func (f *Frame) setLine(y int, s string) {
 	var st Style
 	x := 0
 	row := f.Cells[y*f.W : (y+1)*f.W]
-	for i := 0; i < len(s) && x < f.W; {
+	n := len(s)
+	for i := 0; i < n && x < f.W; {
 		c := s[i]
 		if c == 0x1b {
 			i = f.escape(s, i, &st)
@@ -224,6 +261,29 @@ func (f *Frame) setLine(y int, s string) {
 		}
 		if c < 0x20 || c == 0x7f {
 			i++
+			continue
+		}
+		// Fast path 1: plain printable ASCII not followed by a non-ASCII combining mark (~92% of cells).
+		if c < 0x7f && (i+1 >= n || s[i+1] < 0x80) {
+			if row[x].W == 0 && x > 0 {
+				row[x-1] = Cell{G: " ", W: 1, S: row[x-1].S}
+			}
+			row[x] = Cell{G: asciiGlyphs[c], W: 1, S: st}
+			i++
+			x++
+			continue
+		}
+		// Fast path 2: single-width non-combining Latin/Turkish or box-drawing/block rune
+		// followed by ASCII/end (avoids uniseg + ansi.StringWidth for ─│╭╮╰╯▌▀çğıİöşü).
+		if r, sz := utf8.DecodeRuneInString(s[i:]); sz > 1 && r != utf8.RuneError &&
+			(i+sz >= n || s[i+sz] < 0x80) &&
+			((r >= 0x00a0 && r <= 0x024f) || (r >= 0x2500 && r <= 0x259f)) {
+			if row[x].W == 0 && x > 0 {
+				row[x-1] = Cell{G: " ", W: 1, S: row[x-1].S}
+			}
+			row[x] = Cell{G: s[i : i+sz], W: 1, S: st}
+			i += sz
+			x++
 			continue
 		}
 		cluster, _, _, _ := uniseg.FirstGraphemeClusterInString(s[i:], -1)
@@ -380,7 +440,15 @@ func applySGR(st *Style, params string) {
 // (symbols, private-use icons, CJK, emoji). After writing one, the writer
 // re-anchors the cursor so a disagreement cannot shift what follows.
 func risky(g string) bool {
+	if len(g) <= 1 {
+		return false // single ASCII byte is always narrow
+	}
+	runes := 0
 	for _, r := range g {
+		runes++
+		if runes > 1 {
+			return true // multi-rune cluster (emoji, combining)
+		}
 		switch {
 		case r < 0x2000:
 			// Latin, Turkish letters, Greek, Cyrillic… narrow everywhere
@@ -390,5 +458,5 @@ func risky(g string) bool {
 			return true
 		}
 	}
-	return utf8.RuneCountInString(g) > 1 // multi-rune cluster (emoji, combining)
+	return false
 }

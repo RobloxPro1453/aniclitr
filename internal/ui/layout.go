@@ -6,17 +6,49 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 )
+
+// plainWidth measures visual cell width with a zero-alloc fast-path for
+// single-line plain ASCII + Turkish/Latin/box-drawing text (no ANSI escapes,
+// no combining marks or wide CJK/emoji). Falls back to lipgloss.Width otherwise.
+func plainWidth(s string) int {
+	if s == "" {
+		return 0
+	}
+	w := 0
+	for i := 0; i < len(s); {
+		b := s[i]
+		if b < 0x80 {
+			if b < 0x20 || b == 0x7f {
+				return lipgloss.Width(s)
+			}
+			w++
+			i++
+			continue
+		}
+		r, sz := utf8.DecodeRuneInString(s[i:])
+		// Common single-cell Latin-1/Turkish/Greek/Cyrillic, punctuation, arrows, box/block drawing.
+		if (r >= 0x00A0 && r <= 0x024F) || (r >= 0x2010 && r <= 0x2027) || (r >= 0x2190 && r <= 0x25FF) {
+			w++
+			i += sz
+			continue
+		}
+		return lipgloss.Width(s)
+	}
+	return w
+}
 
 // truncate shortens styled or plain text to n cells with an ellipsis.
 func truncate(s string, n int) string {
 	if n <= 0 {
 		return ""
 	}
-	if lipgloss.Width(s) <= n {
+	if plainWidth(s) <= n {
 		return s
 	}
 	return ansi.Truncate(s, n, "…")
@@ -24,21 +56,34 @@ func truncate(s string, n int) string {
 
 // fit returns s padded/truncated to exactly w cells.
 func fit(s string, w int) string {
-	sw := lipgloss.Width(s)
+	sw := plainWidth(s)
 	if sw > w {
 		return ansi.Truncate(s, w, "")
 	}
-	return s + strings.Repeat(" ", w-sw)
+	if sw == w {
+		return s
+	}
+	pad := w - sw
+	if pad <= len(spaceRun) {
+		return s + spaceRun[:pad]
+	}
+	return s + strings.Repeat(" ", pad)
 }
 
 // block normalises lines to a w×h rectangle.
 func block(lines []string, w, h int) []string {
 	out := make([]string, h)
+	blank := ""
+	if w <= len(spaceRun) {
+		blank = spaceRun[:w]
+	} else {
+		blank = strings.Repeat(" ", w)
+	}
 	for i := 0; i < h; i++ {
 		if i < len(lines) {
 			out[i] = fit(lines[i], w)
 		} else {
-			out[i] = strings.Repeat(" ", w)
+			out[i] = blank
 		}
 	}
 	return out
@@ -77,8 +122,9 @@ func hjoin(gap int, cols ...[]string) []string {
 // vrule is a 1-column divider.
 func vrule(h int) []string {
 	out := make([]string, h)
+	bar := stFaint.Render("│")
 	for i := range out {
-		out[i] = stFaint.Render("│")
+		out[i] = bar
 	}
 	return out
 }
@@ -149,13 +195,54 @@ func progressBar(w int, frac float64, stops []string) string {
 	full := int(total)
 	rem := int((total - float64(full)) * 8)
 	var b strings.Builder
+	prof := lipgloss.ColorProfile()
+	denom := float64(max(w-1, 1))
+	switch prof {
+	case termenv.Ascii:
+		b.Grow(w * 3)
+		for i := 0; i < full; i++ {
+			b.WriteString("█")
+		}
+		n := full
+		if n < w && rem > 0 {
+			b.WriteString(eighths[rem])
+			n++
+		}
+		for i := n; i < w; i++ {
+			b.WriteString("─")
+		}
+		return b.String()
+	case termenv.TrueColor:
+		b.Grow(w*22 + 16)
+		for i := 0; i < full; i++ {
+			writeRGBFG(&b, gradAt(stops, float64(i)/denom))
+			b.WriteString("█")
+		}
+		n := full
+		if n < w && rem > 0 {
+			writeRGBFG(&b, gradAt(stops, float64(n)/denom))
+			b.WriteString(eighths[rem])
+			n++
+		}
+		if n > 0 {
+			b.WriteString("\x1b[0m")
+		}
+		if n < w {
+			writeRGBFG(&b, hex(cFaint))
+			for i := n; i < w; i++ {
+				b.WriteString("─")
+			}
+			b.WriteString("\x1b[0m")
+		}
+		return b.String()
+	}
 	for i := 0; i < full; i++ {
-		c := gradAt(stops, float64(i)/float64(max(w-1, 1))).hex()
+		c := gradAt(stops, float64(i)/denom).hex()
 		b.WriteString(fg(c).Render("█"))
 	}
 	n := full
 	if n < w && rem > 0 {
-		c := gradAt(stops, float64(n)/float64(max(w-1, 1))).hex()
+		c := gradAt(stops, float64(n)/denom).hex()
 		b.WriteString(fg(c).Render(eighths[rem]))
 		n++
 	}

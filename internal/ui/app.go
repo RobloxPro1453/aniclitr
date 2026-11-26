@@ -112,6 +112,8 @@ type toolsDoneMsg struct {
 	failed    []string
 }
 
+type deferredInitMsg struct{}
+
 // ---- app ----
 
 type resolveState struct {
@@ -279,7 +281,7 @@ func New(cfg config.Config, g Graphics) *App {
 	if dir == "" {
 		dir = download.DefaultDir()
 	}
-	a.dl = download.Open(dir)
+	a.dl = download.OpenLazy(dir)
 	a.mal = mal.New(cfg.MalClientID)
 	a.msync = malsync.New(a.mal, a.lib)
 	if a.mal.Connected() {
@@ -290,7 +292,7 @@ func New(cfg config.Config, g Graphics) *App {
 	if a.al.Connected() {
 		a.alsync.Start()
 	}
-	a.rpc = discord.New(cfg.DiscordRPC)
+	a.rpc = discord.New(cfg.DiscordRPC, cfg.DiscordAppID)
 	a.keys = config.LoadKeys()
 	for _, j := range a.dl.Jobs() {
 		a.dlSeen[j.ID] = j.State
@@ -323,10 +325,14 @@ func (a *App) applyGraphics() {
 }
 
 func (a *App) Init() tea.Cmd {
+	// Critical path first: frame 1 + feed + live listeners start immediately.
+	// Secondary background probes (health, schedule, updates, loose-file organizer)
+	// stagger cleanly after 320ms so launch feels instantaneous.
 	cmds := []tea.Cmd{
-		a.tick(), a.loadFeed(), a.loadSchedule(), a.checkHealth(),
+		a.tick(), a.loadFeed(),
 		probeNet(), a.waitDL(), a.waitMal(), a.waitAniList(), tea.SetWindowTitle("aniclitr"),
-		a.migratePath(), a.checkUpdate(false), a.organizeLooseDownloads(),
+		a.migratePath(),
+		tea.Tick(320*time.Millisecond, func(time.Time) tea.Msg { return deferredInitMsg{} }),
 	}
 	if a.initURL != "" {
 		cmds = append(cmds, a.openURL(a.initURL))
@@ -524,7 +530,7 @@ func (a *App) pop() {
 
 func (a *App) slide(dir int) {
 	if a.motion() {
-		a.trans, a.transDir = newTween(240*time.Millisecond), dir
+		a.trans, a.transDir = newTween(125*time.Millisecond), dir
 	}
 }
 
@@ -598,7 +604,7 @@ func (a *App) tick() tea.Cmd {
 		return nil
 	}
 	a.ticking = true
-	return tea.Tick(time.Second/30, func(t time.Time) tea.Msg { return tickMsg(t) })
+	return tea.Tick(time.Second/60, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
 // ---- async helpers ----
@@ -797,8 +803,13 @@ func (a *App) pickQuality(st *source.Stream) source.Quality {
 // ---- update ----
 
 func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
+	skipPaint := false
 	if a.out != nil {
-		defer a.paint()
+		defer func() {
+			if !skipPaint {
+				a.paint()
+			}
+		}()
 	}
 	// A bug in one screen must never take the whole app (and the user's
 	// terminal) down: log it, tell the user, keep running.
@@ -831,6 +842,11 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			cmds = append(cmds, a.tick())
 		}
 	case tea.MouseMsg:
+		// Ignore bare mouse-move events completely without repainting a frame.
+		if m.Action == tea.MouseActionMotion {
+			skipPaint = true
+			return a, nil
+		}
 		a.lastInput = time.Now()
 		if a.saver {
 			a.wake()
@@ -1054,6 +1070,11 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	case updateMsg:
 		a.onUpdate(m)
 		cmds = append(cmds, a.tick())
+	case deferredInitMsg:
+		cmds = append(cmds, a.loadSchedule(), a.checkHealth(), a.checkUpdate(false), guard("indirme-tara", func() tea.Msg {
+			a.dl.ScanDisk()
+			return nil
+		}), a.organizeLooseDownloads())
 	case appSchedMsg:
 		if m.err == nil {
 			a.schedule = m.items
@@ -1175,9 +1196,9 @@ func (a *App) compose() (frame []string, suppress bool) {
 	if a.fx.active() {
 		a.fx.draw(lines, a.w)
 	}
-	// slide transition: new screens glide in from the side they came from
+	// slide transition: snappy 8-col ease-out glide (Doherty threshold <130ms)
 	if a.trans.active() {
-		off := int((1 - easeOutCubic(a.trans.p())) * 14)
+		off := int((1 - easeOutCubic(a.trans.p())) * 8)
 		for i, l := range lines {
 			if off <= 0 {
 				break

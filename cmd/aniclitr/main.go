@@ -38,7 +38,7 @@ import (
 
 // version is bumped on release; CI release builds also stamp it
 // from the git tag (-ldflags "-X main.version=…").
-var version = "1.2.1"
+var version = "1.3.0"
 
 func main() {
 	var initialURL string
@@ -252,13 +252,13 @@ aniclitr --version                sürüm`)
 	var err error
 	if cfg.Renderer == "klasik" {
 		// fallback: Bubble Tea's own line renderer (posters may blink)
-		_, err = tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
+		_, err = tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
 	} else {
 		// default: our cell renderer (internal/tty) — double/mailbox buffered,
 		// absolute addressing, self-healing, pictures as a separate layer
 		fmt.Print(tty.Enter)
 		app.SelfPaint(os.Stdout)
-		_, err = tea.NewProgram(app, tea.WithoutRenderer(), tea.WithMouseAllMotion()).Run()
+		_, err = tea.NewProgram(app, tea.WithoutRenderer(), tea.WithMouseCellMotion()).Run()
 		app.Close()
 		fmt.Print(tty.Leave)
 	}

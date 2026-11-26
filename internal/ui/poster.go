@@ -11,6 +11,7 @@ import (
 	_ "image/png"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -413,15 +414,27 @@ func (p *posterCache) renderFade(from, to string, w, h int, t float64, frame int
 	return halfblocks(b, a, w, h, easeInOutSine(t))
 }
 
+func writeRGBEsc(b *strings.Builder, prefix string, r, g, bl uint8) {
+	var num [4]byte
+	b.WriteString(prefix)
+	b.Write(strconv.AppendUint(num[:0], uint64(r), 10))
+	b.WriteByte(';')
+	b.Write(strconv.AppendUint(num[:0], uint64(g), 10))
+	b.WriteByte(';')
+	b.Write(strconv.AppendUint(num[:0], uint64(bl), 10))
+	b.WriteByte('m')
+}
+
 // halfblocks renders img (optionally blended over under, or over the
 // placeholder surface when under is nil and alpha<1).
 func halfblocks(img, under *image.RGBA, w, h int, alpha float64) []string {
+	surf := hex(cSurface)
 	px := func(x, y int) color.RGBA {
 		c := img.RGBAAt(x, y)
 		if alpha >= 1 {
 			return c
 		}
-		base := hex(cSurface)
+		base := surf
 		if under != nil {
 			u := under.RGBAAt(x, y)
 			base = rgb{float64(u.R), float64(u.G), float64(u.B)}
@@ -431,6 +444,7 @@ func halfblocks(img, under *image.RGBA, w, h int, alpha float64) []string {
 	}
 	lines := make([]string, h)
 	var b strings.Builder
+	b.Grow(w * 28)
 	for y := 0; y < h; y++ {
 		b.Reset()
 		var lastF, lastB color.RGBA
@@ -442,18 +456,19 @@ func halfblocks(img, under *image.RGBA, w, h int, alpha float64) []string {
 				b.WriteString("\x1b[0m")
 				first = true
 				if y == 0 {
-					fmt.Fprintf(&b, "\x1b[38;2;%d;%d;%dm▄", u.R, u.G, u.B)
+					writeRGBEsc(&b, "\x1b[38;2;", u.R, u.G, u.B)
+					b.WriteString("▄\x1b[0m")
 				} else {
-					fmt.Fprintf(&b, "\x1b[38;2;%d;%d;%dm▀", t.R, t.G, t.B)
+					writeRGBEsc(&b, "\x1b[38;2;", t.R, t.G, t.B)
+					b.WriteString("▀\x1b[0m")
 				}
-				b.WriteString("\x1b[0m")
 				continue
 			}
 			if first || t != lastF {
-				fmt.Fprintf(&b, "\x1b[38;2;%d;%d;%dm", t.R, t.G, t.B)
+				writeRGBEsc(&b, "\x1b[38;2;", t.R, t.G, t.B)
 			}
 			if first || u != lastB {
-				fmt.Fprintf(&b, "\x1b[48;2;%d;%d;%dm", u.R, u.G, u.B)
+				writeRGBEsc(&b, "\x1b[48;2;", u.R, u.G, u.B)
 			}
 			first = false
 			lastF, lastB = t, u
@@ -471,13 +486,16 @@ func placeholder(w, h int, loading bool, frame int) []string {
 	base := hex(cSurface)
 	hi := hex(cShade)
 	var b strings.Builder
+	b.Grow(w * 20)
 	for y := 0; y < h; y++ {
 		b.Reset()
+		var lastR, lastG, lastB uint8
+		first := true
 		for x := 0; x < w; x++ {
 			t := 0.0
 			if loading {
 				period := float64(w + h*2 + 12)
-				d := math.Mod(float64(x+y*2)-float64(frame)*.9, period)
+				d := math.Mod(float64(x+y*2)-float64(frame)*.5, period)
 				if d < 0 {
 					d += period
 				}
@@ -486,7 +504,13 @@ func placeholder(w, h int, loading bool, frame int) []string {
 				}
 			}
 			c := mix(base, hi, t)
-			fmt.Fprintf(&b, "\x1b[48;2;%d;%d;%dm ", int(c.r), int(c.g), int(c.b))
+			cr, cg, cb := uint8(c.r), uint8(c.g), uint8(c.b)
+			if first || cr != lastR || cg != lastG || cb != lastB {
+				writeRGBEsc(&b, "\x1b[48;2;", cr, cg, cb)
+				lastR, lastG, lastB = cr, cg, cb
+				first = false
+			}
+			b.WriteByte(' ')
 		}
 		b.WriteString("\x1b[0m")
 		lines[y] = b.String()

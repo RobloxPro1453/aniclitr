@@ -163,53 +163,9 @@ func (r *results) rebuild() {
 }
 
 // searchTitleRelevance ranks exact and prefix matches above incidental substring
-// hits (e.g. searching "another" places "Another" above "...in Another World").
+// hits using the unified match.RankTitle engine.
 func searchTitleRelevance(query string, an source.Anime) int {
-	nq := strings.Join(strings.Fields(string(foldRunes(query))), " ")
-	if nq == "" {
-		return 0
-	}
-	qWords := strings.Fields(nq)
-	best := 0
-	for _, raw := range []string{an.Title, an.AltTitle} {
-		nt := strings.Join(strings.Fields(string(foldRunes(raw))), " ")
-		if nt == "" {
-			continue
-		}
-		sc := 0
-		switch {
-		case nt == nq:
-			sc = 100
-		case strings.HasPrefix(nt, nq+" ") || strings.HasPrefix(nt, nq+":") || strings.HasPrefix(nt, nq+"-"):
-			sc = 82
-		default:
-			tWords := strings.Fields(nt)
-			matched := 0
-			for _, qw := range qWords {
-				for _, tw := range tWords {
-					if strings.Trim(tw, ":,-()[]!?.'\"") == qw {
-						matched++
-						break
-					}
-				}
-			}
-			if matched == len(qWords) {
-				if len(tWords) <= len(qWords)+1 {
-					sc = 72
-				} else if len(tWords) <= len(qWords)+3 {
-					sc = 52
-				} else {
-					sc = 32
-				}
-			} else if strings.Contains(nt, nq) {
-				sc = 16
-			}
-		}
-		if sc > best {
-			best = sc
-		}
-	}
-	return best
+	return match.RankTitle(query, append([]string{an.Title, an.AltTitle}, an.Titles...)...)
 }
 
 func (r *results) selected() (entry, bool) {
@@ -233,7 +189,7 @@ func (r *results) onMove(a *App) tea.Cmd {
 	}
 	if it.main.Description == "" {
 		key := it.main.Key()
-		cmds = append(cmds, tea.Tick(220*time.Millisecond, func(time.Time) tea.Msg { return hoverMsg{key} }))
+		cmds = append(cmds, tea.Tick(130*time.Millisecond, func(time.Time) tea.Msg { return hoverMsg{key} }))
 	}
 	return tea.Batch(cmds...)
 }

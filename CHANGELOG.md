@@ -2,6 +2,22 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [1.3.0]
+
+### Eklenenler
+- **`mpv` içi etkileşimli Hızlı Dropdown Menü (`m` / `Tab` / `Alt+4`):** Video izlerken Alt-Tab yapmadan veya kısayol ezberlemeden doğrudan videonun üzerinde açılan şeffaf ASS dropdown menüsü (`↑`/`↓` veya `1`–`8` + `Enter`, `Esc` kapat): **Kapalı / 1080p Net / 2K Keskin / 4K Ultra**, **AniSub Altyazı Seçici**, **Uyku Zamanlayıcısı**, **Oynatma Hızı (`1.0× → 2.0×`)** ve **Altyazı Senkronu Sıfırlama**; açılışta 3 sn keşif ipucu (`m: hızlı menü · y: altyazı · n/b: bölüm`).
+- **Gerçek, Keskin ve GPU Dostu `1080p / 2K / 4K` Yükseltme (`internal/shaders`):** Eski bulanıklaştıran bilateral filtre ve bloklu haleler oluşturan erozyon kaldırıldı; sıfır-kopya `--hwdec=auto-safe` (GPU↔RAM PCIe kopyası yok!) ile **1080p Net** (5-tap FidelityFX CAS + `spline36`), **2K Keskin** (16-tap anti-ringing Catmull-Rom 2× luma + yumuşak CAS) ve **4K Ultra** (+ kenar-seçici ince detay belirginleştirme). Eski `hafif`/`dengeli`/`yüksek` ayarları otomatik göç eder.
+- **İnsanüstü Performans Optimizasyonu & UX Psikolojisi (`internal/tty`, `internal/ui`, `internal/netx`, `internal/download`):**
+  - `tty.Frame.setLine` ASCII/Türkçe/kutu hızlı yolu (`331 µs → 100 µs`, **3,3× hızlı**, `0 allocs/op`) ve sıfır-ayırımlı `tty.Diff` (`24 → 2 allocs/op`).
+  - `theme.go` / `layout.go` doğrudan TrueColor ANSI yazıcısı + `poster.go` sıfır-ayırımlı RGB kaçışları (tam `140×40` TrueColor kare oluşturma + diff **< 1 ms**, 60 FPS bütçesinin 18 katı altında).
+  - Fare takibi `\x1b[?1003h` → `\x1b[?1000h` + `MouseActionMotion` sıfır yeniden çizim (fare kıpırdatınca `0 byte` yazım).
+  - **Nova Ana Sayfa `%0` boşta CPU:** Giriş ve akış oturunca uyarlamalı **60 FPS** saat tamamen durur; oynatma sırasında zaten `%0` CPU.
+  - Kademeli açılış (`download.OpenLazy` + 320 ms `deferredInitMsg`), HTTP/2 bağlantı havuzu (`netx`), Doherty eşiğine göre pürüzsüz `125ms` geçişler ve hızlı tuş tekrarında anında kilitlenen akıllı `glide` kaydırma.
+
+### Düzeltilenler
+- **Tüm menü ve kategorilerde eksiksiz akıllı arama (`internal/match/rank.go`, `internal/nyaa`, `results.go`, `suggest.go`, `cli.go`, `library.go`):** Tek birleşik `match.RankTitle` motoru tüm arama yüzeylerine yayıldı. Nyaa.si'de RSS (son 75 yükleme) ilgisiz serilerle dolduğunda (ör. İngilizce sekmesinde `another` aramasını *"In Another World"* serilerinin gizlemesi), otomatik TF-DF gürültü ayıklamalı `s=seeders&o=desc` ikinci geçişi devreye girerek hiçbir sonucu kaybetmeden tam eşleşmeyi (`Another`) 1. sıraya taşır.
+- **Discord Rich Presence (`internal/discord`, `playing.go`, `config.go`):** `status_display_type: 2` ile üye listesinde `mpv Media Player` yerine doğrudan izlediğin **anime adı** gösterilir; canlı kalan süre ilerleme çubuğu (`start` + `end`), duraklatma durumu (`❚❚ Duraklatıldı`) ve kart başlığını özelleştirmek isteyenler için isteğe bağlı `config.json → discord_app_id` eklendi.
+
 ## [1.2.1]
 
 ### Eklenenler

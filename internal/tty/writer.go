@@ -9,10 +9,11 @@ import (
 )
 
 // Terminal mode setup / teardown. Autowrap is off so a glyph-width
-// disagreement can never wrap or scroll the screen.
+// disagreement can never wrap or scroll the screen. Mode 1000 (button/wheel
+// clicks only, NOT 1003 all-motion) eliminates 100+ Hz mouse-move storms.
 const (
-	Enter = "\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[?1003h\x1b[?1006h\x1b[?2004h\x1b]2;aniclitr\x07\x1b[2J"
-	Leave = "\x1b[?2026l\x1b[?2004l\x1b[?1006l\x1b[?1003l\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l"
+	Enter = "\x1b[?1049h\x1b[?25l\x1b[?7l\x1b[?1000h\x1b[?1006h\x1b[?2004h\x1b]2;aniclitr\x07\x1b[2J"
+	Leave = "\x1b[?2026l\x1b[?2004l\x1b[?1006l\x1b[?1000l\x1b[0m\x1b[?7h\x1b[?25h\x1b[?1049l"
 )
 
 const (
@@ -25,21 +26,34 @@ const (
 // heal rewrites every text cell (used to repair silent drift) but keeps
 // pictures that did not change.
 func Diff(front, back *Frame, clear, heal bool) string {
+	return diffBuf(front, back, clear, heal, nil)
+}
+
+func diffBuf(front, back *Frame, clearFrame, heal bool, scratch []bool) string {
 	var b strings.Builder
+	b.Grow(1024)
 	b.WriteString(syncOn)
-	if back.Bg != "" && (front == nil || front.Bg != back.Bg || clear || heal) {
+	if back.Bg != "" && (front == nil || front.Bg != back.Bg || clearFrame || heal) {
 		if back.Bg == "reset" {
 			b.WriteString("\x1b]111\x1b\\")
 		} else {
-			b.WriteString("\x1b]11;" + back.Bg + "\x1b\\")
+			b.WriteString("\x1b]11;")
+			b.WriteString(back.Bg)
+			b.WriteString("\x1b\\")
 		}
 	}
 	full := front == nil || front.W != back.W || front.H != back.H
-	if full && clear {
+	if full && clearFrame {
 		b.WriteString("\x1b[0m\x1b[2J")
 	}
 	// which cells must be (re)written
-	dirty := make([]bool, len(back.Cells))
+	var dirty []bool
+	if cap(scratch) >= len(back.Cells) {
+		dirty = scratch[:len(back.Cells)]
+		clear(dirty)
+	} else {
+		dirty = make([]bool, len(back.Cells))
+	}
 	if full || heal {
 		for i := range dirty {
 			dirty[i] = true
@@ -77,18 +91,21 @@ func Diff(front, back *Frame, clear, heal bool) string {
 	}
 	// a picture is re-sent when it is new/moved, or when any of its cells was
 	// showing something else before (another picture went away from on top)
-	resend := make([]bool, len(back.Images))
-	for k, im := range back.Images {
-		if full || clear || front == nil || !hasSame(front.Images, im) {
-			resend[k] = true
-			continue
-		}
-		for y := im.Row; y < im.Row+im.H && !resend[k]; y++ {
-			for x := im.Col; x < im.Col+im.W; x++ {
-				fc := front.Cells[y*back.W+x]
-				if fc.Img == 0 || !front.Images[fc.Img-1].same(im) || back.Cells[y*back.W+x].Img != int32(k+1) {
-					resend[k] = true
-					break
+	var resend []bool
+	if len(back.Images) > 0 {
+		resend = make([]bool, len(back.Images))
+		for k, im := range back.Images {
+			if full || clearFrame || front == nil || !hasSame(front.Images, im) {
+				resend[k] = true
+				continue
+			}
+			for y := im.Row; y < im.Row+im.H && !resend[k]; y++ {
+				for x := im.Col; x < im.Col+im.W; x++ {
+					fc := front.Cells[y*back.W+x]
+					if fc.Img == 0 || !front.Images[fc.Img-1].same(im) || back.Cells[y*back.W+x].Img != int32(k+1) {
+						resend[k] = true
+						break
+					}
 				}
 			}
 		}
@@ -112,13 +129,16 @@ func Diff(front, back *Frame, clear, heal bool) string {
 		}
 	}
 	// pictures that stay keep their cells untouched
-	for i := range back.Cells {
-		if id := back.Cells[i].Img; id > 0 && !resend[id-1] {
-			dirty[i] = false
+	if len(back.Images) > 0 {
+		for i := range back.Cells {
+			if id := back.Cells[i].Img; id > 0 && !resend[id-1] {
+				dirty[i] = false
+			}
 		}
 	}
 
-	var pen *Style
+	var pen Style
+	hasPen := false
 	for y := 0; y < back.H; y++ {
 		row := back.Cells[y*back.W : (y+1)*back.W]
 		d := dirty[y*back.W : (y+1)*back.W]
@@ -128,11 +148,9 @@ func Diff(front, back *Frame, clear, heal bool) string {
 				x++
 				continue
 			}
-			// a run of dirty cells; small clean gaps are bridged (cheaper
-			// than a new CUP) but never across a picture
 			start := x
 			if row[start].W == 0 && start > 0 && row[start-1].Img == 0 {
-				start-- // never start on the second half of a wide glyph
+				start--
 			}
 			end := x
 			for end < back.W && row[end].Img == 0 {
@@ -154,12 +172,12 @@ func Diff(front, back *Frame, clear, heal bool) string {
 			for c := start; c < end; c++ {
 				cell := row[c]
 				if cell.W == 0 {
-					continue // drawn by its wide lead cell
+					continue
 				}
-				if pen == nil || *pen != cell.S {
-					s := cell.S
-					pen = &s
-					b.WriteString(s.SGR())
+				if !hasPen || pen != cell.S {
+					pen = cell.S
+					hasPen = true
+					writeSGR(&b, pen)
 				}
 				g := cell.G
 				if g == "" {
@@ -167,7 +185,7 @@ func Diff(front, back *Frame, clear, heal bool) string {
 				}
 				b.WriteString(g)
 				if risky(g) && c+int(cell.W) < back.W {
-					cup(&b, y, c+int(cell.W)) // re-anchor: width disagreements stop here
+					cup(&b, y, c+int(cell.W))
 				}
 			}
 			x = end
@@ -178,9 +196,6 @@ func Diff(front, back *Frame, clear, heal bool) string {
 		if !resend[k] {
 			continue
 		}
-		// normalise the text layer under the picture to plain narrow blanks
-		// first: a stale wide glyph hiding underneath could otherwise be
-		// destroyed later by a neighbouring write — taking pixels with it
 		b.WriteString("\x1b[0m")
 		sp := strings.Repeat(" ", im.W)
 		for y := im.Row; y < im.Row+im.H; y++ {
@@ -189,7 +204,7 @@ func Diff(front, back *Frame, clear, heal bool) string {
 		}
 		cup(&b, im.Row, im.Col)
 		b.WriteString(im.Data)
-		pen = nil
+		hasPen = false
 	}
 	b.WriteString("\x1b[0m")
 	b.WriteString(syncOff)
@@ -206,10 +221,11 @@ func hasSame(list []Image, im Image) bool {
 }
 
 func cup(b *strings.Builder, y, x int) {
+	var num [12]byte
 	b.WriteString("\x1b[")
-	b.WriteString(strconv.Itoa(y + 1))
+	b.Write(strconv.AppendInt(num[:0], int64(y+1), 10))
 	b.WriteByte(';')
-	b.WriteString(strconv.Itoa(x + 1))
+	b.Write(strconv.AppendInt(num[:0], int64(x+1), 10))
 	b.WriteByte('H')
 }
 
@@ -226,6 +242,7 @@ type Writer struct {
 	closed  bool
 
 	front    *Frame
+	dirty    []bool // reusable scratch buffer (zero alloc per diff)
 	lastDiff time.Time
 	lastHeal time.Time
 	dirtyRun bool // there was activity since the last heal
@@ -243,7 +260,7 @@ type Writer struct {
 
 // NewWriter starts the render goroutine.
 func NewWriter(out io.Writer) *Writer {
-	w := &Writer{out: out, wake: make(chan struct{}, 1), done: make(chan struct{}), HealAfter: 1200 * time.Millisecond, HealEvery: 5 * time.Second, lastHeal: time.Now()}
+	w := &Writer{out: out, wake: make(chan struct{}, 1), done: make(chan struct{}), HealAfter: 1800 * time.Millisecond, HealEvery: 15 * time.Second, lastHeal: time.Now()}
 	go w.loop()
 	return w
 }
@@ -340,7 +357,10 @@ func (w *Writer) render(heal bool) bool {
 	if clear {
 		front = nil
 	}
-	s := Diff(front, f, clear, heal)
+	if cap(w.dirty) < len(f.Cells) {
+		w.dirty = make([]bool, len(f.Cells))
+	}
+	s := diffBuf(front, f, clear, heal, w.dirty)
 	t0 := time.Now()
 	if _, err := io.WriteString(w.out, s); err == nil {
 		w.Written += int64(len(s))

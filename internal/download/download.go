@@ -135,8 +135,21 @@ type Manager struct {
 	lastSig time.Time
 }
 
-// Open loads the download index.
+// Open loads the download index and scans the download directory synchronously.
 func Open(dir string) *Manager {
+	m := openIndex(dir)
+	m.ScanDisk()
+	return m
+}
+
+// OpenLazy loads the download index immediately (<1ms) without spawning any
+// background goroutines; the caller triggers ScanDisk asynchronously once the
+// UI loop is running so startup never blocks and tests never leak goroutines.
+func OpenLazy(dir string) *Manager {
+	return openIndex(dir)
+}
+
+func openIndex(dir string) *Manager {
 	m := &Manager{max: 2, dir: dir, path: filepath.Join(config.Dir(), "downloads.json"), Updates: make(chan struct{}, 1)}
 	if b, err := os.ReadFile(m.path); err == nil {
 		var jobs []*Job
@@ -154,7 +167,6 @@ func Open(dir string) *Manager {
 			m.jobs = append(m.jobs, j)
 		}
 	}
-	m.ScanDisk()
 	return m
 }
 

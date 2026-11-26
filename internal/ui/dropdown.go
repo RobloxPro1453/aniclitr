@@ -55,7 +55,7 @@ func (a *App) openDropdown(kind string) {
 		d.empty = "Şimdilik sessiz. Yeni bölümler, inen dosyalar ve uyarılar burada toplanır."
 	}
 	if a.motion() {
-		d.openT = newTween(200 * time.Millisecond)
+		d.openT = newTween(125 * time.Millisecond)
 	}
 	a.drop = d
 	a.pal, a.popup = nil, nil
@@ -351,7 +351,7 @@ func ansiPlain(s string) string { return ansi.Strip(s) }
 func (a *App) openList(title string, items []dropItem) {
 	d := &dropdown{kind: "list", title: title, items: func(*App) []dropItem { return items }, empty: "boş"}
 	if a.motion() {
-		d.openT = newTween(200 * time.Millisecond)
+		d.openT = newTween(125 * time.Millisecond)
 	}
 	a.drop = d
 	a.pal, a.popup = nil, nil

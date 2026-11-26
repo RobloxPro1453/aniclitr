@@ -104,3 +104,77 @@ func TestSearchParsesRSSMetadataRawAndSorting(t *testing.T) {
 		t.Fatalf("SortSizeAsc expected SubsPlease first, got %q", items[0].Group)
 	}
 }
+
+func TestSearchNoiseExclusionHTMLFallbackFindsExactSeries(t *testing.T) {
+	t.Setenv("ANICLITR_HOME", t.TempDir())
+	// Simulate Nyaa English RSS newest-75 flooded by unrelated "In Another World" shows.
+	floodRSS := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:nyaa="https://nyaa.si/xmlns/nyaa"><channel><title>Nyaa</title>`
+	for i := 1; i <= 8; i++ {
+		title := "[SubsPlease] ReZero Starting Life in Another World S04E0" + string(rune('0'+i)) + " (1080p).mkv"
+		if i > 4 {
+			title = "[SubsPlease] Yandere Dark Elf From Another World E0" + string(rune('0'+i)) + " (1080p).mkv"
+		}
+		floodRSS += `<item>
+			<title>` + title + `</title>
+			<link>https://nyaa.si/download/200` + string(rune('0'+i)) + `.torrent</link>
+			<guid>https://nyaa.si/view/200` + string(rune('0'+i)) + `</guid>
+			<nyaa:seeders>400</nyaa:seeders><nyaa:leechers>10</nyaa:leechers><nyaa:downloads>5000</nyaa:downloads>
+			<nyaa:infoHash>aaaa00000000000000000000000000000000000` + string(rune('0'+i)) + `</nyaa:infoHash>
+			<nyaa:category>Anime - English-translated</nyaa:category><nyaa:size>1.2 GiB</nyaa:size>
+		</item>`
+	}
+	floodRSS += `</channel></rss>`
+
+	const htmlSeeders = `<html><body><table>
+<tr class="success">
+  <td><a href="/?c=1_2" title="Anime - English-translated"></a></td>
+  <td colspan="2"><a href="/view/999001" title="[EMBER] Another (2012) (01-12 + OVA) [BDRip 1080p HEVC]">[EMBER] Another</a></td>
+  <td class="text-center"><a href="/download/999001.torrent">dl</a><a href="magnet:?xt=urn:btih:deadbeef1234567890abcdef1234567890abcdef&amp;dn=Another">m</a></td>
+  <td class="text-center">6.4 GiB</td>
+  <td class="text-center" data-timestamp="1700000000">2023-11-14</td>
+  <td class="text-center">88</td>
+  <td class="text-center">4</td>
+  <td class="text-center">12000</td>
+</tr>
+</table></body></html>`
+
+	var htmlCalled bool
+	var htmlQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") == "rss" {
+			_, _ = w.Write([]byte(floodRSS))
+			return
+		}
+		if r.URL.Query().Get("s") == "seeders" {
+			htmlCalled = true
+			htmlQuery = r.URL.Query().Get("q")
+			_, _ = w.Write([]byte(htmlSeeders))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	old := base
+	base = srv.URL
+	defer func() { base = old }()
+
+	items, err := Search(context.Background(), "another", CatEng, FilterAll)
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if !htmlCalled {
+		t.Fatalf("expected automatic HTML seeders fallback when RSS has <3 exact matches")
+	}
+	if !strings.Contains(htmlQuery, "-world") {
+		t.Fatalf("expected noise term -world in refined query, got %q", htmlQuery)
+	}
+	if len(items) == 0 || !strings.Contains(items[0].Title, "[EMBER] Another") || !items[0].Trusted {
+		t.Fatalf("expected [EMBER] Another ranked #1 ahead of 400-seed ReZero, got %+v", items[0])
+	}
+	// Even under SortDownloads, exact relevance tier stays on top.
+	SortItems(items, SortDownloads)
+	if !strings.Contains(items[0].Title, "[EMBER] Another") {
+		t.Fatalf("SortDownloads should keep exact match above unrelated flood, got %q", items[0].Title)
+	}
+}

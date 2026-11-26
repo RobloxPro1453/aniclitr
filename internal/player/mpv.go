@@ -253,17 +253,38 @@ func (s *Session) Seek(sec float64) { s.send("seek", sec, "relative") }
 // SeekAbs jumps to an absolute timestamp in seconds (used by Watch Party sync).
 func (s *Session) SeekAbs(sec float64) { s.send("seek", sec, "absolute") }
 
-// SetShaders switches Anime4K shader profile live without restarting mpv.
+// SetShaders switches upscaling profile (kapalı / 1080p / 2k / 4k) live without restarting mpv.
 func (s *Session) SetShaders(profile string) {
-	list, err := shaders.ShaderList(profile)
+	prof := shaders.Normalize(profile)
+	list, err := shaders.ShaderList(prof)
 	if err != nil || list == "" {
 		s.send("change-list", "glsl-shaders", "clr", "")
-		s.send("show-text", "Anime4K: Kapalı", 2200)
+		s.send("set_property", "scale", "bilinear")
+		s.send("set_property", "sigmoid-upscaling", false)
+		s.send("show-text", "Görüntü Yükseltme: Kapalı", 2200)
 		return
 	}
-	s.send("set_property", "hwdec", "auto-copy")
+	s.send("set_property", "hwdec", "auto-safe")
+	s.send("set_property", "deband", true)
+	s.send("set_property", "deband-iterations", 1)
+	if prof == shaders.P4K {
+		s.send("set_property", "scale", "ewa_lanczossharp")
+		s.send("set_property", "sigmoid-upscaling", true)
+	} else {
+		s.send("set_property", "scale", "spline36")
+		s.send("set_property", "sigmoid-upscaling", false)
+	}
 	s.send("change-list", "glsl-shaders", "set", list)
-	s.send("show-text", "✦ Anime4K: "+shaders.Label(profile), 2600)
+	s.send("show-text", "✦ Yükseltme: "+shaders.ShortLabel(prof), 2400)
+}
+
+// SetSpeed changes playback speed live inside mpv.
+func (s *Session) SetSpeed(speed float64) {
+	if speed <= 0 {
+		speed = 1.0
+	}
+	s.send("set_property", "speed", speed)
+	s.send("show-text", fmt.Sprintf("Hız: %.2g×", speed), 1800)
 }
 
 // AddSub loads an external subtitle file into the running player and
@@ -342,6 +363,31 @@ func (s *Session) HideSubMenu() {
 	})
 }
 
+// ShowQuickMenu displays the interactive in-mpv control dropdown (upscale 1080p/2K/4K,
+// sleep timer, speed, subtitle picker) directly over the video via ASS OSD.
+func (s *Session) ShowQuickMenu(ass string) {
+	s.send("enable-section", "aniclitr-menu", "allow-hide-cursor+allow-vo-dragging")
+	s.sendNamed(map[string]any{
+		"name":   "osd-overlay",
+		"id":     78,
+		"format": "ass-events",
+		"data":   ass,
+		"res_x":  1280,
+		"res_y":  720,
+	})
+}
+
+// HideQuickMenu clears the in-mpv quick control dropdown and restores normal keys.
+func (s *Session) HideQuickMenu() {
+	s.send("disable-section", "aniclitr-menu")
+	s.sendNamed(map[string]any{
+		"name":   "osd-overlay",
+		"id":     78,
+		"format": "none",
+		"data":   "",
+	})
+}
+
 func (s *Session) run(sock string, segs []aniskip.Segment) {
 	// This goroutine lives outside Bubble Tea's panic protection: a panic
 	// here would kill the process with the terminal still in raw/alt mode.
@@ -403,8 +449,31 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 		s.send("keybind", "Z", "script-message aniclitr-subdelay -0.5")
 		s.send("keybind", "X", "script-message aniclitr-subdelay +0.5")
 		s.send("keybind", "Alt+0", "script-message aniclitr-subdelay 0")
-		s.send("keybind", "Alt+4", "script-message aniclitr-anime4k")
+		// m / Tab / Alt+4 open the interactive in-mpv dropdown menu (upscale, sleep, speed, subs)
+		s.send("keybind", "m", "script-message aniclitr-menu")
+		s.send("keybind", "TAB", "script-message aniclitr-menu")
+		s.send("keybind", "Alt+4", "script-message aniclitr-menu")
 		s.send("keybind", "Alt+s", "script-message aniclitr-sleep")
+		menuSection := strings.Join([]string{
+			"UP script-message aniclitr-menu-up",
+			"DOWN script-message aniclitr-menu-down",
+			"k script-message aniclitr-menu-up",
+			"j script-message aniclitr-menu-down",
+			"ENTER script-message aniclitr-menu-pick",
+			"KP_ENTER script-message aniclitr-menu-pick",
+			"ESC script-message aniclitr-menu-close",
+			"m script-message aniclitr-menu-close",
+			"TAB script-message aniclitr-menu-close",
+			"1 script-message aniclitr-menu-num 1",
+			"2 script-message aniclitr-menu-num 2",
+			"3 script-message aniclitr-menu-num 3",
+			"4 script-message aniclitr-menu-num 4",
+			"5 script-message aniclitr-menu-num 5",
+			"6 script-message aniclitr-menu-num 6",
+			"7 script-message aniclitr-menu-num 7",
+			"8 script-message aniclitr-menu-num 8",
+		}, "\n")
+		s.send("define-section", "aniclitr-menu", menuSection, "default")
 		subSection := strings.Join([]string{
 			"UP script-message aniclitr-sub-up",
 			"DOWN script-message aniclitr-sub-down",
@@ -428,6 +497,8 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 			// quitting first grabs the frame you stopped at (resume preview)
 			s.send("keybind", "q", "script-message aniclitr-quit")
 		}
+		// Subtle discoverability cue on start (recognition over recall: no memorising keys)
+		s.send("show-text", "m: hızlı menü (1080p/2K/4K · uyku · hız)   ·   y: altyazı   ·   n/b: bölüm", 3000)
 		s.events <- Event{Kind: EvStarted, Speed: speed}
 
 		all := segs
@@ -540,7 +611,9 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 							default:
 							}
 						}
-					case "aniclitr-subs", "aniclitr-sub-up", "aniclitr-sub-down", "aniclitr-sub-pick", "aniclitr-sub-close", "aniclitr-anime4k", "aniclitr-sleep":
+					case "aniclitr-subs", "aniclitr-sub-up", "aniclitr-sub-down", "aniclitr-sub-pick", "aniclitr-sub-close",
+						"aniclitr-menu", "aniclitr-menu-up", "aniclitr-menu-down", "aniclitr-menu-pick", "aniclitr-menu-close",
+						"aniclitr-anime4k", "aniclitr-sleep":
 						select {
 						case s.events <- Event{Kind: EvAction, Action: m.Args[0]}:
 						default:
@@ -549,6 +622,13 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 						if len(m.Args) > 1 {
 							select {
 							case s.events <- Event{Kind: EvAction, Action: "aniclitr-sub-num:" + m.Args[1]}:
+							default:
+							}
+						}
+					case "aniclitr-menu-num":
+						if len(m.Args) > 1 {
+							select {
+							case s.events <- Event{Kind: EvAction, Action: "aniclitr-menu-num:" + m.Args[1]}:
 							default:
 							}
 						}

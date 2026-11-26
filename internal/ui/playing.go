@@ -92,12 +92,16 @@ type playing struct {
 	subDelay  float64
 	activeSub string
 	subs      subsState
+	qmenu     mpvMenuState
 
 	// zero-wait next episode pre-fetch & watch-party sync tracking
 	prefetchStarted bool
 	prefetched      *prefetchedEp
 	lastSyncPos     float64
 	lastSyncPaused  bool
+	lastRPCAt       time.Time
+	lastRPCPaused   bool
+	rpcDurSet       bool
 }
 
 func newPlaying(an source.Anime, ep source.Episode, eps []source.Episode, fansub, host string, st *source.Stream, q source.Quality) *playing {
@@ -342,19 +346,7 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 	switch ev.Kind {
 	case player.EvStarted:
 		p.started = true
-		if a.rpc != nil {
-			state := fmt.Sprintf("Sezon %d · Bölüm %s", p.ep.Season, p.ep.Num())
-			if p.an.IsMovie() {
-				state = "Film"
-			}
-			a.rpc.SetActivity(discord.Activity{
-				Details:    p.an.Title,
-				State:      state,
-				LargeImage: p.an.Poster,
-				LargeText:  "aniclitr",
-				Start:      time.Now(),
-			})
-		}
+		p.updateDiscord(a, true)
 	case player.EvProgress:
 		if !p.started || p.savedPos == 0 {
 			p.savedPos, p.savedAt = ev.Pos, time.Now()
@@ -364,6 +356,10 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 		if time.Since(p.lastSave) > 10*time.Second {
 			p.lastSave = time.Now()
 			p.save(a, false)
+		}
+		// Refresh Discord Rich Presence on pause toggle or when duration first arrives (for progress bar)
+		if a.rpc != nil && (ev.Paused != p.lastRPCPaused || (!p.rpcDurSet && ev.Dur > 0)) && time.Since(p.lastRPCAt) > 3*time.Second {
+			p.updateDiscord(a, false)
 		}
 		// Sleep timer (time-based expiration)
 		if a.sleep.expired() && p.sess != nil {
@@ -514,6 +510,40 @@ func (p *playing) findAdjacent(a *App, dir int, countdown bool) tea.Cmd {
 		ep := eps[idx]
 		return adjacentMsg{id: id, ep: &ep, eps: eps, skippedFiller: sk}
 	}))
+}
+
+// updateDiscord pushes the current episode, live start/end timestamps (for the
+// progress bar), and pause status to local Discord IPC.
+func (p *playing) updateDiscord(a *App, initial bool) {
+	if a.rpc == nil {
+		return
+	}
+	state := fmt.Sprintf("Sezon %d · Bölüm %s", p.ep.Season, p.ep.Num())
+	if p.an.IsMovie() {
+		state = "Film"
+	}
+	now := time.Now()
+	start := now
+	var end time.Time
+	if p.pos > 0 {
+		start = now.Add(-time.Duration(p.pos * float64(time.Second)))
+	}
+	if p.dur > p.pos && p.dur > 0 {
+		end = now.Add(time.Duration((p.dur - p.pos) * float64(time.Second)))
+		p.rpcDurSet = true
+	}
+	p.lastRPCAt = now
+	p.lastRPCPaused = p.paused
+	_ = initial
+	a.rpc.SetActivity(discord.Activity{
+		Details:    p.an.Title,
+		State:      state,
+		LargeImage: p.an.Poster,
+		LargeText:  "aniclitr",
+		Start:      start,
+		End:        end,
+		Paused:     p.paused,
+	})
 }
 
 // startPrefetch quietly resolves the next episode's stream URL in the

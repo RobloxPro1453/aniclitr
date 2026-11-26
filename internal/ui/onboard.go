@@ -15,6 +15,12 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"1.3.0": {
+		"İnsanüstü hız ve akıcılık: 60 FPS uyarlamalı saat, Nova ana sayfada %0 boşta CPU, fare hareketinde sıfır yeniden çizim, 3× hızlı hücre çizici + sıfır-ayırımlı TrueColor yazıcı ve Doherty eşiğine göre pürüzsüz kaydırma/geçişler",
+		"mpv içi etkileşimli dropdown menü (m / Tab / Alt+4) + gerçek 1080p / 2K / 4K GPU yükseltme: sıfır-kopya hwdec (ekran kartını yormaz), gerçek 16-tap anti-ringing Catmull-Rom + FidelityFX CAS keskinlik",
+		"Tüm menülerde eksiksiz akıllı arama: Nyaa.si'nin tüm 5 sekmesinde (İngilizce, Tümü, Türkçe, Raw, Güvenilir), normal aramada, Ana Sayfa önerilerinde ve Kitaplık'ta tam eşleşme her zaman 1. sırada",
+		"Discord Rich Presence iyileştirmesi: üye listesinde mpv yerine doğrudan izlediğin anime adı, canlı kalan süre ilerleme çubuğu ve duraklatma durumu (isteğe bağlı config.json → discord_app_id)",
+	},
 	"1.2.1": {
 		"Gömülü torrent akışı: Nyaa.si'de enter basınca harici magnet istemcisi gerekmeden torrent içindeki bölümler listelenir ve seçtiğin bölüm indirmeyi beklemeden doğrudan mpv'de oynar",
 		"Takip edilen torrent indirmeleri + otomatik klasörleme: torrentte d artık ctrl+d İndirilenler kuyruğunda canlı hızla görünür; inen .mkv/.mp4 dosyaları otomatik olarak doğru seri klasörüne (S04E18 [Grup] [1080p].mkv) yerleştirilir",

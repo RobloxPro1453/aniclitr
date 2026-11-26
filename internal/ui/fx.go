@@ -18,19 +18,30 @@ import (
 // rows reads as one quick slide instead of a teleport.
 
 type glide struct {
-	pos  float64
-	last time.Time
-	init bool
+	pos        float64
+	last       time.Time
+	lastTarget int
+	lastMove   time.Time
+	init       bool
 }
 
 // row returns the list index the band should be drawn on this frame.
+// On rapid key-repeat (holding ↓/↑), snaps cleanly so navigation feels razor-sharp;
+// on single steps, uses a crisp critically-damped 60fps spring.
 func (g *glide) row(a *App, target int) int {
 	now := time.Now()
-	// next to a picture the band jumps instead of sliding: every extra
-	// frame makes the terminal redraw the image too (Windows Terminal)
 	if !g.init || !a.motion() || a.picsOn {
-		g.pos, g.last, g.init = float64(target), now, true
+		g.pos, g.last, g.lastTarget, g.lastMove, g.init = float64(target), now, target, now, true
 		return target
+	}
+	if target != g.lastTarget {
+		rapid := !g.lastMove.IsZero() && now.Sub(g.lastMove) < 75*time.Millisecond
+		g.lastTarget = target
+		g.lastMove = now
+		if rapid {
+			g.pos, g.last = float64(target), now
+			return target
+		}
 	}
 	dt := now.Sub(g.last).Seconds()
 	g.last = now
@@ -38,12 +49,12 @@ func (g *glide) row(a *App, target int) int {
 		dt = .1
 	}
 	d := float64(target) - g.pos
-	if math.Abs(d) > 14 { // long jumps (pgdn, home): don't sweep the whole list
-		g.pos = float64(target) - math.Copysign(3, d)
+	if math.Abs(d) > 10 { // long jumps (pgdn, home): snappy 2-row landing
+		g.pos = float64(target) - math.Copysign(2, d)
 		d = float64(target) - g.pos
 	}
-	g.pos += d * (1 - math.Exp(-dt*22))
-	if math.Abs(float64(target)-g.pos) < .08 {
+	g.pos += d * (1 - math.Exp(-dt*36))
+	if math.Abs(float64(target)-g.pos) < .06 {
 		g.pos = float64(target)
 	} else {
 		a.gliding = true
@@ -242,11 +253,11 @@ func (a *App) celebrate(n int) {
 	}
 }
 
-// flash briefly lights the selection band (feedback for enter / toggles).
+// flash briefly lights the selection band (snappy tactile feedback for enter / toggles).
 func (a *App) flash() {
 	playSound(a, sndSelect)
 	if a.motion() {
-		a.flashT = newTween(260 * time.Millisecond)
+		a.flashT = newTween(145 * time.Millisecond)
 	}
 }
 

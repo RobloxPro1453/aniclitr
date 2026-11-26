@@ -14,6 +14,7 @@ import (
 
 	"aniclitr/internal/backup"
 	"aniclitr/internal/config"
+	"aniclitr/internal/match"
 	"aniclitr/internal/nyaa"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
@@ -99,6 +100,11 @@ func Search(ctx context.Context, cfg config.Config, query string) []SearchHit {
 		out = append(out, *byKey[k])
 	}
 	sort.SliceStable(out, func(i, j int) bool {
+		ri := match.RankTitle(query, append([]string{out[i].Title, out[i].Sample.AltTitle}, out[i].Sample.Titles...)...)
+		rj := match.RankTitle(query, append([]string{out[j].Title, out[j].Sample.AltTitle}, out[j].Sample.Titles...)...)
+		if ri != rj {
+			return ri > rj
+		}
 		if len(out[i].Sources) != len(out[j].Sources) {
 			return len(out[i].Sources) > len(out[j].Sources)
 		}

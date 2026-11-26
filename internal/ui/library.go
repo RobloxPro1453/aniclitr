@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"aniclitr/internal/match"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
@@ -204,6 +205,11 @@ func (l *library) items(a *App) []store.Item {
 		})
 	case 3:
 		sort.SliceStable(out, func(i, j int) bool { return out[i].AddedAt.After(out[j].AddedAt) })
+	}
+	if q != "" {
+		sort.SliceStable(out, func(i, j int) bool {
+			return match.RankTitle(q, out[i].Title) > match.RankTitle(q, out[j].Title)
+		})
 	}
 	return out
 }

@@ -10,6 +10,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"html"
 	"net/url"
 	"os"
 	"os/exec"
@@ -20,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"aniclitr/internal/match"
 	"aniclitr/internal/netx"
 	"aniclitr/internal/tools"
 )
@@ -152,37 +154,14 @@ var (
 // CleanSeriesName extracts the core anime title from a torrent release string
 // (e.g. "[Shiniori-Raws] Another (BD 1920x1080 x265)" -> "another").
 func CleanSeriesName(title string) string {
-	s := reBrackets.ReplaceAllString(title, " ")
-	s = strings.NewReplacer(".", " ", "_", " ").Replace(s)
-	s = reEpTail.ReplaceAllString(s, "")
-	s = strings.ToLower(strings.TrimSpace(s))
-	return strings.Join(strings.Fields(s), " ")
+	return match.CleanDisplayTitle(title)
 }
 
 // RelevanceScore tiers how closely a torrent's series title matches query so
-// searching "another" ranks "Another" ahead of "Re:ZERO ... in Another World".
+// searching "another" ranks "Another" ahead of "Re:ZERO ... in Another World"
+// across EVERY category (All, Turkish, English, Raw, Trusted).
 func RelevanceScore(query, title string) int {
-	q := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(query)), " "))
-	if q == "" {
-		return 50
-	}
-	clean := CleanSeriesName(title)
-	switch {
-	case clean == q:
-		return 100
-	case strings.HasPrefix(clean, q+" ") || strings.HasPrefix(clean, q+":") || strings.HasPrefix(clean, q+"-"):
-		return 80
-	case len(clean) <= len(q)+10 && strings.Contains(clean, q):
-		return 65
-	case strings.Contains(" "+clean+" ", " "+q+" "):
-		// Penalize long unrelated subtitles like "Starting Life in Another World".
-		if len(strings.Fields(clean)) >= len(strings.Fields(q))+3 {
-			return 20
-		}
-		return 50
-	default:
-		return 10
-	}
+	return match.RankTitle(query, title)
 }
 
 func parseGroup(title string) string {
@@ -325,8 +304,237 @@ func Search(ctx context.Context, query, cat, filter string) ([]Item, error) {
 			Published:  pub,
 		})
 	}
+	// If RSS (newest-75) was flooded by unrelated high-volume series (e.g.
+	// "In Another World" hiding 2012's "Another" in English/All tabs), run one
+	// automatic TF-DF noise-excluded seeders search and merge without losing any results.
+	if exactCount(out) < 3 && !strings.Contains(query, "-") && len(strings.Fields(query)) <= 3 {
+		if noise := extractNoiseTerms(query, out); len(noise) > 0 {
+			refined := query
+			for _, w := range noise {
+				refined += " -" + w
+			}
+			cctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			extra := searchHTMLSeeders(cctx, refined, query, cat, filter)
+			cancel()
+			if len(extra) > 0 {
+				out = mergeDedup(out, extra)
+			}
+		}
+	}
 	SortItems(out, SortSeeders)
 	return out, nil
+}
+
+func exactCount(items []Item) int {
+	n := 0
+	for _, it := range items {
+		if it.Relevance >= 80 {
+			n++
+		}
+	}
+	return n
+}
+
+var ignoreNoiseWords = map[string]bool{
+	"1080p": true, "720p": true, "2160p": true, "480p": true, "hevc": true, "x264": true, "x265": true,
+	"h264": true, "h265": true, "flac": true, "10bit": true, "8bit": true, "dual": true, "audio": true,
+	"multi": true, "subs": true, "subbed": true, "dubbed": true, "english": true, "japanese": true,
+	"batch": true, "complete": true, "season": true, "bdrip": true, "bluray": true, "webrip": true,
+	"amzn": true, "varyg": true, "toonshub": true, "subsplease": true, "judas": true, "ember": true,
+	"opus": true, "aac2": true, "ddp2": true, "with": true, "from": true, "that": true, "this": true,
+	"into": true, "under": true, "over": true, "kara": true, "no": true, "wa": true, "ga": true,
+}
+
+// extractNoiseTerms identifies up to 3 dominant non-query words flooding the
+// initial RSS results so a follow-up Nyaa search can exclude them cleanly.
+func extractNoiseTerms(query string, items []Item) []string {
+	if len(items) < 6 {
+		return nil
+	}
+	qSet := map[string]bool{}
+	for _, w := range strings.Fields(match.Fold(query)) {
+		qSet[w] = true
+	}
+	docFreq := map[string]int{}
+	nonExact := 0
+	for _, it := range items {
+		if it.Relevance >= 80 {
+			continue
+		}
+		nonExact++
+		seen := map[string]bool{}
+		clean := strings.NewReplacer(".", " ", "_", " ", "-", " ", ":", " ", "(", " ", ")", " ", "[", " ", "]", " ", "|", " ", "/", " ").Replace(it.Title)
+		for _, raw := range strings.Fields(match.Fold(clean)) {
+			w := strings.Trim(raw, "'\"!?.,~+")
+			if len(w) < 4 || qSet[w] || ignoreNoiseWords[w] || seen[w] {
+				continue
+			}
+			// Skip pure numbers or episode codes (s01e01, 2026)
+			if w[0] >= '0' && w[0] <= '9' {
+				continue
+			}
+			if len(w) >= 3 && w[0] == 's' && w[1] >= '0' && w[1] <= '9' {
+				continue
+			}
+			seen[w] = true
+			docFreq[w]++
+		}
+	}
+	if nonExact < 5 {
+		return nil
+	}
+	type kv struct {
+		w string
+		c int
+	}
+	var cands []kv
+	minDocs := max(3, nonExact/5)
+	for w, c := range docFreq {
+		if c >= minDocs {
+			cands = append(cands, kv{w, c})
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].c != cands[j].c {
+			return cands[i].c > cands[j].c
+		}
+		return cands[i].w < cands[j].w
+	})
+	var out []string
+	for i := 0; i < len(cands) && i < 3; i++ {
+		out = append(out, cands[i].w)
+	}
+	return out
+}
+
+var (
+	reHTMLRow      = regexp.MustCompile(`(?s)<tr class="([^"]*)">(.*?)</tr>`)
+	reHTMLView     = regexp.MustCompile(`<a href="(/view/\d+)"[^>]*title="([^"]+)"`)
+	reHTMLTorrent  = regexp.MustCompile(`href="(/download/\d+\.torrent)"`)
+	reHTMLMagnet   = regexp.MustCompile(`href="(magnet:\?[^"]+)"`)
+	reHTMLHash     = regexp.MustCompile(`btih:([A-Fa-f0-9]{32,40})`)
+	reHTMLTD       = regexp.MustCompile(`(?s)<td[^>]*>(.*?)</td>`)
+	reHTMLStripTag = regexp.MustCompile(`<[^>]+>`)
+	reHTMLTs       = regexp.MustCompile(`data-timestamp="(\d+)"`)
+	reHTMLCat      = regexp.MustCompile(`<a href="/\?c=[^"]+" title="([^"]+)"`)
+)
+
+func searchHTMLSeeders(ctx context.Context, refinedQuery, origQuery, cat, filter string) []Item {
+	u := fmt.Sprintf("%s/?f=%s&c=%s&q=%s&s=seeders&o=desc",
+		base, url.QueryEscape(filter), url.QueryEscape(cat), url.QueryEscape(refinedQuery))
+	body, err := netx.Get(ctx, u, map[string]string{"Accept": "text/html,application/xhtml+xml"})
+	if err != nil || len(body) == 0 {
+		return nil
+	}
+	text := string(body)
+	rows := reHTMLRow.FindAllStringSubmatch(text, 60)
+	var out []Item
+	for _, rm := range rows {
+		rowCls, rowHTML := rm[1], rm[2]
+		vm := reHTMLView.FindStringSubmatch(rowHTML)
+		if vm == nil {
+			continue
+		}
+		pageURL := base + vm[1]
+		title := strings.TrimSpace(html.UnescapeString(vm[2]))
+		if title == "" {
+			continue
+		}
+		torURL := ""
+		if tm := reHTMLTorrent.FindStringSubmatch(rowHTML); tm != nil {
+			torURL = base + tm[1]
+		}
+		mag := ""
+		hash := ""
+		if mm := reHTMLMagnet.FindStringSubmatch(rowHTML); mm != nil {
+			mag = html.UnescapeString(mm[1])
+			if hm := reHTMLHash.FindStringSubmatch(mag); hm != nil {
+				hash = strings.ToLower(hm[1])
+			}
+		}
+		catStr := ""
+		if cm := reHTMLCat.FindStringSubmatch(rowHTML); cm != nil {
+			catStr = html.UnescapeString(cm[1])
+		}
+		tds := reHTMLTD.FindAllStringSubmatch(rowHTML, -1)
+		sizeStr := ""
+		var pub time.Time
+		var seed, leech, dl int
+		if len(tds) >= 8 {
+			sizeStr = strings.TrimSpace(reHTMLStripTag.ReplaceAllString(tds[3][1], ""))
+			if tsm := reHTMLTs.FindStringSubmatch(tds[4][0]); tsm != nil {
+				if sec, err := strconv.ParseInt(tsm[1], 10, 64); err == nil && sec > 0 {
+					pub = time.Unix(sec, 0)
+				}
+			}
+			seed, _ = strconv.Atoi(strings.TrimSpace(reHTMLStripTag.ReplaceAllString(tds[5][1], "")))
+			leech, _ = strconv.Atoi(strings.TrimSpace(reHTMLStripTag.ReplaceAllString(tds[6][1], "")))
+			dl, _ = strconv.Atoi(strings.TrimSpace(reHTMLStripTag.ReplaceAllString(tds[7][1], "")))
+		}
+		if mag == "" && hash != "" {
+			mag = BuildMagnet(hash, title)
+		}
+		out = append(out, Item{
+			Title:      title,
+			Torrent:    torURL,
+			PageURL:    pageURL,
+			InfoHash:   hash,
+			Magnet:     mag,
+			Seeders:    seed,
+			Leechers:   leech,
+			Downloads:  dl,
+			Size:       sizeStr,
+			SizeBytes:  parseSizeBytes(sizeStr),
+			Category:   catStr,
+			Group:      parseGroup(title),
+			Resolution: parseResolution(title),
+			Codec:      parseCodec(title),
+			Trusted:    strings.Contains(rowCls, "success"),
+			Remake:     strings.Contains(rowCls, "danger"),
+			Turkish:    isTurkishRelease(title),
+			Raw:        cat == CatRaw || isRawRelease(title, catStr),
+			Batch:      reBatch.MatchString(title),
+			Relevance:  RelevanceScore(origQuery, title),
+			Published:  pub,
+		})
+	}
+	return out
+}
+
+func mergeDedup(a, b []Item) []Item {
+	seen := make(map[string]bool, len(a)+len(b))
+	out := make([]Item, 0, len(a)+len(b))
+	keyOf := func(it Item) string {
+		if it.InfoHash != "" {
+			return strings.ToLower(it.InfoHash)
+		}
+		if it.PageURL != "" {
+			return it.PageURL
+		}
+		return strings.ToLower(it.Title)
+	}
+	for _, list := range [][]Item{a, b} {
+		for _, it := range list {
+			k := keyOf(it)
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+func relTier(r int) int {
+	switch {
+	case r >= 80:
+		return 2
+	case r >= 50:
+		return 1
+	default:
+		return 0
+	}
 }
 
 // SortItems sorts a slice of Nyaa items in place according to mode.
@@ -345,6 +553,10 @@ func SortItems(items []Item, mode SortMode) {
 				return a.Published.After(b.Published)
 			}
 		case SortDownloads:
+			ta, tb := relTier(a.Relevance), relTier(b.Relevance)
+			if ta != tb {
+				return ta > tb
+			}
 			if a.Downloads != b.Downloads {
 				return a.Downloads > b.Downloads
 			}

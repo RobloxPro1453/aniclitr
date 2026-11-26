@@ -95,10 +95,15 @@ func (h *home) animating(a *App) bool {
 	if a.top() != screen(h) {
 		return false
 	}
-	if !h.feedOK {
+	if !h.feedOK || h.sug.busy {
 		return true
 	}
-	return a.motion() // weather, logo, spotlight rotation
+	if a.nova() {
+		// Nova home has no background weather particles: settle to 0 FPS / 0% CPU
+		// the moment the logo intro finishes.
+		return a.motion() && time.Since(a.start) < introDur(a.intro)
+	}
+	return a.motion() // classic home: weather, logo, spotlight rotation
 }
 
 func (h *home) update(a *App, msg tea.Msg) tea.Cmd {

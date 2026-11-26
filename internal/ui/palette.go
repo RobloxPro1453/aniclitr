@@ -51,7 +51,7 @@ func (a *App) openPalette(prefix string) {
 	p := &palette{in: input{placeholder: "komut, anime, tema…  (ör. tema, kitaplık, frieren)"}, orig: currentTheme(), origName: a.themeName}
 	p.orig.Name = a.themeName
 	if a.motion() {
-		p.openT = newTween(220 * time.Millisecond)
+		p.openT = newTween(125 * time.Millisecond)
 	}
 	p.items = a.paletteItems()
 	p.in.Set(prefix)
