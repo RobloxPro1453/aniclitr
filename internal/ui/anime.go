@@ -103,7 +103,7 @@ func (s *animeScreen) hints() []hint {
 	if len(s.selEps) > 0 {
 		return []hint{{"v", "seç/bırak"}, {"d/D", fmt.Sprintf("seçilileri indir (%d)", len(s.selEps))}, {"V", "seçimi temizle"}, {"esc", "geri"}}
 	}
-	return append(h, hint{"w", "izlendi"}, hint{"v", "seç"}, hint{"d", "indir"}, hint{"D", "toplu indir"}, hint{"x", "indirilen bölümü sil"}, hint{"N", "not"}, hint{"t", "fragman"}, hint{"y", "benzerleri"}, hint{"a", "kitaplık"}, hint{"r", "eşleme / kurtarma"}, hint{"esc", "geri"})
+	return append(h, hint{"w", "izlendi"}, hint{"v", "seç"}, hint{"d", "indir"}, hint{"D", "toplu indir"}, hint{"x", "indirilen bölümü sil"}, hint{"N", "not"}, hint{"t", "fragman"}, hint{"y", "benzerleri"}, hint{"T", "torrent (nyaa.si)"}, hint{"a", "kitaplık"}, hint{"r", "eşleme / kurtarma"}, hint{"esc", "geri"})
 }
 
 func (s *animeScreen) animating(a *App) bool {

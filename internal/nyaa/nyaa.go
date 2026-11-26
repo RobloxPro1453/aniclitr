@@ -1,6 +1,8 @@
-// Package nyaa searches Nyaa.si's public anime RSS feed without scraping
-// HTML or bypassing any protection, builds standard magnet links from
-// infoHashes, and optionally hands downloads to aria2c or the OS magnet handler.
+// Package nyaa searches Nyaa.si's public anime RSS feed (All, English,
+// Non-English/Turkish, Raw) without bypassing any protection, extracts release
+// metadata (group, resolution, codec, raw/batch/Turkish flags, byte size),
+// builds standard magnet links, and hands downloads to aria2c, webtorrent,
+// clipboard, or the OS magnet handler.
 package nyaa
 
 import (
@@ -11,6 +13,8 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,7 +31,7 @@ const (
 	CatAll    = "1_0" // Anime - All
 	CatEng    = "1_2" // Anime - English-translated
 	CatNonEng = "1_3" // Anime - Non-English-translated (Turkish, etc.)
-	CatRaw    = "1_4" // Anime - Raw
+	CatRaw    = "1_4" // Anime - Raw (unsubtitled Japanese Blu-ray / TV)
 )
 
 // Standard Nyaa filter codes.
@@ -37,6 +41,33 @@ const (
 	FilterTrusted  = "2"
 )
 
+// SortMode controls how search results are ordered.
+type SortMode int
+
+const (
+	SortSeeders SortMode = iota
+	SortNewest
+	SortDownloads
+	SortSizeDesc
+	SortSizeAsc
+)
+
+// Label returns a Turkish display name for the sort mode.
+func (m SortMode) Label() string {
+	switch m {
+	case SortNewest:
+		return "en yeni"
+	case SortDownloads:
+		return "en çok indirilen"
+	case SortSizeDesc:
+		return "boyut ↓"
+	case SortSizeAsc:
+		return "boyut ↑"
+	default:
+		return "seed ↓"
+	}
+}
+
 var defaultTrackers = []string{
 	"http://nyaa.tracker.wf:7777/announce",
 	"udp://open.stealth.si:80/announce",
@@ -45,22 +76,28 @@ var defaultTrackers = []string{
 	"udp://tracker.torrent.eu.org:451/announce",
 }
 
-// Item is one torrent result from Nyaa.si.
+// Item is one torrent result from Nyaa.si with parsed release metadata.
 type Item struct {
-	Title     string
-	Torrent   string // .torrent URL
-	PageURL   string
-	InfoHash  string
-	Magnet    string
-	Seeders   int
-	Leechers  int
-	Downloads int
-	Size      string
-	Category  string
-	Trusted   bool
-	Remake    bool
-	Turkish   bool
-	Published time.Time
+	Title      string
+	Torrent    string // .torrent URL
+	PageURL    string
+	InfoHash   string
+	Magnet     string
+	Seeders    int
+	Leechers   int
+	Downloads  int
+	Size       string
+	SizeBytes  int64
+	Category   string
+	Group      string // e.g. "SubsPlease", "Erai-raws", "HolySubs"
+	Resolution string // "2160p", "1080p", "720p", "480p", ""
+	Codec      string // "HEVC", "AV1", "H.264", ""
+	Trusted    bool
+	Remake     bool
+	Turkish    bool
+	Raw        bool
+	Batch      bool
+	Published  time.Time
 }
 
 // BuildMagnet builds a standard BitTorrent magnet URI for infoHash and display name.
@@ -102,9 +139,86 @@ type rssFeed struct {
 	} `xml:"channel"`
 }
 
+var (
+	reGroup = regexp.MustCompile(`^\[([^\[\]]{1,28})\]`)
+	reSize  = regexp.MustCompile(`(?i)^\s*([\d.]+)\s*(B|KiB|KB|MiB|MB|GiB|GB|TiB|TB)\s*$`)
+	reBatch = regexp.MustCompile(`(?i)(batch|complete|\b0?1\s*[-~]\s*\d{2}\b|season\s*\d|s\d{2}\b|bd\s*box)`)
+)
+
+func parseGroup(title string) string {
+	if m := reGroup.FindStringSubmatch(strings.TrimSpace(title)); m != nil {
+		return strings.TrimSpace(m[1])
+	}
+	return ""
+}
+
+func parseResolution(title string) string {
+	l := strings.ToLower(title)
+	switch {
+	case strings.Contains(l, "2160p") || strings.Contains(l, "3840x2160") || strings.Contains(l, " 4k ") || strings.Contains(l, "[4k]") || strings.Contains(l, "(4k)"):
+		return "2160p"
+	case strings.Contains(l, "1080p") || strings.Contains(l, "1920x1080"):
+		return "1080p"
+	case strings.Contains(l, "720p") || strings.Contains(l, "1280x720"):
+		return "720p"
+	case strings.Contains(l, "480p") || strings.Contains(l, "576p"):
+		return "480p"
+	}
+	return ""
+}
+
+func parseCodec(title string) string {
+	l := strings.ToLower(title)
+	switch {
+	case strings.Contains(l, "av1"):
+		return "AV1"
+	case strings.Contains(l, "hevc") || strings.Contains(l, "x265") || strings.Contains(l, "h265") || strings.Contains(l, "h.265"):
+		return "HEVC"
+	case strings.Contains(l, "x264") || strings.Contains(l, "h264") || strings.Contains(l, "h.264") || strings.Contains(l, "avc"):
+		return "H.264"
+	}
+	return ""
+}
+
+func parseSizeBytes(s string) int64 {
+	m := reSize.FindStringSubmatch(s)
+	if m == nil {
+		return 0
+	}
+	v, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return 0
+	}
+	switch strings.ToLower(m[2]) {
+	case "kib", "kb":
+		return int64(v * 1024)
+	case "mib", "mb":
+		return int64(v * 1024 * 1024)
+	case "gib", "gb":
+		return int64(v * 1024 * 1024 * 1024)
+	case "tib", "tb":
+		return int64(v * 1024 * 1024 * 1024 * 1024)
+	default:
+		return int64(v)
+	}
+}
+
 func isTurkishRelease(title string) bool {
 	l := strings.ToLower(title)
 	for _, kw := range []string{"turkish", "türkçe", "turkce", "[tr]", "(tr)", "[tr ", "altyazılı", "altyazili", "dublaj", "multi-sub", "multisub", "multi sub"} {
+		if strings.Contains(l, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func isRawRelease(title, cat string) bool {
+	if strings.Contains(strings.ToLower(cat), "raw") {
+		return true
+	}
+	l := strings.ToLower(title)
+	for _, kw := range []string{"[raw]", "(raw)", "bdmv", "raws]", "raw-"} {
 		if strings.Contains(l, kw) {
 			return true
 		}
@@ -145,30 +259,68 @@ func Search(ctx context.Context, query, cat, filter string) ([]Item, error) {
 		dl, _ := strconv.Atoi(strings.TrimSpace(it.Downloads))
 		pub, _ := time.Parse(time.RFC1123Z, strings.TrimSpace(it.PubDate))
 		hash := strings.TrimSpace(it.InfoHash)
+		sizeStr := strings.TrimSpace(it.Size)
+		catStr := strings.TrimSpace(it.Category)
 		out = append(out, Item{
-			Title:     title,
-			Torrent:   strings.TrimSpace(it.Link),
-			PageURL:   strings.TrimSpace(it.GUID),
-			InfoHash:  hash,
-			Magnet:    BuildMagnet(hash, title),
-			Seeders:   seed,
-			Leechers:  leech,
-			Downloads: dl,
-			Size:      strings.TrimSpace(it.Size),
-			Category:  strings.TrimSpace(it.Category),
-			Trusted:   strings.EqualFold(strings.TrimSpace(it.Trusted), "Yes"),
-			Remake:    strings.EqualFold(strings.TrimSpace(it.Remake), "Yes"),
-			Turkish:   isTurkishRelease(title),
-			Published: pub,
+			Title:      title,
+			Torrent:    strings.TrimSpace(it.Link),
+			PageURL:    strings.TrimSpace(it.GUID),
+			InfoHash:   hash,
+			Magnet:     BuildMagnet(hash, title),
+			Seeders:    seed,
+			Leechers:   leech,
+			Downloads:  dl,
+			Size:       sizeStr,
+			SizeBytes:  parseSizeBytes(sizeStr),
+			Category:   catStr,
+			Group:      parseGroup(title),
+			Resolution: parseResolution(title),
+			Codec:      parseCodec(title),
+			Trusted:    strings.EqualFold(strings.TrimSpace(it.Trusted), "Yes"),
+			Remake:     strings.EqualFold(strings.TrimSpace(it.Remake), "Yes"),
+			Turkish:    isTurkishRelease(title),
+			Raw:        cat == CatRaw || isRawRelease(title, catStr),
+			Batch:      reBatch.MatchString(title),
+			Published:  pub,
 		})
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Seeders != out[j].Seeders {
-			return out[i].Seeders > out[j].Seeders
-		}
-		return out[i].Downloads > out[j].Downloads
-	})
+	SortItems(out, SortSeeders)
 	return out, nil
+}
+
+// SortItems sorts a slice of Nyaa items in place according to mode.
+func SortItems(items []Item, mode SortMode) {
+	sort.SliceStable(items, func(i, j int) bool {
+		a, b := items[i], items[j]
+		switch mode {
+		case SortNewest:
+			if !a.Published.Equal(b.Published) {
+				return a.Published.After(b.Published)
+			}
+		case SortDownloads:
+			if a.Downloads != b.Downloads {
+				return a.Downloads > b.Downloads
+			}
+		case SortSizeDesc:
+			if a.SizeBytes != b.SizeBytes {
+				return a.SizeBytes > b.SizeBytes
+			}
+		case SortSizeAsc:
+			if a.SizeBytes != b.SizeBytes {
+				return a.SizeBytes < b.SizeBytes
+			}
+		}
+		if a.Seeders != b.Seeders {
+			return a.Seeders > b.Seeders
+		}
+		return a.Downloads > b.Downloads
+	})
+}
+
+// HasAria2 reports whether aria2c is available on PATH.
+func HasAria2() bool {
+	_, err := exec.LookPath("aria2c")
+	return err == nil
 }
 
 // StartAria2 launches aria2c in the background to download a magnet or .torrent into dir.
@@ -208,4 +360,36 @@ func StreamWebTorrent(magnet string) error {
 	cmd := exec.Command(bin, magnet, "--mpv")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	return cmd.Start()
+}
+
+// CopyClipboard copies text to the OS clipboard using native system utilities.
+func CopyClipboard(text string) error {
+	if strings.TrimSpace(text) == "" {
+		return errors.New("kopyalanacak metin boş")
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("clip")
+	case "darwin":
+		cmd = exec.Command("pbcopy")
+	default:
+		switch {
+		case hasBin("wl-copy"):
+			cmd = exec.Command("wl-copy")
+		case hasBin("xclip"):
+			cmd = exec.Command("xclip", "-selection", "clipboard")
+		case hasBin("xsel"):
+			cmd = exec.Command("xsel", "--clipboard", "--input")
+		default:
+			return errors.New("pano aracı bulunamadı (wl-copy / xclip / xsel)")
+		}
+	}
+	cmd.Stdin = strings.NewReader(text)
+	return cmd.Run()
+}
+
+func hasBin(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }

@@ -81,7 +81,6 @@ func menuItems(a *App) []dropItem {
 		}})
 	}
 	out = append(out,
-		dropItem{icon: "✦", label: "Torrent · Nyaa.si", note: "alt+t", run: func(a *App) tea.Cmd { return a.push(newTorrentScreen("")) }},
 		dropItem{icon: ic("star"), label: "MyAnimeList", note: "bağlan / eşitle", run: func(a *App) tea.Cmd { return a.push(newMalScreen(a)) }},
 		dropItem{icon: "◈", label: "AniList", note: "bağlan / eşitle", run: func(a *App) tea.Cmd { return a.push(newAniListScreen(a)) }},
 		dropItem{icon: "●", label: "Kaynak durumu", note: "sağlık", run: func(a *App) tea.Cmd { return tea.Batch(a.push(&sourcesScreen{}), a.checkHealth()) }},

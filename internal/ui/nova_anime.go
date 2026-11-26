@@ -174,6 +174,7 @@ func (s *animeScreen) novaShowCard(a *App, w, h int, acc string) []string {
 			keycap("t") + " " + stSub.Render("Fragman"),
 			keycap("y") + " " + stSub.Render("Benzer"),
 			keycap("a") + " " + stSub.Render("Kitaplık"),
+			keycap("T") + " " + fg(cWarn).Render("Torrent"),
 		}
 		out = append(out, wrapChips(chips, w)...)
 	}

@@ -93,22 +93,35 @@ func main() {
 		case "torrent", "nyaa":
 			args := os.Args[2:]
 			magnetIdx := 0
+			cat := nyaa.CatAll
+			flt := nyaa.FilterAll
 			var qParts []string
 			for i := 0; i < len(args); i++ {
-				if args[i] == "--magnet" && i+1 < len(args) {
-					fmt.Sscanf(args[i+1], "%d", &magnetIdx)
-					i++
-					continue
+				switch args[i] {
+				case "--raw":
+					cat = nyaa.CatRaw
+				case "--tr":
+					cat = nyaa.CatNonEng
+				case "--en":
+					cat = nyaa.CatEng
+				case "--trusted":
+					flt = nyaa.FilterTrusted
+				case "--magnet":
+					if i+1 < len(args) {
+						fmt.Sscanf(args[i+1], "%d", &magnetIdx)
+						i++
+					}
+				default:
+					qParts = append(qParts, args[i])
 				}
-				qParts = append(qParts, args[i])
 			}
 			q := strings.TrimSpace(strings.Join(qParts, " "))
 			if q == "" {
-				fmt.Fprintln(os.Stderr, "kullanım: aniclitr torrent <sorgu> [--magnet N]")
+				fmt.Fprintln(os.Stderr, "kullanım: aniclitr torrent <sorgu> [--raw|--tr|--en] [--trusted] [--magnet N]")
 				os.Exit(2)
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			items, err := nyaa.Search(ctx, q, nyaa.CatAll, nyaa.FilterAll)
+			items, err := nyaa.Search(ctx, q, cat, flt)
 			cancel()
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "nyaa.si hatası:", err)

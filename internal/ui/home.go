@@ -217,6 +217,7 @@ func dockItems() []dockItem {
 		{ic("library"), "Kitaplık", "ctrl+b", func(a *App, h *home) tea.Cmd { return a.openLibrary("") }},
 		{ic("feed"), "Keşfet", "ctrl+e", func(a *App, h *home) tea.Cmd { return a.openDiscover() }},
 		{"↓", "İndirilenler", "ctrl+d", func(a *App, h *home) tea.Cmd { return a.openDownloads() }},
+		{"✦", "Torrent · Nyaa.si", "alt+t", func(a *App, h *home) tea.Cmd { return a.push(newTorrentScreen("")) }},
 		{ic("theme"), "Tema", "ctrl+t", func(a *App, h *home) tea.Cmd { a.openPalette("tema "); return a.tick() }},
 		{ic("palette"), "Komutlar", "ctrl+k", func(a *App, h *home) tea.Cmd { a.openPalette(""); return a.tick() }},
 		{ic("settings"), "Ayarlar", "ctrl+o", func(a *App, h *home) tea.Cmd { return a.push(newSettings()) }},

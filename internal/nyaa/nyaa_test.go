@@ -13,7 +13,7 @@ const sampleRSS = `<?xml version="1.0" encoding="UTF-8"?>
   <channel>
     <title>Nyaa - RSS</title>
     <item>
-      <title>[SubsPlease] Sousou no Frieren - 03 (1080p) [Multi-Sub].mkv</title>
+      <title>[SubsPlease] Sousou no Frieren - 03 (1080p) [Multi-Sub] [x265].mkv</title>
       <link>https://nyaa.si/download/1001.torrent</link>
       <guid isPermaLink="true">https://nyaa.si/view/1001</guid>
       <pubDate>Fri, 20 Nov 2026 18:00:00 -0000</pubDate>
@@ -40,10 +40,24 @@ const sampleRSS = `<?xml version="1.0" encoding="UTF-8"?>
       <nyaa:trusted>No</nyaa:trusted>
       <nyaa:remake>No</nyaa:remake>
     </item>
+    <item>
+      <title>[ReinForce] Sousou no Frieren (BDRip 1920x1080 x264 FLAC) [RAW]</title>
+      <link>https://nyaa.si/download/1003.torrent</link>
+      <guid isPermaLink="true">https://nyaa.si/view/1003</guid>
+      <pubDate>Sat, 21 Nov 2026 10:00:00 -0000</pubDate>
+      <nyaa:seeders>65</nyaa:seeders>
+      <nyaa:leechers>3</nyaa:leechers>
+      <nyaa:downloads>540</nyaa:downloads>
+      <nyaa:infoHash>fedcba0987654321fedcba0987654321fedcba09</nyaa:infoHash>
+      <nyaa:category>Anime - Raw</nyaa:category>
+      <nyaa:size>48.2 GiB</nyaa:size>
+      <nyaa:trusted>Yes</nyaa:trusted>
+      <nyaa:remake>No</nyaa:remake>
+    </item>
   </channel>
 </rss>`
 
-func TestSearchParsesRSSAndSortsBySeeders(t *testing.T) {
+func TestSearchParsesRSSMetadataRawAndSorting(t *testing.T) {
 	t.Setenv("ANICLITR_HOME", t.TempDir())
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") != "rss" || r.URL.Query().Get("q") != "frieren" {
@@ -61,17 +75,32 @@ func TestSearchParsesRSSAndSortsBySeeders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
-	if len(items) != 2 {
-		t.Fatalf("expected 2 items, got %d", len(items))
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(items))
 	}
-	// Higher seeders (180) must be sorted first.
-	if items[0].Seeders != 180 || items[0].Size != "32.5 GiB" || !items[0].Turkish {
-		t.Fatalf("first item mismatch: %+v", items[0])
+	// Default sort is seeders descending: 180 -> 65 -> 42.
+	if items[0].Seeders != 180 || items[0].Group != "HolySubs" || items[0].Resolution != "1080p" || !items[0].Turkish || !items[0].Batch {
+		t.Fatalf("first item metadata mismatch: %+v", items[0])
 	}
 	if !strings.HasPrefix(items[0].Magnet, "magnet:?xt=urn:btih:1234567890abcdef") {
 		t.Fatalf("bad magnet: %q", items[0].Magnet)
 	}
-	if !items[1].Trusted || !items[1].Turkish {
-		t.Fatalf("second item flags wrong: %+v", items[1])
+	// Raw release detection (category + [RAW] + 1920x1080 + x264).
+	if !items[1].Raw || items[1].Group != "ReinForce" || items[1].Resolution != "1080p" || items[1].Codec != "H.264" || items[1].SizeBytes <= 40<<30 {
+		t.Fatalf("raw item metadata mismatch: %+v", items[1])
+	}
+	if !items[2].Trusted || items[2].Codec != "HEVC" {
+		t.Fatalf("third item metadata mismatch: %+v", items[2])
+	}
+
+	// SortNewest puts Sat 21 Nov (ReinForce) first.
+	SortItems(items, SortNewest)
+	if items[0].Group != "ReinForce" {
+		t.Fatalf("SortNewest expected ReinForce first, got %q", items[0].Group)
+	}
+	// SortSizeAsc puts 1.4 GiB (SubsPlease) first.
+	SortItems(items, SortSizeAsc)
+	if items[0].Group != "SubsPlease" {
+		t.Fatalf("SortSizeAsc expected SubsPlease first, got %q", items[0].Group)
 	}
 }

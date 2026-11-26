@@ -67,8 +67,8 @@ func (a *App) helpBox() []string {
 		{"bu ekran", screenKeys},
 		{"her yerde", [][2]string{
 			{"alt+m · F10", "menü (≡)"}, {"alt+n · F9", "bildirimler (◆)"},
-			{"ctrl+k", "komut paleti"}, {"ctrl+b · F2", "kitaplık"}, {"ctrl+d · F3", "indirilenler"}, {"ctrl+e · F4", "keşfet"}, {"ctrl+t", "tema seç (canlı)"},
-			{"esc", "geri"}, {"/", "ara"}, {"ctrl+o", "ayarlar"}, {"alt+a", "arşiv modu"},
+			{"ctrl+k", "komut paleti"}, {"ctrl+b · F2", "kitaplık"}, {"ctrl+d · F3", "indirilenler"}, {"ctrl+e · F4", "keşfet"}, {"alt+t", "torrent · nyaa.si"}, {"ctrl+t", "tema seç (canlı)"},
+			{"alt+← / →", "ekran geçmişi"}, {"esc", "geri"}, {"/", "ara"}, {"ctrl+o", "ayarlar"}, {"alt+a", "arşiv modu"},
 			{"ctrl+z", "son silmeyi geri al"}, {"ctrl+l", "ekranı baştan çiz"}, {"F1", "işlemler / yardım"}, {"ctrl+c", "çık"},
 		}},
 		{"oynatırken (mpv'de de)", [][2]string{

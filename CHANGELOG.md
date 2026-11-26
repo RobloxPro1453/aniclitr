@@ -2,6 +2,13 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [1.0.1]
+
+### Eklenenler
+- **Nyaa.si `Raw (Ham)` kategorisi & gelişmiş filtreler:** Torrent ekranına `4 Raw (Ham)` kategorisi eklendi; `o` ile sıralama (`seed ↓`, `en yeni`, `en çok indirilen`, `boyut ↓/↑`), `q` ile kalite/paket süzgeci (`tümü`, `1080p`, `720p`, `2160p`, `paket`), `f` ile remake hariç ve `c` ile magnet bağlantısını tek tuşla panoya kopyalama eklendi. CLI'da `aniclitr torrent <ad> --raw|--tr|--en|--trusted` bayrakları desteklenir.
+- **2 sütunlu Nova Torrent arayüzü (`torrentui.go`):** Geniş terminallerde solda rozetli torrent listesi (`★`, `RAW`, `TR`, `PKT`, `1080p`, `Seed`), sağda tam başlık, codec/çözünürlük hapları, seed sağlık çubuğu, `aria2c` hazırlık durumu ve tüm eylem kısayollarını gösteren ayrıntı kartı.
+- **Görünür Torrent giriş noktaları:** `✦ Torrent` artık doğrudan **Ana Sayfa** alt menüsünde (klasik ve Nova), **Anime sayfasında** (`T Torrent` tuş kapağı ve `F1 işlemler`), **≡ Menü** içinde ve **Yardım** penceresinde açıkça görünür.
+
 ## [1.0.0]
 
 `aniclitr`'in ilk kararlı `1.0.0` sürümü — tüm temel arayüz, altyazı, eşitleme, torrent, CLI ve ekosistem özellikleri bir araya getirildi.

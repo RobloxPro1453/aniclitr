@@ -15,6 +15,10 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"1.0.1": {
+		"Torrent · Nyaa.si artık 2 sütunlu Nova arayüzünde ve Raw (Ham Japonca) kategorisi (4), sıralama (o), kalite/paket süzgeci (q) ve magnet kopyalama (c) destekliyor",
+		"✦ Torrent artık Ana Sayfa alt çubuğunda, Anime sayfasında (T Torrent) ve F1 işlemler menüsünde açıkça görünür",
+	},
 	"1.0.0": {
 		"aniclitr 1.0.0! Modern Nova arayüzü artık varsayılan (klasik görünüm Ayarlar → Arayüz'de yedek kalır)",
 		"AniList iki yönlü OAuth eşitleme: Ayarlar → AniList ile listeni, puanlarını ve izlediğin bölümleri eşitle; 'Devam et' kartlarında da görünür",

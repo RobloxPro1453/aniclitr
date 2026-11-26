@@ -12,6 +12,7 @@ import (
 
 	"aniclitr/internal/anilist"
 	"aniclitr/internal/download"
+	"aniclitr/internal/nyaa"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
@@ -51,7 +52,16 @@ func TestScreenSweep(t *testing.T) {
 				"hostorder": func() screen { return newHostOrder(a) },
 				"mal":       func() screen { return newMalScreen(a) },
 				"anilist":   func() screen { return newAniListScreen(a) },
-				"torrent":   func() screen { return newTorrentScreen("frieren") },
+				"torrent": func() screen {
+					ts := newTorrentScreen("frieren")
+					ts.queried = "frieren"
+					ts.rawItems = []nyaa.Item{
+						{Title: "[ReinForce] Sousou no Frieren (BDRip 1920x1080 x264 FLAC) [RAW]", Group: "ReinForce", Resolution: "1080p", Codec: "H.264", Size: "48.2 GiB", SizeBytes: 48 << 30, Seeders: 92, Leechers: 6, Downloads: 840, Category: "Anime - Raw", Raw: true, Trusted: true, Batch: true, InfoHash: "fedcba0987654321fedcba0987654321fedcba09"},
+						{Title: "[HolySubs] Sousou no Frieren - 01-28 [1080p][TR Altyazılı]", Group: "HolySubs", Resolution: "1080p", Size: "32.5 GiB", SizeBytes: 32 << 30, Seeders: 180, Leechers: 14, Downloads: 2100, Category: "Anime - Non-English-translated", Turkish: true, Batch: true, InfoHash: "1234567890abcdef1234567890abcdef12345678"},
+					}
+					ts.applyLocal()
+					return ts
+				},
 				"onboard":   func() screen { return &onboard{tools: map[string]bool{"mpv": true}} },
 				"characters": func() screen {
 					cs := newCharactersScreen(an)

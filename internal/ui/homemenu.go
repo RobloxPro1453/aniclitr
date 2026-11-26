@@ -106,6 +106,8 @@ func (h *home) items(a *App) []mItem {
 			}},
 		mItem{id: "downloads", icon: "↓", label: "İndirilenler", desc: "çevrimdışı izleme", meta: dlMeta, metaC: dlC,
 			run: func(a *App) tea.Cmd { return a.openDownloads() }},
+		mItem{id: "torrent", icon: "✦", label: "Torrent", desc: "nyaa.si · raw & altyazılı", meta: "alt+t", metaC: cMuted,
+			run: func(a *App) tea.Cmd { return a.push(newTorrentScreen("")) }},
 		mItem{id: "settings", icon: ic("settings"), label: "Ayarlar", desc: "görünüm, oynatma, kaynaklar",
 			run: func(a *App) tea.Cmd { return a.push(newSettings()) }},
 		mItem{id: "exit", icon: ic("exit"), label: "Çıkış",

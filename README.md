@@ -169,7 +169,7 @@ aniclitr devam [--list]           Son izlenen animeye devam eder (--list: düz m
 aniclitr ara <ad>                 Etkin kaynaklarda hızlı CLI araması yapar
 aniclitr izle <ad> [bölüm]        Doğrudan ilgili animeyi arayıp açar
 aniclitr indir <ad> [aralık]      Doğrudan indirme için animeyi arar (örn: 1-12)
-aniclitr torrent <ad> [--magnet]  Nyaa.si torrent arar (--magnet N: magnet bağlantısını yazdırır)
+aniclitr torrent <ad> [--raw]     Nyaa.si torrent arar (--raw/--tr/--trusted/--magnet N)
 aniclitr yedekle [dosya.json]     Ayar, geçmiş, kitaplık ve eşlemeleri tek dosyaya yedekler
 aniclitr geri-yukle <dosya>       Yedekten güvenli geri yükler (önce otomatik ön-yedek alır)
 aniclitr doctor [--blame]         Tüm kaynakları canlı test eder (--blame: yerel hata karnesi)
@@ -208,7 +208,7 @@ Arayüz öngörülebilir katmanlarla ilerler: **menü → liste → öğe → ey
 | **Kitaplık** | `ctrl+b` / `F2` | Durumlar, özel listeler, puanlar, kapak duvarı (`v`) ve grafiksel izleme istatistikleri (`i`). |
 | **Keşfet** | `ctrl+e` / `F4` | 3 sütunlu yerleşim: solda 6 bölümlük şerit (Takvim, Bu akşam, Bu sezon, Türler, Öneriler, Rastgele), ortada odak sahnesi, sağda kapaklı ayrıntı kartı. |
 | **İndirilenler** | `ctrl+d` / `F3` | Kapaklı çevrimdışı kitaplık, canlı hız grafikli indirme sırası (`v`) ve renkli disk depolama çubuğu. |
-| **Torrent (Nyaa.si)** | `alt+t` / Anime'de `T` | Nyaa.si torrent araması, Türkçe/Güvenilir filtreleri (`1`–`4`), `aria2c` indirme (`d`) ve magnet/webtorrent akışı (`enter`). |
+| **Torrent (Nyaa.si)** | Ana Sayfa `✦ Torrent` · `alt+t` · Anime'de `T` | 2 sütunlu Nova Nyaa.si araması (`Tümü`, `Türkçe`, `İngilizce`, **`Raw (Ham)`**, `Güvenilir`), sıralama (`o`), kalite/paket süzgeci (`q`), `aria2c` indirme (`d`), magnet kopyalama (`c`) ve webtorrent/magnet açma (`enter`). |
 | **Ayarlar** | `ctrl+o` | Genel (MAL, AniList, Discord RPC, Masaüstü bildirimleri, Yedekleme), görünüm, oynatma, kaynaklar ve **Sunucu sırası**. |
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
