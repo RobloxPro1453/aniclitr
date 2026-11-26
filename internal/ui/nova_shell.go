@@ -7,13 +7,10 @@ package ui
 // This file is the shell every screen sits in:
 //
 //   - top bar: wordmark and crumbs on the left; on the right the live
-//     download wave, a chip per source (lit when on, faint when off, warm
-//     when slow, red when down) and the bell/menu;
+//     download wave (when active) and the bell/menu;
 //   - the rule under it doubles as a download progress line;
 //   - bottom bar: keycaps instead of bare letters, and notifications as a
 //     tinted pill that slides in and fades out (several at once: "+2").
-//
-// Everything degrades by width: names → short codes → dots.
 
 import (
 	"fmt"
@@ -24,7 +21,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"aniclitr/internal/download"
-	"aniclitr/internal/source"
 )
 
 // nova reports whether the modern Nova interface is on (default since v1.0.0;
@@ -84,77 +80,6 @@ func (a *App) dlProgress() (frac float64, n int, ok bool) {
 
 // ---- top bar ----
 
-// shortSource is a source's chip label.
-func shortSource(id string) string {
-	switch id {
-	case "animecix":
-		return "cix"
-	case "animetr":
-		return "tr"
-	case "anihub":
-		return "hub"
-	case "sonanime":
-		return "son"
-	case "animim":
-		return "mim"
-	case "hianime":
-		return "hi"
-	case "animedepo":
-		return "arşiv"
-	}
-	if len(id) > 4 {
-		return id[:4]
-	}
-	return id
-}
-
-// sourceChips renders every source: lit in its colour when on and fine,
-// warm when slow, red with ✗ when down or changed, faint when switched
-// off. compact: coloured dots only (narrow terminals).
-func (a *App) sourceChips(compact bool) string {
-	var out []string
-	for _, p := range source.All() {
-		in := p.Info()
-		if in.Legacy && !a.cfg.Legacy {
-			continue
-		}
-		label := shortSource(in.ID)
-		if compact {
-			label = "●"
-		}
-		c := sourceColor(in.ID)
-		mark := ""
-		on := a.cfg.Enabled(in.ID, in.Legacy)
-		h, probed := a.health[in.ID]
-		switch {
-		case !on:
-			c = cFaint
-			if compact {
-				label = "○"
-			}
-		case !probed:
-			c = cMuted
-		case !h.OK:
-			c, mark = cErr, "✗"
-		case h.Slow():
-			c = cWarn
-		}
-		s := fg(c).Render(label)
-		if on && probed && h.OK && !compact {
-			s = fg(c).Bold(true).Render(label)
-		}
-		if mark != "" && !compact {
-			s += fg(cErr).Render(mark)
-		}
-		out = append(out, s)
-	}
-	sep := " "
-	if !compact {
-		sep = stFaint.Render(" · ")
-	}
-	return strings.Join(out, sep)
-}
-
 // novaHeader is the top bar.
 func (a *App) novaHeader() string {
 	left := " " + wordmark()
@@ -194,11 +119,13 @@ func (a *App) novaHeader() string {
 		}
 		right = append(right, seg)
 	}
-	right = append(right, a.sourceChips(!mid))
 	if a.cfg.Legacy {
 		right = append(right, pill("ARŞİV", cWarn))
 	}
-	right = append(right, stFaint.Render("│"), a.headerButtons())
+	if len(right) > 0 {
+		right = append(right, stFaint.Render("│"))
+	}
+	right = append(right, a.headerButtons())
 	r := strings.Join(right, "   ") + " "
 	lw := a.w - lipgloss.Width(r)
 	if lipgloss.Width(left) > lw {

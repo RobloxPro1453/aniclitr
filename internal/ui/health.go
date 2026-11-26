@@ -64,20 +64,6 @@ func (a *App) onHealth(h source.Health) {
 	}
 }
 
-// healthDot is the header marker for a source.
-func (a *App) healthDot(id string) string {
-	h, ok := a.health[id]
-	switch {
-	case !ok:
-		return fg(sourceColor(id)).Render("●")
-	case !h.OK:
-		return stErr.Render("✗")
-	case h.Slow():
-		return stWarn.Render("●")
-	}
-	return fg(sourceColor(id)).Render("●")
-}
-
 // ---- screen ----
 
 type sourcesScreen struct {

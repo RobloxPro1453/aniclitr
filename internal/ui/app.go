@@ -1600,21 +1600,7 @@ func (a *App) header() string {
 		}
 		left += stFaint.Render("  ╱  ") + strings.Join(parts, stFaint.Render(" › "))
 	}
-	var right, dots []string
-	for _, p := range source.All() {
-		in := p.Info()
-		if in.Legacy && !a.cfg.Legacy {
-			continue
-		}
-		dot := stFaint.Render("○")
-		if a.cfg.Enabled(in.ID, in.Legacy) {
-			dot = a.healthDot(in.ID)
-		}
-		dots = append(dots, dot) // the dots alone: names and details are on "kaynak durumu"
-	}
-	if len(dots) > 0 {
-		right = append(right, stFaint.Render("kaynaklar ")+strings.Join(dots, " "))
-	}
+	var right []string
 	if a.cfg.Legacy {
 		right = append(right, pill("ARŞİV", cWarn))
 	}
@@ -1633,7 +1619,10 @@ func (a *App) header() string {
 		}
 		right = append([]string{fg(cAccent).Bold(true).Render(label)}, right...)
 	}
-	right = append(right, stFaint.Render("│"), a.headerButtons())
+	if len(right) > 0 {
+		right = append(right, stFaint.Render("│"))
+	}
+	right = append(right, a.headerButtons())
 	r := strings.Join(right, "  ") + " "
 	lw := a.w - lipgloss.Width(r)
 	if lipgloss.Width(left) > lw {

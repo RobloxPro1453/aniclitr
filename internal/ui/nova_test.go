@@ -69,21 +69,24 @@ func TestNovaNotifications(t *testing.T) {
 
 func TestNovaTopBar(t *testing.T) {
 	a := novaApp(t)
-	a.cfg.Sources = map[string]bool{"animecix": true, "hianime": false}
-	a.health = map[string]source.Health{"animecix": {ID: "animecix", OK: true}, "anihub": {ID: "anihub", OK: false}}
 	a.dl.Preview(download.Job{ID: 1, Title: "X", State: download.Running, Done: 50, Total: 100, Speed: 2 << 20})
 	a.samplePulse()
 	head := ansi.Strip(a.novaHeader())
-	for _, want := range []string{"↓ 1", "%50", "cix", "hub✗", "hi"} {
+	for _, want := range []string{"↓ 1", "%50"} {
 		if !strings.Contains(head, want) {
 			t.Errorf("top bar lacks %q: %q", want, head)
+		}
+	}
+	for _, clutter := range []string{"cix", "hub", "hi"} {
+		if strings.Contains(head, clutter) {
+			t.Errorf("top bar should not show legacy source chip %q: %q", clutter, head)
 		}
 	}
 	if rule := ansi.Strip(a.novaRule()); !strings.Contains(rule, "━") {
 		t.Error("the rule should show download progress")
 	}
-	a.w = 80 // narrow: dots instead of names
-	if head := ansi.Strip(a.novaHeader()); strings.Contains(head, "cix") || !strings.Contains(head, "●") {
+	a.w = 80 // narrow: stays clean without source chips
+	if head := ansi.Strip(a.novaHeader()); strings.Contains(head, "cix") || !strings.Contains(head, "↓ 1") {
 		t.Errorf("narrow top bar: %q", head)
 	}
 }

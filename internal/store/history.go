@@ -75,6 +75,7 @@ type History struct {
 	// Activity: seconds watched per local day ("2006-01-02"), for stats.
 	Activity map[string]float64 `json:"activity,omitempty"`
 	rev      int                // bumped on every change (readers cache by it)
+	last     time.Time          // monotonic floor for UpdatedAt on coarse clocks
 }
 
 // Rev changes whenever entries do.
@@ -242,7 +243,12 @@ func (h *History) Update(a source.Anime, fn func(e *Entry)) {
 		e.Progress = map[string]int{}
 	}
 	fn(e)
-	e.UpdatedAt = time.Now()
+	now := time.Now()
+	if !now.After(h.last) {
+		now = h.last.Add(time.Nanosecond)
+	}
+	h.last = now
+	e.UpdatedAt = now
 	b, err := json.MarshalIndent(h, "", " ")
 	h.mu.Unlock()
 	if err == nil {

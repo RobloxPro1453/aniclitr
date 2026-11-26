@@ -11,7 +11,6 @@ import (
 
 	"aniclitr/internal/backup"
 	"aniclitr/internal/shaders"
-	"aniclitr/internal/source"
 )
 
 type setting struct {
@@ -173,7 +172,7 @@ func newSettings() *settings {
 				playSound(a, sndSelect)
 			},
 		},
-		cycle("Arayüz", "yeni (varsayılan): Nova arayüzü; üst çubukta indirme dalgası, adlı kaynak işaretleri, 3 sütunlu Keşfet, tuş kapakları ve renkli bildirimler. klasik: sade metin tabanlı yedek görünüm.",
+		cycle("Arayüz", "yeni (varsayılan): Nova arayüzü; üst çubukta indirme dalgası, 3 sütunlu Keşfet, tuş kapakları ve renkli bildirimler. klasik: sade metin tabanlı yedek görünüm.",
 			[]string{"yeni", "klasik"}, func(a *App) *string {
 				if a.cfg.UI == "" {
 					a.cfg.UI = "yeni"
@@ -246,24 +245,7 @@ func newSettings() *settings {
 				return tea.Batch(a.scanLocalMediaAsync(), a.tick())
 			},
 		},
-		toggle("Arşiv modu", legacyDesc(), func(a *App) *bool { return &a.cfg.Legacy }),
 	)
-	for _, p := range source.All() {
-		in := p.Info()
-		if in.Legacy {
-			continue
-		}
-		desc := sourceRole(in) + " — " + in.Note
-		id := in.ID
-		s.items = append(s.items, setting{
-			label: "Kaynak: " + in.Name, desc: desc,
-			on: func(a *App) bool { return a.cfg.Enabled(id, false) },
-			act: func(a *App, _ int) {
-				a.cfg.Sources[id] = !a.cfg.Enabled(id, false)
-				warnSources(a)
-			},
-		})
-	}
 	s.items = append(s.items,
 		toggle("OP/ED otomatik atla", "AniSkip ve kaynak verisini kullanarak açılış ve bitiş jeneriklerini atlar.", func(a *App) *bool { return &a.cfg.AutoSkip }),
 		toggle("Filler bölümleri atla", "Otomatik geçişte ve n tuşunda filler işaretli bölümleri atlayıp sonraki ana hikâye bölümüne geçer (destekleyen kaynaklarda).", func(a *App) *bool { return &a.cfg.SkipFiller }),
@@ -461,19 +443,17 @@ func settingGroup(label string) int {
 	switch {
 	case label == "MyAnimeList" || label == "AniList" || label == "Discord Rich Presence" || label == "Masaüstü bildirimleri" || label == "Tanıtım turu" || label == "Terminalden aç" || label == "Otomatik güncelle" || label == "Güncellemeleri denetle" || label == "Verileri yedekle" || label == "Eksik araçları kur" || label == "Yerel disk arşivini tara":
 		return 0
-	case strings.HasPrefix(label, "Kaynak:") || label == "Arşiv modu":
-		return 3
 	case label == "OP/ED otomatik atla" || label == "Etkileşimli OP/ED kartı" || label == "Ses Stüdyosu profili" || label == "Görüntü profili önerisi" || label == "Öngörülü ön-yükleme" || label == "Filler bölümleri atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Çözünürlük yükseltme (FSR)" || label == "Kalite iyileştirme (Anime4K)" || label == "Akıcılık (Frame-Gen)" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu" || label == "Sunucu sırası":
 		return 2
 	}
 	return 1
 }
 
-var settingGroups = []string{"genel", "görünüm", "oynatma", "kaynaklar"}
+var settingGroups = []string{"genel", "görünüm", "oynatma"}
 
 func (s *settings) view(a *App, w, h int) string {
 	cw := min(80, w-4)
-	head := pageHeadCol("Ayarlar", "Görünüm, oynatma, kaynak ve hesap tercihleri", "", cw, w, h)
+	head := pageHeadCol("Ayarlar", "Görünüm, oynatma ve hesap tercihleri", "", cw, w, h)
 	// rows grouped under headings; remember where the cursor's row lands
 	var lines []string
 	selLine := 0
