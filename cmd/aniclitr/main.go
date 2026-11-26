@@ -33,7 +33,7 @@ import (
 
 // version is bumped by scripts/release.ps1; release builds also stamp it
 // from the git tag (-ldflags "-X main.version=…").
-var version = "0.18.0"
+var version = "0.19.0"
 
 func main() {
 	var initialURL string
