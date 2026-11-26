@@ -12,7 +12,9 @@ import (
 
 	"aniclitr/internal/anilist"
 	"aniclitr/internal/download"
+	"aniclitr/internal/media"
 	"aniclitr/internal/nyaa"
+	"aniclitr/internal/seasons"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 	"aniclitr/internal/tstream"
@@ -123,6 +125,28 @@ func TestScreenSweep(t *testing.T) {
 				},
 				"party": func() screen {
 					return newPartyScreen()
+				},
+				"franchise": func() screen {
+					fs := newFranchiseScreen(an)
+					fs.loading = false
+					fs.tree = seasons.BuildFranchiseTree(an.Title, []seasons.FranchiseNode{
+						{MalID: 52991, Title: "Sousou no Frieren", Format: "TV", Year: 2023, Episodes: 28, Status: "done"},
+						{MalID: 59978, Title: "Sousou no Frieren 2", Format: "TV", Year: 2026, Episodes: 12, Status: "next"},
+					})
+					return fs
+				},
+				"ost": func() screen {
+					os := newOSTScreen(an)
+					os.loading = false
+					os.songs = []media.ThemeSong{
+						{Slug: "OP1", Title: "Yuusha", Artists: "YOASOBI", Episodes: "1-16"},
+						{Slug: "ED1", Title: "Anytime Anywhere", Artists: "milet", Episodes: "1-28"},
+					}
+					return os
+				},
+				"bookmarks": func() screen {
+					a.hist.AddBookmark(an, store.Bookmark{Season: 1, Episode: 10, Pos: 1120, Note: "Aura sahnesi"})
+					return newBookmarksScreen(an, eps)
 				},
 				"discover_mood": func() screen {
 					d := newDiscover()

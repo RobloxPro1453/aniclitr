@@ -15,6 +15,12 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"2.0.0": {
+		"Sıfır-derleme eklenti/çözücü motoru: 17 yerleşik çözücü paketi (Filemoon, StreamWish, DoodStream, MixDrop, Streamtape, Mp4Upload, Uqload, Mail.ru, Yandex Disk, VK, Dailymotion, Sendvid, HdVid, Vidoza, Rumble, Blogger, Direct) + %APPDATA%\\aniclitr\\plugins klasöründe derlemesiz JSON güncelleme",
+		"Çok-parametreli karar matrisli otomatik altyazı hizalama (VAD + gömülü referans + sahne kesimi + FPS kayma + TV/BD reklam arası çoklu parça ofseti) + mpv içi Tipografi Stüdyosu ve Ses Stüdyosu (Referans / Gece Modu / Kulaklık BS2B)",
+		"Etkileşimli OP/ED sahne atlama kartı ('Opening atlansın mı? [Enter]'), MKV chapter desteği, sunucusuz mpv IPC yedek geçiş + ISP akıllı hız/sahte-kalite yönlendiricisi ve sunucusuz Hibrit Yerel Disk Kütüphanesi ('Diskte Hazır')",
+		"Bölüm bazlı puanlama (E) & otomatik seri ortalaması önerisi (G), 365 günlük izleme ısı haritası, Yerel Zevk DNA'sı, İnteraktif Evren & İzleme Sırası Ağacı (U), OST Müzikler (O), Sahne Yer İmleri (Shift+B / B), Tek Tuş Klip/4K Kare (Alt+C / Alt+F), ctrl+k 2.0 Evrensel Sorgu Motoru ve Sunucusuz Watch Party 2.0 (oda kodu + canlı mpv ASS sohbet)",
+	},
 	"1.3.0": {
 		"İnsanüstü hız ve akıcılık: 60 FPS uyarlamalı saat, Nova ana sayfada %0 boşta CPU, fare hareketinde sıfır yeniden çizim, 3× hızlı hücre çizici + sıfır-ayırımlı TrueColor yazıcı ve Doherty eşiğine göre pürüzsüz kaydırma/geçişler",
 		"mpv içi etkileşimli dropdown menü (m / Tab / Alt+4) + gerçek 1080p / 2K / 4K GPU yükseltme: sıfır-kopya hwdec (ekran kartını yormaz), gerçek 16-tap anti-ringing Catmull-Rom + FidelityFX CAS keskinlik",

@@ -219,6 +219,29 @@ func newSettings() *settings {
 		},
 		toggle("Sıkı düzen", "Küçük pencereler için kenar boşluklarını daraltır.", func(a *App) *bool { return &a.cfg.Compact }),
 		toggle("İndirme hız grafiği", "İndirilenler ekranında anlık indirme hızının canlı mini grafiğini (▁▂▃▅▇) gösterir.", func(a *App) *bool { return &a.cfg.SpeedGraph }),
+		setting{
+			label: "Etkileşimli OP/ED kartı",
+			desc:  "Açıkken (önerilen) mpv ekranında 'Opening atlansın mı? [Enter]' kartı çıkar; kapalıyken Binge modunda otomatik atlar.",
+			on:    func(a *App) bool { return !a.cfg.AutoSkipBinge },
+			act:   func(a *App, _ int) { a.cfg.AutoSkipBinge = !a.cfg.AutoSkipBinge },
+		},
+		cycle("Ses Stüdyosu profili", "mpv gerçek zamanlı ses motoru: referans (temiz), gece (patlama baskılama / diyalog net), kulaklık (BS2B sahne genişletme).", []string{"referans", "gece", "kulaklık"}, func(a *App) *string { return &a.cfg.AudioProfile }, nil),
+		toggle("Akıllı sinema önerisi", "İsteğe bağlıdır, asla zorlamaz: açılan videonun çözünürlük ve bitrate profiline göre hafif öneri gösterir.", func(a *App) *bool { return &a.cfg.CinemaSuggest }),
+		toggle("Öngörülü ön-yükleme", "Açılışta 'Devam Et' ilk sıradaki bölüm için arka planda hafif önbellek hazırlığı yapar.", func(a *App) *bool { return &a.cfg.PreloadNext }),
+		setting{
+			label: "Yerel disk arşivini tara",
+			desc:  "Sunucu açmadan indirme ve harici disk klasörlerindeki (config.json → local_dirs) .mkv/.mp4 animeleri tarar.",
+			value: func(a *App) string {
+				if a.local == nil {
+					return "tara"
+				}
+				return fmt.Sprintf("%d dosya", a.local.Count())
+			},
+			run: func(a *App) tea.Cmd {
+				a.notify("yerel disk klasörleri taranıyor…", "ok")
+				return tea.Batch(a.scanLocalMediaAsync(), a.tick())
+			},
+		},
 		toggle("Arşiv modu", legacyDesc(), func(a *App) *bool { return &a.cfg.Legacy }),
 	)
 	for _, p := range source.All() {
@@ -422,8 +445,10 @@ func settingGroup(label string) int {
 		return 0
 	case strings.HasPrefix(label, "Kaynak:") || label == "Arşiv modu":
 		return 3
-	case label == "OP/ED otomatik atla" || label == "Filler bölümleri atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Görüntü yükseltme (1080p/2K/4K)" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu" || label == "Sunucu sırası":
+	case label == "OP/ED otomatik atla" || label == "Etkileşimli OP/ED kartı" || label == "Ses Stüdyosu profili" || label == "Akıllı sinema önerisi" || label == "Öngörülü ön-yükleme" || label == "Filler bölümleri atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Görüntü yükseltme (1080p/2K/4K)" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu" || label == "Sunucu sırası":
 		return 2
+	case label == "Yerel disk arşivini tara":
+		return 0
 	}
 	return 1
 }

@@ -240,6 +240,7 @@ func (p *playing) subKey(a *App, k tea.KeyMsg) tea.Cmd {
 				p.sess.AddSub(raw, base, "tr")
 			}
 			p.activeSub = base
+			p.activeSubPath = raw
 			p.closeSubs()
 			a.notify("yerel altyazı yüklendi: "+base, "ok")
 			a.flash()
@@ -327,6 +328,7 @@ func (p *playing) onSubs(a *App, msg tea.Msg) {
 			p.sess.AddSub(m.path, m.r.Label(), m.r.Lang)
 		}
 		p.activeSub = m.r.Label()
+		p.activeSubPath = m.path
 		p.closeSubs()
 		a.notify("altyazı eklendi: "+m.r.Label(), "ok")
 		a.flash()

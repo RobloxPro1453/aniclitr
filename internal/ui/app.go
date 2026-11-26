@@ -24,10 +24,12 @@ import (
 	"aniclitr/internal/discord"
 	"aniclitr/internal/download"
 	"aniclitr/internal/extract"
+	"aniclitr/internal/localmedia"
 	"aniclitr/internal/logx"
 	"aniclitr/internal/mal"
 	"aniclitr/internal/malsync"
 	"aniclitr/internal/player"
+	"aniclitr/internal/router"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 	"aniclitr/internal/tools"
@@ -194,9 +196,13 @@ type App struct {
 	alErr      string
 	rpc        *discord.Client
 	keys       config.KeyMap
-	sleep      sleepTimer
-	party      *watchparty.Room
-	toolsBusy  bool
+	sleep       sleepTimer
+	party       *watchparty.Room
+	relayParty  *watchparty.RelayRoom
+	chatVisible bool
+	local       *localmedia.Index
+	preload     *router.PreloadCache
+	toolsBusy   bool
 
 	schedule []anilist.Airing // this week's airing (AniList)
 	coverAt  string           // poster the cover theme currently follows
@@ -285,6 +291,7 @@ func New(cfg config.Config, g Graphics) *App {
 		dir = download.DefaultDir()
 	}
 	a.dl = download.OpenLazy(dir)
+	a.initV2()
 	a.mal = mal.New(cfg.MalClientID)
 	a.msync = malsync.New(a.mal, a.lib)
 	if a.mal.Connected() {
@@ -1267,6 +1274,29 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			}
 			cmds = append(cmds, a.tick())
 		}
+	case relayEvMsg:
+		if m.ok {
+			switch m.ev.Kind {
+			case "join":
+				a.notify(fmt.Sprintf("◈ %s odaya katıldı", m.ev.Nick), "ok")
+			case "leave":
+				a.notify(fmt.Sprintf("◈ %s odadan ayrıldı", m.ev.Nick), "warn")
+			case "chat":
+				a.notify(fmt.Sprintf("💬 %s: %s", m.ev.Nick, m.ev.Text), "ok")
+			case "reaction":
+				a.notify(fmt.Sprintf("%s %s", m.ev.Reaction, m.ev.Nick), "ok")
+			case "closed":
+				a.relayParty = nil
+			}
+			if a.relayParty != nil {
+				cmds = append(cmds, a.waitRelayParty())
+			}
+			cmds = append(cmds, a.tick())
+		}
+	case localScanMsg:
+		if m.count > 0 {
+			logx.Infof("yerel hibrit kütüphane: %d dosya indekslendi", m.count)
+		}
 	case toolsDoneMsg:
 		a.toolsBusy = false
 		switch {
@@ -1306,7 +1336,7 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		cmds = append(cmds, a.tick())
 	case deferredInitMsg:
 		a.syncBrowseDiscord()
-		cmds = append(cmds, a.loadSchedule(), a.checkHealth(), a.checkUpdate(false), guard("indirme-tara", func() tea.Msg {
+		cmds = append(cmds, a.loadSchedule(), a.checkHealth(), a.checkUpdate(false), a.scanLocalMediaAsync(), guard("indirme-tara", func() tea.Msg {
 			a.dl.ScanDisk()
 			return nil
 		}), a.organizeLooseDownloads())

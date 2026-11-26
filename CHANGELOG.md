@@ -2,6 +2,24 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [2.0.0]
+
+### Eklenenler
+- **Sıfır-Derleme Eklenti / Çözücü Paketi Motoru (`internal/plugin`):** Go derlemesi gerekmeden 17 yerleşik JSON çözücü paketi (`DoodStream`, `Filemoon`, `Streamtape`, `Vidoza`, `Mp4Upload`, `MixDrop`, `StreamWish` 30+ ayna, `Sendvid`, `Uqload`, `Mail.ru`, `HdVid`, `Yandex Disk`, `Dailymotion`, `VK Video`, `Rumble`, `Blogger`, `Direct`) + yerleşik Dean Edwards P.A.C.K.E.R JS çözücü + `%APPDATA%\aniclitr\plugins\*.json` ile derlemesiz anında güncelleme. Geliştiriciler için son kullanıcı arayüzünden ayrı `aniclitr lab list|validate|test|scaffold` kırılma teşhis laboratuvarı.
+- **Çok-Parametreli Karar Matrisli Otomatik Altyazı Hizalama & `mpv` Tipografi Stüdyosu (`internal/subsync`, `mpvmenu.go`):** Gömülü referans altyazı zaman çizelgesi, konuşma/sessizlik enerji zarfı (VAD), sahne kesimi (scene-cut) korelasyonu, FPS kayma oranı (`23.976`/`24`/`25`) ve TV/BD reklam arası çoklu parça (piecewise) ofset tespitini güven skoru + çapraz doğrulama karar matrisinde birleştiren motor + `mpv` içi canlı font/boyut/konum stüdyosu.
+- **Her Kaynakta Etkileşimli Sahne Atlama Kartı (`internal/player`, `internal/aniskip`):** AniSkip + MKV chapter (`Opening`/`Ending`/`Recap`/`Preview`) birleşimiyle Nyaa torrent ve yerel dosyalar dahil her kaynakta çalışan, bam diye atlamayan şık `mpv` onay kartı (*"Opening atlansın mı? [Enter]"*; tam otomatik Binge ayarı isteğe bağlı).
+- **Kaynak-Agnostik Katalog, ISP Akıllı Yönlendirici, Sahte Kalite Dedektörü & Sunucusuz Failover (`internal/router`, `playing.go`):** Gerçek açılış gecikmesi, buffering sayısı ve `video-bitrate` ölçümüyle sahte 1080p'yi yakalayan kişisel ISP sıralayıcı; donma anında yerel sunucu açmadan `mpv` IPC (`loadfile` + kaldığı saniye) ile yedek kaynağa geçiş + isteğe bağlı hafif ön-yükleme önbelleği.
+- **Hibrit Yerel + Çevrimiçi Medya Kütüphanesi (`internal/localmedia`):** Arka plan sunucusu olmadan yerel/harici disk klasörlerindeki `.mkv`/`.mp4` animeleri tarayıp katalogla birleştirir (`◆ Diskte Hazır` rozeti, 0 ms yerelden oynatma, MAL/AniList eşitleme).
+- **`mpv` Ses Stüdyosu, OST Katmanı, Sahne Yer İmleri, Klip/4K Kare & İsteğe Bağlı Sinema Önerisi (`internal/media`, `mpvmenu.go`, `franchiseui.go`):** Canlı *Stüdyo Referans*, *Gece Modu* ve *Kulaklık Sahne (BS2B)* ses profilleri; anahtarsız AnimeThemes OP/ED/Insert listesi (`O`); `Shift+B` sahne yer imi (`B` ile doğrudan saniyeye zıplama); `Alt+C` 10 sn MP4/GIF klip, `Alt+F` altyazısız 4K kare; kullanıcı-opsiyonlu görsel sahne arama ucu ve asla zorlamayan Akıllı Sinema Profili önerisi.
+- **Kişisel Anime Günlüğü, Bölüm Puanlama & Akıllı Seri Puanı Önerisi (`internal/store`, `anime.go`, `library.go`):** Bölüm bazlı 1–10 puanlama (`E`), seri bitince veya `G` tuşuyla bölüm ortalamasını seri puanı olarak MAL/AniList'e işleme önerisi, 365 günlük GitHub tarzı izleme ısı haritası ve sıfır-AI saf matematiksel **Yerel Zevk DNA'sı** (`internal/dna`).
+- **İnteraktif Evren & İzleme Sırası Ağacı (`internal/seasons/franchise.go`, `franchiseui.go`):** Anime sayfasında `U` ile AniList ilişki grafiğinden kronolojik/yayın sırası ağacı (`✓`, `▶`, `○`, filmler ve yan hikâyeler).
+- **Evrensel Sorgu & Akıllı Dinamik Listeler (`internal/query`, `palette.go`):** `ctrl+k` 2.0 içinde `puan>=8 durum:bitti tur:psikolojik`, `yıl:2000..2012 stüdyo:madhouse`, `eksik:disk` gibi anlık sorgu dili ve Akıllı Listeler.
+- **Watch Party 2.0 (`internal/watchparty/relay.go`, `partyui.go`):** Bilgisayarda hiçbir yerel sunucu veya port açmadan oda koduyla (`ANI-XXXX-XXXX`) internet üzerinden senkron oynatma + `mpv` üstünde açılıp kapatılabilir (`Alt+H`) canlı ASS sohbet ve emoji tepkileri.
+
+### Düzeltilenler
+- **Tarih/süre biçimlendirme ve kapsamlı mantık denetimi (`layout.go`, `nova_home.go`, `homemenu.go`, `downloads.go`, `discover.go`, `follow.go`, `torrentui.go`, `library.go`):** Ana sayfa `KALDIĞIN YER` kartındaki `"21 Eyl önce"` mutlak tarih eki hatası, sıfır zaman damgalarında boş `" önce"` sızması, DST/negatif gün hesabı kaymaları, Türkçe indirme kalan süre biçimi (`fmtETA`), `<1 MB` boyutlarda `"0 MB"` gösterimi, AniList köprü satırı ve Türkçe büyük/küçük harf (`unicode.TurkishCase`) tutarsızlıkları giderildi ve regresyon testleriyle kapatıldı.
+- **Windows self-update `.old` dosya kilidi koruması (`internal/update`):** Önceki güncellemeden kilitli/artık `.old` dosyası varken `os.Rename` patlamaması için benzersiz PID/zaman damgalı yedek adı (`.old.<pid>.<ns>`) ve sonraki açılışta sessiz toplu temizlik eklendi.
+
 ## [1.3.0]
 
 ### Eklenenler

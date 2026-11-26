@@ -139,6 +139,56 @@ func (p *playing) stepSleep(a *App, dir int) tea.Cmd {
 	return nil
 }
 
+var audioProfileCycle = []string{"referans", "gece", "kulaklık"}
+
+func (p *playing) stepAudioProfile(a *App, dir int) tea.Cmd {
+	idx := 0
+	for i, ap := range audioProfileCycle {
+		if ap == a.cfg.AudioProfile {
+			idx = i
+		}
+	}
+	next := audioProfileCycle[(idx+dir+len(audioProfileCycle))%len(audioProfileCycle)]
+	a.cfg.AudioProfile = next
+	_ = a.cfg.Save()
+	if p.sess != nil {
+		p.sess.SetAudioProfile(next, true)
+	}
+	a.notify("Ses Stüdyosu: "+player.AudioProfileLabel(next), "ok")
+	p.syncQuickMenu(a)
+	return nil
+}
+
+func (p *playing) stepSubFontSize(a *App, delta int) tea.Cmd {
+	sz := a.cfg.SubFontSize
+	if sz <= 0 {
+		sz = 48
+	}
+	sz = clamp(sz+delta, 24, 96)
+	a.cfg.SubFontSize = sz
+	_ = a.cfg.Save()
+	if p.sess != nil {
+		p.sess.SetSubStyle(a.cfg.SubFont, sz, a.cfg.SubPos, a.cfg.SubBorder, a.cfg.SubColor, true)
+	}
+	p.syncQuickMenu(a)
+	return nil
+}
+
+func (p *playing) stepSubPos(a *App, delta int) tea.Cmd {
+	sp := a.cfg.SubPos
+	if sp <= 0 {
+		sp = 96
+	}
+	sp = clamp(sp+delta, 50, 100)
+	a.cfg.SubPos = sp
+	_ = a.cfg.Save()
+	if p.sess != nil {
+		p.sess.SetSubStyle(a.cfg.SubFont, a.cfg.SubFontSize, sp, a.cfg.SubBorder, a.cfg.SubColor, true)
+	}
+	p.syncQuickMenu(a)
+	return nil
+}
+
 func (p *playing) menuRowCount() int {
 	switch p.qmenu.page {
 	case menuRes:
@@ -146,9 +196,9 @@ func (p *playing) menuRowCount() int {
 	case menuQuality:
 		return len(shaders.Profiles) + 1 // 4 Anime4K + 1 Frame-Gen inline row = 5
 	case menuSubs:
-		return 3 // AniSub aç, Senkron ±0.1s, Sıfırla
+		return 6 // AniSub aç, Senkron ±0.1s, Sıfırla, Oto-Hizala, Tipografi Boyut, Tipografi Konum
 	case menuPlayback:
-		return 3 // Ses, Hız, Uyku
+		return 6 // Ses, Ses Stüdyosu, Hız, Uyku, Sahne Yer İmi, Klip 10sn
 	default:
 		return 5 // Root: Çözünürlük, Kalite & Akıcılık, Altyazı, Ses & Oynatma, Bölüm
 	}
@@ -231,6 +281,13 @@ func (p *playing) pickQuickMenu(a *App, idx int) tea.Cmd {
 			cmd := p.adjustSubDelay(a, 0, true)
 			p.syncQuickMenu(a)
 			return cmd
+		case 3:
+			p.closeQuickMenu()
+			return p.runAutoSubSync(a)
+		case 4:
+			return p.stepSubFontSize(a, +2)
+		case 5:
+			return p.stepSubPos(a, -2)
 		}
 	case menuPlayback:
 		switch idx {
@@ -244,6 +301,16 @@ func (p *playing) pickQuickMenu(a *App, idx int) tea.Cmd {
 			return p.stepSpeed(a, +1)
 		case 2:
 			return p.stepSleep(a, +1)
+		case 3:
+			return p.stepAudioProfile(a, +1)
+		case 4:
+			p.closeQuickMenu()
+			cmd, _ := p.handleV2MpvAction(a, player.Event{Action: "aniclitr-bookmark", Pos: p.pos})
+			return cmd
+		case 5:
+			p.closeQuickMenu()
+			cmd, _ := p.handleV2MpvAction(a, player.Event{Action: "aniclitr-clip", Pos: p.pos})
+			return cmd
 		}
 	}
 	return nil
@@ -286,15 +353,20 @@ func (p *playing) adjustQuickMenu(a *App, dir int) tea.Cmd {
 		}
 		return p.pickQuickMenu(a, p.qmenu.cur)
 	case menuSubs:
-		if p.qmenu.cur == 1 {
+		switch p.qmenu.cur {
+		case 1:
 			cmd := p.adjustSubDelay(a, float64(dir)*0.1, false)
 			p.syncQuickMenu(a)
 			return cmd
+		case 4:
+			return p.stepSubFontSize(a, dir*2)
+		case 5:
+			return p.stepSubPos(a, dir*2)
 		}
 		if dir < 0 {
 			p.backQuickMenu(a)
-		} else if p.qmenu.cur == 0 {
-			return p.pickQuickMenu(a, 0)
+		} else if p.qmenu.cur == 0 || p.qmenu.cur == 3 {
+			return p.pickQuickMenu(a, p.qmenu.cur)
 		}
 	case menuPlayback:
 		switch p.qmenu.cur {
@@ -304,6 +376,8 @@ func (p *playing) adjustQuickMenu(a *App, dir int) tea.Cmd {
 			return p.stepSpeed(a, dir)
 		case 2:
 			return p.stepSleep(a, dir)
+		case 3:
+			return p.stepAudioProfile(a, dir)
 		}
 	}
 	return nil
@@ -446,21 +520,35 @@ func (p *playing) buildQuickMenuASS(a *App) string {
 		}
 		footHint = `{\1c&HF0F0F2&}↑↓{\1c&H84848E&} seç    {\1c&HF0F0F2&}Enter/←→{\1c&H84848E&} uygula    {\1c&HF0F0F2&}Esc{\1c&H84848E&} üst menü`
 	case menuSubs:
-		breadcrumb = "MENÜ / ALTYAZI"
-		subHdr = "ANISUB · SENKRON"
+		breadcrumb = "MENÜ / ALTYAZI & STÜDYO"
+		subHdr = "ANISUB · KARAR MATRİSİ · TİPOGRAFİ"
+		sz := a.cfg.SubFontSize
+		if sz <= 0 {
+			sz = 48
+		}
+		sp := a.cfg.SubPos
+		if sp <= 0 {
+			sp = 96
+		}
 		rows = []studioRow{
 			{idx: "01", label: "AniSub Altyazı Seçici", right: "aç", submenu: true},
 			{idx: "02", label: "Altyazı Senkronu", right: player.FormatSubDelay(p.subDelay), active: math.Abs(p.subDelay) >= 0.05, slider: true},
 			{idx: "03", label: "Senkronu Sıfırla", right: "0,0 sn"},
+			{section: "MÜHENDİSLİK · TİPOGRAFİ STÜDYOSU", idx: "04", label: "Oto-Hizala (Karar Matrisi)", note: "VAD + sahne + FPS", right: "çalıştır"},
+			{idx: "05", label: "Altyazı Boyutu", right: fmt.Sprintf("%d pt", sz), active: sz != 48, slider: true},
+			{idx: "06", label: "Dikey Konum", right: fmt.Sprintf("%%%d", sp), active: sp != 96, slider: true},
 		}
-		footHint = `{\1c&HF0F0F2&}↑↓{\1c&H84848E&} seç    {\1c&HF0F0F2&}←→{\1c&H84848E&} ±0,1s    {\1c&HF0F0F2&}Enter{\1c&H84848E&} uygula    {\1c&HF0F0F2&}Esc{\1c&H84848E&} üst menü`
+		footHint = `{\1c&HF0F0F2&}↑↓{\1c&H84848E&} seç    {\1c&HF0F0F2&}←→{\1c&H84848E&} ayarla    {\1c&HF0F0F2&}Enter{\1c&H84848E&} uygula    {\1c&HF0F0F2&}Esc{\1c&H84848E&} üst menü`
 	case menuPlayback:
-		breadcrumb = "MENÜ / SES & OYNATMA"
-		subHdr = "CANLI AYAR"
+		breadcrumb = "MENÜ / SES & STÜDYO"
+		subHdr = "AUDIO STUDIO · KLİP"
 		rows = []studioRow{
 			{idx: "01", label: "Ses Seviyesi", right: volTxt, active: p.muted || vol != 100, slider: true},
 			{idx: "02", label: "Oynatma Hızı", right: fmt.Sprintf("%.2g×", curSp), active: curSp != 1.0, slider: true},
 			{idx: "03", label: "Uyku Zamanlayıcısı", right: a.sleep.label(), active: a.sleep.active(), slider: true},
+			{idx: "04", label: "Ses Stüdyosu", right: player.AudioProfileLabel(a.cfg.AudioProfile), active: a.cfg.AudioProfile != "" && a.cfg.AudioProfile != "referans", slider: true},
+			{section: "SAHNE & KLİP STÜDYOSU", idx: "05", label: "Sahne Yer İmi Ekle", note: "Shift+B", right: clock(p.pos)},
+			{idx: "06", label: "Son 10 sn Klip Kaydet", note: "Alt+C · MP4", right: "kes"},
 		}
 		footHint = `{\1c&HF0F0F2&}↑↓{\1c&H84848E&} seç    {\1c&HF0F0F2&}←→{\1c&H84848E&} ayarla    {\1c&HF0F0F2&}Enter{\1c&H84848E&} değiştir    {\1c&HF0F0F2&}Esc{\1c&H84848E&} üst menü`
 	default:

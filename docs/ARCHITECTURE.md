@@ -70,8 +70,15 @@ internal/
     hianime/              English: HTML + embed decoder (HLS, filler flag, OP/ED)
     animedepo/            legacy archive (GitLab index, mostly dead links)
   extract/                self-registering host resolvers: tau, sibnet, Google Drive, OK.ru, Vidmoly, Voe, HLS/MP4 prober, typed errors, yt-dlp fallback
+  plugin/                 zero-compile JSON resolver pack VM (17 embedded host packs + %APPDATA%\aniclitr\plugins overrides, Dean Edwards JS unpacker, developer `aniclitr lab`)
+  router/                 personal ISP self-healing speed/fake-quality router, source-agnostic unified catalog, serverless mpv IPC failover, predictive preload cache
+  localmedia/             serverless hybrid local+online disk scanner & sidecar subtitle matcher
+  subsync/                multi-parameter Decision Matrix subtitle auto-alignment (embedded ref + VAD + scene cuts + FPS drift + TV/BD piecewise breaks)
+  media/                  one-key MP4/GIF clip studio, non-forcing Smart Cinema advisor, keyless AnimeThemes OST lookup, thumbnail scrubber, optional user-configured scene search
+  query/                  ctrl+k 2.0 universal structured query language & dynamic Smart Playlists
+  dna/                    zero-AI pure-local mathematical Taste DNA & studio/director/seiyuu affinity engine
   match/                  unified title folding, Sorensen-Dice fuzzy scoring, persistent mappings.json cache
-  seasons/                AniList PREQUEL/SEQUEL chain resolver and absolute-to-seasonal episode mapper
+  seasons/                AniList PREQUEL/SEQUEL chain resolver, absolute-to-seasonal mapper, and interactive Franchise Watch Order tree
   choose/                 rule-based host & quality selector (preferred host, permanent error skip)
   diag/                   persistent source & host reliability telemetry (diag.json, doctor --blame)
   aniskip/                OP/ED timestamps (AniSkip v2)

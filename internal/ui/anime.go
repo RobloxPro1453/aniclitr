@@ -103,7 +103,7 @@ func (s *animeScreen) hints() []hint {
 	if len(s.selEps) > 0 {
 		return []hint{{"v", "seç/bırak"}, {"d/D", fmt.Sprintf("seçilileri indir (%d)", len(s.selEps))}, {"V", "seçimi temizle"}, {"esc", "geri"}}
 	}
-	return append(h, hint{"w", "izlendi"}, hint{"v", "seç"}, hint{"d", "indir"}, hint{"D", "toplu indir"}, hint{"x", "indirilen bölümü sil"}, hint{"N", "not"}, hint{"t", "fragman"}, hint{"y", "benzerleri"}, hint{"T", "torrent (nyaa.si)"}, hint{"a", "kitaplık"}, hint{"r", "eşleme / kurtarma"}, hint{"esc", "geri"})
+	return append(h, hint{"w", "izlendi"}, hint{"E", "bölüm puanla"}, hint{"U", "evren / izleme sırası"}, hint{"O", "müzikler (OST)"}, hint{"B", "sahne yer imleri"}, hint{"v", "seç"}, hint{"d", "indir"}, hint{"D", "toplu indir"}, hint{"x", "indirilen bölümü sil"}, hint{"N", "not"}, hint{"t", "fragman"}, hint{"y", "benzerleri"}, hint{"T", "torrent (nyaa.si)"}, hint{"a", "kitaplık"}, hint{"r", "eşleme / kurtarma"}, hint{"esc", "geri"})
 }
 
 func (s *animeScreen) animating(a *App) bool {
@@ -573,6 +573,51 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 		a.flash()
 		cs := newCharactersScreen(s.an)
 		return tea.Batch(a.push(cs), cs.start(a))
+	case "U":
+		a.flash()
+		fs := newFranchiseScreen(s.an)
+		return tea.Batch(a.push(fs), fs.start(a))
+	case "O":
+		a.flash()
+		os := newOSTScreen(s.an)
+		return tea.Batch(a.push(os), os.start(a))
+	case "B":
+		a.flash()
+		bs := newBookmarksScreen(s.an, eps)
+		return a.push(bs)
+	case "E":
+		if s.cur < len(eps) {
+			ep := eps[s.cur]
+			var items []dropItem
+			for sc := 10; sc >= 1; sc-- {
+				score := sc
+				items = append(items, dropItem{
+					icon:  "★",
+					color: cWarn,
+					label: fmt.Sprintf("%d / 10", score),
+					run: func(a *App) tea.Cmd {
+						a.hist.SetEpisodeScore(s.an, ep.Season, ep.Number, score)
+						avg, cnt, sug := a.hist.EpisodeScoreStats(s.an.Key())
+						avgStr := strings.ReplaceAll(fmt.Sprintf("%.1f", avg), ".", ",")
+						a.notify(fmt.Sprintf("★ B%s puanlandı (%d/10) · ort. %s (%d böl.) → G ile seri puanı %d yap", ep.Num(), score, avgStr, cnt, sug), "ok")
+						a.flash()
+						return a.tick()
+					},
+				})
+			}
+			items = append(items, dropItem{
+				icon:  "×",
+				color: cMuted,
+				label: "Bölüm puanını kaldır",
+				run: func(a *App) tea.Cmd {
+					a.hist.SetEpisodeScore(s.an, ep.Season, ep.Number, 0)
+					a.notify("bölüm puanı kaldırıldı", "ok")
+					return a.tick()
+				},
+			})
+			a.openList(fmt.Sprintf("Bölüm %s puanı", ep.Num()), items)
+			return a.tick()
+		}
 	case "T":
 		a.flash()
 		ts := newTorrentScreen(s.an.Title)
@@ -615,7 +660,16 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 		s.cur = clamp(s.cur+10, 0, len(eps)-1)
 	case "home", "g":
 		s.cur = 0
-	case "end", "G":
+	case "end":
+		s.cur = max(0, len(eps)-1)
+	case "G":
+		if avg, cnt, sug := a.hist.EpisodeScoreStats(s.an.Key()); cnt > 0 && sug > 0 {
+			a.libSet(s.an, func(x *store.Item) { x.Score = sug })
+			avgStr := strings.ReplaceAll(fmt.Sprintf("%.1f", avg), ".", ",")
+			a.notify(fmt.Sprintf("★ Bölüm ortalaması (%s) seri puanı olarak işlendi: %d/10 (MAL/AniList eşitlenecek)", avgStr, sug), "ok")
+			a.flash()
+			return a.tick()
+		}
 		s.cur = max(0, len(eps)-1)
 	case "J":
 		s.descOff++
@@ -778,6 +832,16 @@ func (s *animeScreen) key(a *App, k tea.KeyMsg) tea.Cmd {
 			if j, ok := a.dl.LocalFor(s.an, eps[s.cur].Season, eps[s.cur].Number); ok {
 				a.flash()
 				return a.playLocal(j, eps)
+			}
+			// serverless hybrid local disk archive plays at 0 ms with full MAL/AniList sync
+			if lf, ok := a.localFileFor(s.an, eps[s.cur].Season, eps[s.cur].Number); ok {
+				a.flash()
+				st := &source.Stream{Qualities: []source.Quality{{Label: lf.Resolution, URL: lf.Path}}}
+				if lf.SubPath != "" {
+					st.Subtitles = []source.Subtitle{{Label: "Yerel", URL: lf.SubPath}}
+				}
+				pl := newPlaying(s.an, eps[s.cur], eps, "Diskte Hazır", "Yerel Disk", st, st.Qualities[0])
+				return tea.Batch(a.push(pl), pl.start(a))
 			}
 		}
 		if s.cur < len(eps) {

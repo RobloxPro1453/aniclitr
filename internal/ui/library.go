@@ -1093,6 +1093,10 @@ func (l *library) statsView(a *App, w, h int) []string {
 		out = append(out, "")
 		out = append(out, genreCol...)
 	}
+	out = append(out, "")
+	out = append(out, renderTasteDNA(a, w)...)
+	out = append(out, "")
+	out = append(out, renderHeatmap365(a, w)...)
 	return block(out, w, h)
 }
 

@@ -32,6 +32,13 @@ Bu belge `aniclitr`'in tamamlanan temel kilometre taşlarını ve `v1.0.0` sonra
 - **Tüm menülerde eksiksiz akıllı arama:** Birleşik `match.RankTitle` motoru tüm arama yüzeylerine (`results`, `suggest`, `library`, CLI) ve Nyaa.si'nin tüm 5 sekmesine (TF-DF gürültü ayıklamalı otomatik seeders ikinci geçişiyle) yayıldı.
 - **Tam Arayüz Discord Rich Presence & Bölüm Geçişi:** Sıralı yarışsız RPC işçisi, tüm ekranlarda canlı gezinti durumu, duraklatma koruması, sarma (seek) senkronu, özel `aniclitr` ikonu ve `--force-window=immediate` ile anında sonraki bölüm `mpv` penceresi.
 
+## v2.0.0 ile Tamamlananlar
+
+- **Sıfır-derleme eklenti & çözücü motoru (`internal/plugin`):** 17 yerleşik JSON çözücü paketi (`Filemoon`, `StreamWish`, `DoodStream`, `MixDrop`, `Streamtape`, `Mp4Upload`, `Uqload`, `Mail.ru`, `Yandex Disk`, `VK`, `Dailymotion`, `Sendvid`, `HdVid`, `Vidoza`, `Rumble`, `Blogger`, `Direct`) + `%APPDATA%\aniclitr\plugins` üzerinden derlemesiz anında güncelleme ve geliştirici kırılma teşhis laboratuvarı (`aniclitr lab`).
+- **Çok-parametreli karar matrisli otomatik altyazı hizalama & `mpv` Stüdyoları (`internal/subsync`, `internal/media`):** Gömülü referans + ses VAD + sahne kesimi + FPS kayma + TV/BD reklam arası çoklu parça ofset matrisi; `mpv` içi canlı Tipografi Stüdyosu, Ses Stüdyosu (*Referans / Gece / Kulaklık BS2B*), etkileşimli OP/ED onay kartı (AniSkip + MKV chapter), Sahne Yer İmleri (`Shift+B` / `B`), Klip/4K Kare (`Alt+C` / `Alt+F`) ve anahtarsız OST Müzik katmanı (`O`).
+- **Kaynak-agnostik katalog, ISP akıllı yönlendirici & sunucusuz hibrit kütüphane (`internal/router`, `internal/localmedia`):** Kişisel ISP hız/sahte-kalite puanlaması, yerel sunucu açmadan `mpv` IPC failover ve yerel/harici disk `.mkv`/`.mp4` arşivi (`◆ Diskte Hazır`).
+- **Günlük, Evren Ağacı, Evrensel Sorgu, Zevk DNA'sı & Watch Party 2.0:** Bölüm bazlı puanlama (`E`) + otomatik seri ortalaması önerisi (`G`), 365 günlük ısı haritası, saf yerel matematiksel Zevk DNA'sı, İnteraktif Evren & İzleme Sırası Ağacı (`U`), `ctrl+k` 2.0 sorgu dili & Akıllı Listeler ve sunucusuz oda-kodlu Watch Party 2.0 + canlı `mpv` ASS sohbet (`Alt+H`).
+
 ## Sonraki Sürümler için Değerlendirilenler
 
 - **Ek açık kaynak sağlayıcıları:** Bot koruması ve Cloudflare engeli olmayan açık API/HTML sunan yeni Türkçe kaynaklar.

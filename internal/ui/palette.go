@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"aniclitr/internal/query"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 )
@@ -108,6 +109,15 @@ func (a *App) paletteItems() []palItem {
 	for _, l := range a.lib.ListNames() {
 		l := l
 		add(listIcon(l), "Liste › "+l, "liste", "", func(a *App) tea.Cmd { return a.openLibrary("list:" + l) })
+	}
+	// v2.0 Dynamic Smart Playlists (ctrl+k 2.0 query engine)
+	smartAll := append(query.DefaultSmartLists(), a.cfg.SmartLists...)
+	for _, sl := range smartAll {
+		sl := sl
+		add("◈", "Akıllı Liste › "+sl.Name, "sorgu", sl.Query, func(a *App) tea.Cmd {
+			a.openPalette(sl.Query)
+			return a.tick()
+		})
 	}
 	seen := map[string]bool{}
 	for i, e := range a.recent() {
@@ -329,6 +339,41 @@ func (p *palette) filter(a *App) {
 				r := newResults(qq)
 				return tea.Batch(a.push(r), r.start(a))
 			}}, score: 1})
+		}
+	}
+	// ctrl+k 2.0 Universal Query Engine: evaluate structured filters live
+	// (e.g., "puan>=8 durum:bitti tur:psikolojik", "yıl:2000..2012", "eksik:disk").
+	if q != "" && strings.ContainsAny(q, ":><=") && !source.IsURL(q) {
+		recs := query.Filter(q, a.lib, a.hist, a.local, nil)
+		for i, rec := range recs {
+			if i >= 25 {
+				break
+			}
+			it := rec.Item
+			note := it.Status
+			if it.Score > 0 {
+				note += fmt.Sprintf(" · ★%d", it.Score)
+			}
+			if rec.HasLocal {
+				note += " · Diskte"
+			}
+			hs := palHit{
+				it: palItem{
+					icon:  statusIcon(it.Status),
+					label: it.Title,
+					group: "sorgu",
+					note:  note,
+					run: func(a *App) tea.Cmd {
+						if it.Source == "mal" || it.Source == "anilist" {
+							return a.openByMal(it.MalID, []string{it.Title}, it.Poster)
+						}
+						sc := newAnime(it.Anime(), a.siblings(it.Anime()), 0, 0)
+						return tea.Batch(a.push(sc), sc.start(a))
+					},
+				},
+				score: 200 - i,
+			}
+			search = append(search, hs)
 		}
 	}
 	var hs []palHit

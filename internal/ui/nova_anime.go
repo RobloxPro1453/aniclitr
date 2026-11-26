@@ -397,6 +397,9 @@ func (s *animeScreen) novaEpisodesStage(a *App, w, h int, acc string) []string {
 		if ep.Filler {
 			right = append(right, sp("filler  ", cWarn))
 		}
+		if sc := ent.EpScores[key]; sc > 0 {
+			right = append(right, sp(fmt.Sprintf("★%d ", sc), cWarn))
+		}
 		if ent.Notes[key] != "" {
 			right = append(right, sp("✎ ", cAccent2))
 		}
@@ -410,6 +413,8 @@ func (s *animeScreen) novaEpisodesStage(a *App, w, h int, acc string) []string {
 			default:
 				right = append(right, sp(ic+" ", c))
 			}
+		} else if _, ok := a.localFileFor(s.an, ep.Season, ep.Number); ok {
+			right = append(right, sp("◆ Diskte Hazır  ", cOK))
 		}
 		switch {
 		case done:

@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"fmt"
+	"context"
 	"os/user"
 	"strings"
 
@@ -11,13 +11,16 @@ import (
 	"aniclitr/internal/watchparty"
 )
 
-// partyScreen manages zero-dependency LAN/TCP Watch Together rooms cleanly
-// without adding permanent clutter to the Home or Playing screens.
+// partyScreen manages Watch Party 2.0: 100% serverless internet rooms by room
+// code (zero port forwarding, zero local server) + live mpv ASS chat & emoji
+// reactions (toggleable via Alt+H).
 type partyScreen struct {
-	joining bool
-	addrIn  input
-	nickIn  input
-	focus   int // 0 addr, 1 nick
+	joining  bool // entering a room code
+	chatting bool // typing a live chat message
+	codeIn   input
+	nickIn   input
+	chatIn   input
+	focus    int // 0 code, 1 nick
 }
 
 func defaultNick() string {
@@ -35,28 +38,57 @@ func defaultNick() string {
 
 func newPartyScreen() *partyScreen {
 	p := &partyScreen{
-		addrIn: input{placeholder: "ör. 192.168.1.5:47620"},
+		codeIn: input{placeholder: "oda kodu (ör. ANI-7K4M-9P2Q)"},
 		nickIn: input{placeholder: "takma ad (isteğe bağlı)"},
+		chatIn: input{placeholder: "canlı sohbet mesajı yaz… (mpv ekranında görünür)"},
 	}
 	p.nickIn.Set(defaultNick())
 	return p
 }
 
-func (p *partyScreen) crumb() string { return "birlikte izle" }
+func (p *partyScreen) crumb() string { return "birlikte izle 2.0" }
 
-func (p *partyScreen) typing() bool { return p.joining }
+func (p *partyScreen) typing() bool { return p.joining || p.chatting }
 
 func (p *partyScreen) hints() []hint {
 	if p.joining {
-		return []hint{{"enter", "bağlan"}, {"tab", "alan değiştir"}, {"esc", "vazgeç"}}
+		return []hint{{"enter", "odaya katıl"}, {"tab", "alan değiştir"}, {"esc", "vazgeç"}}
 	}
-	return []hint{{"h", "oda kur"}, {"j", "odaya katıl"}, {"c", "adresi kopyala"}, {"x", "odadan çık"}, {"esc", "geri"}}
+	if p.chatting {
+		return []hint{{"enter", "gönder"}, {"esc", "vazgeç"}}
+	}
+	return []hint{{"h", "oda kodu oluştur"}, {"j", "koda katıl"}, {"t", "sohbet yaz"}, {"1-5", "tepki"}, {"c", "kodu kopyala"}, {"x", "çık"}, {"esc", "geri"}}
 }
+
+var partyReactions = []string{"🔥", "😭", "😂", "👏", "⚡"}
 
 func (p *partyScreen) update(a *App, msg tea.Msg) tea.Cmd {
 	k, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return nil
+	}
+	if p.chatting {
+		switch k.String() {
+		case "esc":
+			p.chatting = false
+			return nil
+		case "enter":
+			txt := strings.TrimSpace(p.chatIn.Value())
+			p.chatIn.Set("")
+			p.chatting = false
+			if txt != "" && a.relayParty != nil {
+				if err := a.relayParty.SendChat(txt); err != nil {
+					a.notify("mesaj gönderilemedi: "+err.Error(), "err")
+				} else {
+					a.notify("💬 gönderildi", "ok")
+				}
+				return a.tick()
+			}
+			return nil
+		default:
+			p.chatIn.handle(k)
+			return nil
+		}
 	}
 	if p.joining {
 		switch k.String() {
@@ -67,23 +99,27 @@ func (p *partyScreen) update(a *App, msg tea.Msg) tea.Cmd {
 			p.focus = 1 - p.focus
 			return nil
 		case "enter":
-			addr := strings.TrimSpace(p.addrIn.Value())
+			code := strings.TrimSpace(p.codeIn.Value())
 			nick := strings.TrimSpace(p.nickIn.Value())
-			room, err := watchparty.Join(addr, nick)
+			if code == "" {
+				a.notify("oda kodu girin (ör. ANI-7K4M-9P2Q)", "warn")
+				return a.tick()
+			}
+			if a.relayParty != nil {
+				a.relayParty.Close()
+			}
+			rr, err := watchparty.ConnectRelay(context.Background(), "", code, nick, nil)
 			if err != nil {
 				a.notify(err.Error(), "err")
 				return a.tick()
 			}
-			if a.party != nil {
-				a.party.Close()
-			}
-			a.party = room
+			a.relayParty = rr
 			p.joining = false
-			a.notify("◈ odaya bağlanıldı: "+room.Addr(), "ok")
-			return tea.Batch(a.waitParty(), a.tick())
+			a.notify("◈ sunucusuz odaya bağlanıldı: "+rr.Code(), "ok")
+			return tea.Batch(a.waitRelayParty(), a.tick())
 		default:
 			if p.focus == 0 {
-				p.addrIn.handle(k)
+				p.codeIn.handle(k)
 			} else {
 				p.nickIn.handle(k)
 			}
@@ -95,32 +131,53 @@ func (p *partyScreen) update(a *App, msg tea.Msg) tea.Cmd {
 		a.pop()
 		return nil
 	case "h", "H":
-		if a.party != nil {
-			a.party.Close()
+		if a.relayParty != nil {
+			a.relayParty.Close()
 		}
-		room, err := watchparty.Host(":47620", defaultNick(), "")
+		code := watchparty.GenerateRoomCode()
+		rr, err := watchparty.ConnectRelay(context.Background(), "", code, defaultNick(), nil)
 		if err != nil {
 			a.notify(err.Error(), "err")
 			return a.tick()
 		}
-		a.party = room
-		_ = nyaa.CopyClipboard(room.Addr())
-		a.notify("◈ oda açıldı ve adres kopyalandı: "+room.Addr(), "ok")
-		return tea.Batch(a.waitParty(), a.tick())
+		a.relayParty = rr
+		_ = nyaa.CopyClipboard(rr.Code())
+		a.notify("◈ oda kodu oluşturuldu ve kopyalandı: "+rr.Code(), "ok")
+		return tea.Batch(a.waitRelayParty(), a.tick())
 	case "j", "J":
 		p.joining = true
 		p.focus = 0
 		return a.tick()
+	case "t", "T":
+		if a.relayParty != nil {
+			p.chatting = true
+			return a.tick()
+		}
+	case "1", "2", "3", "4", "5":
+		if a.relayParty != nil {
+			idx := int(k.String()[0] - '1')
+			if idx >= 0 && idx < len(partyReactions) {
+				_ = a.relayParty.SendReaction(partyReactions[idx])
+				a.notify("tepki gönderildi: "+partyReactions[idx], "ok")
+				return a.tick()
+			}
+		}
 	case "c", "C":
-		if a.party != nil {
-			if err := nyaa.CopyClipboard(a.party.Addr()); err != nil {
+		if a.relayParty != nil {
+			if err := nyaa.CopyClipboard(a.relayParty.Code()); err != nil {
 				a.notify("kopyalanamadı: "+err.Error(), "warn")
 			} else {
-				a.notify("oda adresi kopyalandı: "+a.party.Addr(), "ok")
+				a.notify("oda kodu kopyalandı: "+a.relayParty.Code(), "ok")
 			}
 			return a.tick()
 		}
 	case "x", "X":
+		if a.relayParty != nil {
+			a.relayParty.Close()
+			a.relayParty = nil
+			a.notify("birlikte izleme odasından çıkıldı", "ok")
+			return a.tick()
+		}
 		if a.party != nil {
 			a.party.Close()
 			a.party = nil
@@ -132,39 +189,46 @@ func (p *partyScreen) update(a *App, msg tea.Msg) tea.Cmd {
 }
 
 func (p *partyScreen) view(a *App, w, h int) string {
-	cw := clamp(w-8, 52, 82)
+	cw := clamp(w-8, 54, 86)
 	iw := cw - 4
 	var body []string
 
-	if a.party != nil {
-		role := "MİSAFİR"
-		col := cAccent2
-		if a.party.IsHost() {
-			role, col = "EV SAHİBİ", cOK
-		}
+	if a.relayParty != nil {
 		body = append(body,
-			center(pill("◈ AKTİF ODA · "+role, col), iw),
+			center(pill("◈ WATCH PARTY 2.0 · SUNUCUSUZ AKTİF ODA", cOK), iw),
 			"",
-			row2("  "+stMuted.Render("Oda adresi"), fg(cAccent).Bold(true).Render(a.party.Addr()+"  "), iw),
-			row2("  "+stMuted.Render("Bağlı izleyici"), stText.Bold(true).Render(fmt.Sprintf("%d kişi  ", a.party.PeerCount())), iw),
+			row2("  "+stMuted.Render("Paylaşılabilir Oda Kodu"), fg(cAccent).Bold(true).Render(a.relayParty.Code()+"  "), iw),
+			row2("  "+stMuted.Render("mpv Canlı Sohbet Katmanı"), stText.Render(map[bool]string{true: "açık (Alt+H gizle)  ", false: "gizli (Alt+H aç)  "}[a.chatVisible]), iw),
 			"",
 			stFaint.Render(strings.Repeat("─", iw)),
-			"",
 		)
-		for _, l := range wrap("Arkadaşın aynı bölümü açtığında duraklatma, devam ettirme ve ileri/geri sarma işlemleri anlık olarak eşitlenir (1,5 sn kayma toleransı).", iw-4) {
-			body = append(body, "  "+stSub.Render(l))
+		msgs := a.relayParty.Messages()
+		if len(msgs) == 0 {
+			body = append(body, "", "  "+stMuted.Render("Henüz sohbet mesajı yok. t ile yaz veya 1-5 ile tepki gönder."))
+		} else {
+			start := max(0, len(msgs)-5)
+			for _, m := range msgs[start:] {
+				txt := strings.TrimSpace(m.Reaction + " " + m.Text)
+				body = append(body, "  "+fg(cSky).Bold(true).Render(m.Nick+": ")+stText.Render(truncate(txt, iw-18)))
+			}
+		}
+		if p.chatting {
+			body = append(body, "")
+			for _, l := range p.chatIn.view(iw-4, true, a.frame) {
+				body = append(body, "  "+l)
+			}
 		}
 		body = append(body,
 			"",
-			center(keycap("c")+" "+stText.Render("adresi kopyala")+"   "+keycap("x")+" "+fg(cErr).Render("odadan çık")+"   "+keycap("esc")+" "+stMuted.Render("oynatmaya dön"), iw),
+			center(keycap("t")+" "+stText.Render("sohbet")+"  "+keycap("1-5")+" "+stText.Render("🔥😭😂👏⚡")+"  "+keycap("c")+" "+stText.Render("kopyala")+"  "+keycap("x")+" "+fg(cErr).Render("çık"), iw),
 		)
 	} else if p.joining {
 		body = append(body,
-			center(pill("◈ ODAYA KATIL", cAccent2), iw),
+			center(pill("◈ ODA KODUNA KATIL", cAccent2), iw),
 			"",
-			"  "+stMuted.Render("Oda adresi (IP:Port):"),
+			"  "+stMuted.Render("Oda Kodu (sıfır port yönlendirme):"),
 		)
-		for _, l := range p.addrIn.view(iw-4, p.focus == 0, a.frame) {
+		for _, l := range p.codeIn.view(iw-4, p.focus == 0, a.frame) {
 			body = append(body, "  "+l)
 		}
 		body = append(body, "", "  "+stMuted.Render("Takma adın:"))
@@ -174,29 +238,26 @@ func (p *partyScreen) view(a *App, w, h int) string {
 		body = append(body, "", center(keycap("enter")+" "+fg(cOK).Bold(true).Render("Bağlan")+"   "+keycap("tab")+" "+stMuted.Render("alan")+"   "+keycap("esc")+" "+stMuted.Render("iptal"), iw))
 	} else {
 		body = append(body,
-			center(pill("◈ BİRLİKTE İZLE (WATCH PARTY)", cAccent), iw),
+			center(pill("◈ BİRLİKTE İZLE 2.0 (WATCH PARTY)", cAccent), iw),
 			"",
-			center(gradient("Arkadaşlarınla Eşzamanlı İzle", brand, true), iw),
+			center(gradient("Sunucusuz · Sıfır Port Yönlendirme · Canlı mpv Sohbeti", brand, true), iw),
 			"",
 		)
-		for _, l := range wrap("Ek sunucu veya hesap gerekmez. Biriniz oda kurar, diğerleri IP:Port (yerel ağ, Tailscale veya port yönlendirme) ile bağlanır; duraklatma ve sarma her iki mpv penceresinde senkron kalır.", iw-4) {
+		for _, l := range wrap("Bilgisayarında hiçbir yerel sunucu veya port açmaz. Tek tuşla oda kodu üret, arkadaşına gönder; duraklatma, sarma ve canlı ASS sohbet/tepkiler (Alt+H) her iki mpv ekranında anında eşitlenir.", iw-4) {
 			body = append(body, "  "+stSub.Render(l))
 		}
 		body = append(body,
 			"",
-			"  "+keycap("h")+"  "+stText.Bold(true).Render("Oda kur")+stMuted.Render("   — yerel port açar ve paylaşılacak adresi kopyalar"),
-			"  "+keycap("j")+"  "+stText.Bold(true).Render("Odaya katıl")+stMuted.Render(" — arkadaşının paylaştığı adrese bağlanır"),
+			"  "+keycap("h")+"  "+stText.Bold(true).Render("Oda kodu oluştur")+stMuted.Render(" — ANI-XXXX-XXXX kodu üretir ve kopyalar"),
+			"  "+keycap("j")+"  "+stText.Bold(true).Render("Oda koduna katıl")+stMuted.Render(" — arkadaşının paylaştığı koda bağlanır"),
 			"",
 		)
-		if watchparty.HasSyncplay() {
-			body = append(body, "  "+fg(cOK).Render("✓ ")+stMuted.Render("Sistemde Syncplay de algılandı."))
-		}
 	}
 
 	innerLines := append([]string{""}, body...)
 	innerLines = append(innerLines, "")
 	panelH := min(h-2, max(12, len(innerLines)+2))
-	boxed := panel("birlikte izle", innerLines, cw, panelH, true, cAccent)
+	boxed := panel("birlikte izle 2.0", innerLines, cw, panelH, true, cAccent)
 
 	top := max(0, (h-len(boxed))/2)
 	out := make([]string, 0, h)

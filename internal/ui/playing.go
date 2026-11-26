@@ -13,7 +13,9 @@ import (
 	"aniclitr/internal/aniskip"
 	"aniclitr/internal/discord"
 	"aniclitr/internal/extract"
+	"aniclitr/internal/media"
 	"aniclitr/internal/player"
+	"aniclitr/internal/router"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
 	"aniclitr/internal/watchparty"
@@ -94,9 +96,22 @@ type playing struct {
 	videoH    int
 	volume    int
 	muted     bool
-	activeSub string
-	subs      subsState
-	qmenu     mpvMenuState
+	activeSub     string
+	activeSubPath string
+	subs          subsState
+	qmenu         mpvMenuState
+
+	// v2.0 ISP router telemetry, serverless failover & smart cinema tracking
+	launchAt       time.Time
+	firstFrameAt   time.Time
+	stallCount     int
+	bufferingSince time.Time
+	avgBitrateBps  int64
+	bitrateSamples int
+	fakeWarned     bool
+	cinemaAdvised  bool
+	failoverDone   bool
+	telemetrySent  bool
 
 	// zero-wait next episode pre-fetch & watch-party sync tracking
 	prefetchStarted bool
@@ -207,21 +222,29 @@ func (p *playing) launch(a *App) tea.Cmd {
 			title += " · " + p.ep.Title
 		}
 	}
+	p.launchAt = time.Now()
 	opts := player.Options{
-		Title:      title,
-		Stream:     p.st,
-		Quality:    p.q,
-		Start:      p.resumeAt(a),
-		Speed:      a.playSpeed,
-		Fullscreen: a.cfg.Fullscreen,
-		UpscaleRes: a.cfg.UpscaleRes,
-		Anime4K:    a.cfg.Anime4K,
-		FrameGen:   a.cfg.FrameGen,
-		Segments:   p.segs,
-		ExtraArgs:  a.cfg.ExtraMpvArgs,
-		MpvPath:    a.cfg.MpvPath,
-		NextLabel:  p.nextLabel(),
-		Thumb:      thumbPath(p.an.Key()),
+		Title:           title,
+		Stream:          p.st,
+		Quality:         p.q,
+		Start:           p.resumeAt(a),
+		Speed:           a.playSpeed,
+		Fullscreen:      a.cfg.Fullscreen,
+		UpscaleRes:      a.cfg.UpscaleRes,
+		Anime4K:         a.cfg.Anime4K,
+		FrameGen:        a.cfg.FrameGen,
+		AudioProfile:    a.cfg.AudioProfile,
+		SubFont:         a.cfg.SubFont,
+		SubFontSize:     a.cfg.SubFontSize,
+		SubPos:          a.cfg.SubPos,
+		SubBorder:       a.cfg.SubBorder,
+		SubColor:        a.cfg.SubColor,
+		InteractiveSkip: !a.cfg.AutoSkipBinge,
+		Segments:        p.segs,
+		ExtraArgs:       a.cfg.ExtraMpvArgs,
+		MpvPath:         a.cfg.MpvPath,
+		NextLabel:       p.nextLabel(),
+		Thumb:           thumbPath(p.an.Key()),
 	}
 	id := p.id
 	return guard("mpv", func() tea.Msg {
@@ -317,6 +340,61 @@ func (p *playing) update(a *App, msg tea.Msg) tea.Cmd {
 			}
 		}
 		return nil
+	case relayEvMsg:
+		if m.ok && p.sess != nil {
+			switch m.ev.Kind {
+			case "sync":
+				p.lastSyncPaused = m.ev.Paused
+				p.lastSyncPos = m.ev.Pos
+				p.sess.SetPause(m.ev.Paused)
+				if math.Abs(m.ev.Pos-p.pos) > watchparty.DriftThreshold {
+					p.sess.SeekAbs(m.ev.Pos)
+					p.sess.ShowOSD("◈ "+m.ev.Nick+" senkronladı", 1800)
+				}
+			case "chat", "reaction":
+				if a.chatVisible && a.relayParty != nil {
+					if ass := watchparty.BuildChatASS(a.relayParty.Code(), a.relayParty.Messages()); ass != "" {
+						p.sess.ShowChatOverlay(ass)
+					}
+				}
+			}
+		}
+		return nil
+	case subSyncDoneMsg:
+		if m.id != p.id {
+			return nil
+		}
+		if m.err != nil {
+			a.notify("oto-hizalama: "+m.err.Error(), "warn")
+			if p.sess != nil {
+				p.sess.ShowOSD("⚠ Oto-hizalama: "+m.err.Error(), 3200)
+			}
+			return a.tick()
+		}
+		p.activeSubPath = m.outPath
+		if p.sess != nil {
+			p.sess.AddSub(m.outPath, "Oto-Hizalı · "+p.activeSub, "tr")
+			p.sess.ResetSubDelay()
+			p.sess.ShowOSD("✓ "+m.res.SummaryTR, 4500)
+		}
+		a.notify("✓ Altyazı hizalandı: "+m.res.SummaryTR, "ok")
+		return a.tick()
+	case clipDoneMsg:
+		if m.id != p.id {
+			return nil
+		}
+		if m.err != nil {
+			a.notify("klip hatası: "+m.err.Error(), "err")
+			if p.sess != nil {
+				p.sess.ShowOSD("✗ Klip hatası: "+m.err.Error(), 3000)
+			}
+			return a.tick()
+		}
+		a.notify("✓ klip kaydedildi: "+m.path, "ok")
+		if p.sess != nil {
+			p.sess.ShowOSD("✓ Klip kaydedildi!", 2800)
+		}
+		return a.tick()
 	case adjacentMsg:
 		if m.id != p.id {
 			return nil
@@ -358,11 +436,46 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 			if !p.started || p.savedPos == 0 {
 				p.savedPos, p.savedAt = ev.Pos, time.Now()
 			}
+			if p.firstFrameAt.IsZero() && ev.Pos > 0 {
+				p.firstFrameAt = time.Now()
+			}
 			p.started = true
 		}
 		p.pos, p.dur, p.paused, p.subDelay = ev.Pos, ev.Dur, ev.Paused, ev.SubDelay
 		if ev.VideoH > 0 {
 			p.videoH = ev.VideoH
+		}
+		if ev.BitrateBps > 0 {
+			p.bitrateSamples++
+			p.avgBitrateBps += (ev.BitrateBps - p.avgBitrateBps) / int64(p.bitrateSamples)
+			if !p.fakeWarned && p.bitrateSamples >= 4 {
+				if isFake, note := router.DetectFakeQuality(p.q.Height, p.avgBitrateBps); isFake {
+					p.fakeWarned = true
+					a.notify("⚠ "+p.host+": "+note, "warn")
+				}
+			}
+			if !p.cinemaAdvised && a.cfg.CinemaSuggest && p.bitrateSamples >= 5 && p.videoH > 0 {
+				p.cinemaAdvised = true
+				adv := media.AnalyzeStream(p.videoH, p.avgBitrateBps)
+				if adv.SuggestUpscale != "" || adv.SuggestAnime4K != "" {
+					if p.sess != nil {
+						p.sess.ShowOSD("💡 "+adv.Reason+" ("+adv.OptionalNote+")", 4200)
+					}
+				}
+			}
+		}
+		if ev.Buffering {
+			if p.bufferingSince.IsZero() {
+				p.bufferingSince = time.Now()
+				p.stallCount++
+			} else if time.Since(p.bufferingSince) >= 8*time.Second || p.stallCount >= 3 {
+				if p.tryServerlessFailover(a) {
+					p.bufferingSince = time.Time{}
+					p.stallCount = 0
+				}
+			}
+		} else {
+			p.bufferingSince = time.Time{}
 		}
 		if ev.Volume > 0 || ev.Muted {
 			p.volume, p.muted = ev.Volume, ev.Muted
@@ -394,11 +507,16 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 			return nil
 		}
 		// Watch Party live broadcast (pause toggle or manual seek > 2.5s)
-		if a.party != nil {
+		if a.party != nil || a.relayParty != nil {
 			if ev.Paused != p.lastSyncPaused || math.Abs(ev.Pos-p.lastSyncPos) > 2.5 {
 				p.lastSyncPaused = ev.Paused
 				p.lastSyncPos = ev.Pos
-				a.party.BroadcastState(ev.Pos, ev.Paused)
+				if a.party != nil {
+					a.party.BroadcastState(ev.Pos, ev.Paused)
+				}
+				if a.relayParty != nil {
+					_ = a.relayParty.SendSync(p.an.Title, ev.Pos, ev.Paused)
+				}
 			} else {
 				p.lastSyncPos = ev.Pos
 			}
@@ -411,9 +529,13 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 	case player.EvSkipped:
 		p.skipText, p.skipAt = ev.Text, time.Now()
 	case player.EvAction:
+		if cmd, ok := p.handleV2MpvAction(a, ev); ok {
+			return cmd
+		}
 		return p.onMpvAction(a, ev.Action)
 	case player.EvEnded:
 		p.started = true
+		p.recordISPTelemetry(ev.Err != nil)
 		if ev.Err != nil {
 			p.err = ev.Err
 			if k := extract.KindOf(ev.Err); k.Permanent() {
@@ -921,6 +1043,7 @@ func (p *playing) libraryProgress(a *App) {
 		a.anchorOK = false
 		a.celebrate(80)
 		a.notify("◆ "+p.an.Title+" bitti! kitaplıkta puan ver (ctrl+b)", "ok")
+		p.maybeSuggestSeriesScore(a)
 	case !inLib || it.Status == store.Planned || it.Status == store.OnHold:
 		a.libSet(p.an, func(x *store.Item) { x.Status = store.Watching })
 	default:
