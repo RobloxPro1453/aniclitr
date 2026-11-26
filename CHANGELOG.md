@@ -2,6 +2,19 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [0.20.0]
+
+### Eklenenler
+- **`mpv` içi OSD altyazı seçici (`y`):** Oynatma sırasında Alt-Tab yapmadan doğrudan `mpv` penceresinde `y` tuşuna basınca videonun üzerinde şeffaf ASS AniSub altyazı menüsü açılır (`↑`/`↓` veya `1`–`8` ve `Enter` ile anında yükler, `Esc` menüyü kapatır). `mpv`'nin dahili `u` kısayoluyla çakışma tamamen giderildi.
+- **Altyazı senkron ince ayarı (fine-tuning):** Hem `mpv` penceresinde hem terminalde `z`/`x` (`±0,1 sn`), `Shift+Z`/`Shift+X` (`±0,5 sn`) ve `Alt+0`/`0` (sıfırla) ile kaymış altyazıları canlı hizalama; `mpv`'de Türkçe OSD bildirimi ve Nova oynatılıyor ekranında aktif senkron hapı.
+- **Hızlı CLI alt komutları (`internal/cli`):** `aniclitr devam [--list]`, `aniclitr ara <ad>` (TUI açmadan paralel kaynak araması), `aniclitr izle <ad> [bölüm]`.
+- **Taşınabilir tek dosya yedekleme (`internal/backup`):** `aniclitr yedekle [dosya.json]` (+ **Ayarlar → Genel → Verileri yedekle**) ile ayarlar, geçmiş, kitaplık ve eşlemeler tek JSON dosyasına paketlenir (OAuth jetonları dahil edilmez); `aniclitr geri-yukle <dosya.json>` geri yüklemeden önce otomatik `pre-restore-*` güvenlik yedeği alır.
+- **Ekran geçmişinde ileri/geri:** `alt+←` ve `alt+→` ile ekranlar arasında tarayıcı gibi hızlı geçiş.
+
+### Değişenler
+- **Altyazı kartı yenilendi (`subsui.go`):** Çerçeveli panel, üstte canlı senkron çubuğu, numaralı hızlı seçim satırları (`1`–`6`), renkli dil/sağlayıcı etiketleri ve temiz yerel dosya girişi.
+- **Gerçek Sixel kapaklı README görselleri:** `docs/media/` içindeki ekran görüntüleri ve `demo.gif`, gerçek anime kapak görselleriyle ve tam `gece` zemin rengiyle güncellendi.
+
 ## [0.19.0]
 
 ### Eklenenler

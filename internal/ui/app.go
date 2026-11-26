@@ -210,9 +210,13 @@ type App struct {
 	anchorOK bool
 
 	// overlays
-	pal     *palette
-	popup   *libPopup
-	initURL string
+	pal          *palette
+	popup        *libPopup
+	initURL      string
+	initContinue bool
+	initQuery    string
+	initEp       int
+	forward      []screen // screen history for alt+left / alt+right
 
 	// screensaver
 	lastInput time.Time
@@ -296,6 +300,18 @@ func (a *App) Init() tea.Cmd {
 	}
 	if a.initURL != "" {
 		cmds = append(cmds, a.openURL(a.initURL))
+	} else if a.initContinue {
+		if recent := a.continueEntries(); len(recent) > 0 {
+			cmds = append(cmds, continueEntry(a, recent[0]))
+		} else {
+			a.notify("devam edilecek anime bulunamadı", "warn")
+		}
+	} else if a.initQuery != "" {
+		res := newResults(a.initQuery)
+		cmds = append(cmds, a.push(res), res.start(a))
+		if a.initEp > 0 {
+			a.notify(fmt.Sprintf("%s · %d. bölüm aranıyor…", a.initQuery, a.initEp), "info")
+		}
 	}
 	return tea.Batch(cmds...)
 }
@@ -303,6 +319,17 @@ func (a *App) Init() tea.Cmd {
 // SetInitialURL schedules a direct anime/episode URL to be opened on startup.
 func (a *App) SetInitialURL(raw string) {
 	a.initURL = strings.TrimSpace(raw)
+}
+
+// SetInitialContinue resumes the most recently watched anime immediately on startup.
+func (a *App) SetInitialContinue() {
+	a.initContinue = true
+}
+
+// SetInitialWatch launches directly into searching for query (and optional episode hint).
+func (a *App) SetInitialWatch(query string, ep int) {
+	a.initQuery = strings.TrimSpace(query)
+	a.initEp = ep
 }
 
 func (a *App) openURL(raw string) tea.Cmd {
@@ -339,9 +366,42 @@ func (a *App) onURLOpen(m urlOpenMsg) tea.Cmd {
 func (a *App) top() screen { return a.stack[len(a.stack)-1] }
 
 func (a *App) push(s screen) tea.Cmd {
+	a.forward = nil
 	a.stack = append(a.stack, s)
 	a.slide(+1)
 	return a.tick()
+}
+
+func browsableScreen(s screen) bool {
+	switch s.(type) {
+	case *playing, *picker, *onboard:
+		return false
+	}
+	return true
+}
+
+func (a *App) goBack() {
+	if len(a.stack) <= 1 {
+		return
+	}
+	left := a.top()
+	if browsableScreen(left) {
+		if len(a.forward) >= 16 {
+			a.forward = a.forward[1:]
+		}
+		a.forward = append(a.forward, left)
+	}
+	a.pop()
+}
+
+func (a *App) goForward() {
+	if len(a.forward) == 0 {
+		return
+	}
+	s := a.forward[len(a.forward)-1]
+	a.forward = a.forward[:len(a.forward)-1]
+	a.stack = append(a.stack, s)
+	a.slide(+1)
 }
 
 func (a *App) pop() {
@@ -739,6 +799,16 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		case "alt+n", "f9":
 			a.openDropdown("bell")
 			return a, a.tick()
+		case "alt+left":
+			if _, pl := a.top().(*playing); !pl && len(a.stack) > 1 {
+				a.goBack()
+				return a, a.tick()
+			}
+		case "alt+right":
+			if _, pl := a.top().(*playing); !pl && len(a.forward) > 0 {
+				a.goForward()
+				return a, a.tick()
+			}
 		case "ctrl+l":
 			a.redraw() // repaint the whole terminal from scratch
 			a.gfx.invalidate()

@@ -14,6 +14,7 @@ import (
 	"github.com/mattn/go-sixel"
 	"github.com/muesli/termenv"
 
+	"aniclitr/internal/cli"
 	"aniclitr/internal/config"
 	"aniclitr/internal/doctor"
 	"aniclitr/internal/logx"
@@ -26,6 +27,7 @@ import (
 	_ "aniclitr/internal/source/animim"
 	_ "aniclitr/internal/source/hianime"
 	_ "aniclitr/internal/source/sonanime"
+	"aniclitr/internal/store"
 	"aniclitr/internal/tty"
 	"aniclitr/internal/ui"
 	"aniclitr/internal/update"
@@ -37,25 +39,85 @@ var version = "0.19.0"
 
 func main() {
 	var initialURL string
+	var initialContinue bool
+	var initialQuery string
+	var initialEp int
 	if len(os.Args) > 1 {
-		switch {
-		case os.Args[1] == "doctor":
+		switch os.Args[1] {
+		case "doctor":
 			q := "frieren"
 			if len(os.Args) > 2 {
 				q = strings.Join(os.Args[2:], " ")
 			}
 			doctor.Run(q, true)
 			return
-		case os.Args[1] == "-v" || os.Args[1] == "--version" || os.Args[1] == "version":
+		case "-v", "--version", "version":
 			fmt.Println("aniclitr", version)
 			return
-		case os.Args[1] == "update" || os.Args[1] == "güncelle":
+		case "update", "güncelle", "guncelle":
 			os.Exit(runUpdate())
-		case os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "help":
-			fmt.Println("aniclitr                 arayüzü başlat\naniclitr <url>           anime veya bölüm adresini doğrudan aç\naniclitr doctor [q]      kaynakları ve bağımlılıkları canlı test et\naniclitr doctor --blame  kaynak ve sunucu hata dökümü\naniclitr update          son sürümü GitHub'dan kur\naniclitr --version       sürüm")
+		case "ara", "search":
+			q := strings.TrimSpace(strings.Join(os.Args[2:], " "))
+			if q == "" {
+				fmt.Fprintln(os.Stderr, "kullanım: aniclitr ara <anime adı>")
+				os.Exit(2)
+			}
+			cfg := config.Load()
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			hits := cli.Search(ctx, cfg, q)
+			cancel()
+			cli.PrintSearch(os.Stdout, q, hits)
 			return
-		case source.IsURL(os.Args[1]):
-			initialURL = os.Args[1]
+		case "devam", "continue":
+			if len(os.Args) > 2 && (os.Args[2] == "--list" || os.Args[2] == "-l") {
+				cli.PrintContinue(os.Stdout, store.Open())
+				return
+			}
+			initialContinue = true
+		case "izle", "watch":
+			q, ep := cli.ParseWatchArgs(os.Args[2:])
+			if q == "" {
+				fmt.Fprintln(os.Stderr, "kullanım: aniclitr izle <anime adı> [bölüm]")
+				os.Exit(2)
+			}
+			initialQuery, initialEp = q, ep
+		case "yedekle", "backup":
+			dst := ""
+			if len(os.Args) > 2 {
+				dst = os.Args[2]
+			}
+			if err := cli.RunBackup(os.Stdout, dst, version); err != nil {
+				fmt.Fprintln(os.Stderr, "yedekleme hatası:", err)
+				os.Exit(1)
+			}
+			return
+		case "geri-yukle", "geri-yükle", "restore":
+			src := ""
+			if len(os.Args) > 2 {
+				src = os.Args[2]
+			}
+			if err := cli.RunRestore(os.Stdout, src); err != nil {
+				fmt.Fprintln(os.Stderr, "geri yükleme hatası:", err)
+				os.Exit(1)
+			}
+			return
+		case "-h", "--help", "help":
+			fmt.Println(`aniclitr                        arayüzü başlat
+aniclitr <url>                  anime veya bölüm adresini doğrudan aç
+aniclitr devam [--list]         son izlenen animeye devam et (--list: düz metin)
+aniclitr ara <ad>               kaynaklarda hızlı CLI araması yap
+aniclitr izle <ad> [bölüm]      doğrudan ilgili animeyi ara ve aç
+aniclitr yedekle [dosya.json]   ayar, geçmiş ve kitaplığı tek dosyaya yedekle
+aniclitr geri-yukle <dosya>     yedekten güvenli geri yükle (ön-yedek alır)
+aniclitr doctor [q]             kaynakları ve bağımlılıkları canlı test et
+aniclitr doctor --blame         kaynak ve sunucu hata dökümü
+aniclitr update                 son sürümü GitHub'dan kur
+aniclitr --version              sürüm`)
+			return
+		default:
+			if source.IsURL(os.Args[1]) {
+				initialURL = os.Args[1]
+			}
 		}
 	}
 	if !term.IsTerminal(os.Stdout.Fd()) {
@@ -85,8 +147,13 @@ func main() {
 	ui.Version = version
 	ui.TuneGC()
 	app := ui.New(cfg, g)
-	if initialURL != "" {
+	switch {
+	case initialURL != "":
 		app.SetInitialURL(initialURL)
+	case initialContinue:
+		app.SetInitialContinue()
+	case initialQuery != "":
+		app.SetInitialWatch(initialQuery, initialEp)
 	}
 	var err error
 	if cfg.Renderer == "klasik" {

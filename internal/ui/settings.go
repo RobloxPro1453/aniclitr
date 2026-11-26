@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"aniclitr/internal/backup"
 	"aniclitr/internal/source"
 )
 
@@ -78,6 +79,19 @@ func newSettings() *settings {
 			label: "Güncellemeleri denetle", desc: "Yeni sürüm olup olmadığını şimdi denetler.",
 			value: func(a *App) string { return Version },
 			run:   func(a *App) tea.Cmd { return a.checkUpdate(true) },
+		},
+		setting{
+			label: "Verileri yedekle", desc: "Ayarlar, izleme geçmişi, kitaplık ve eşlemeleri tek bir taşınabilir JSON dosyasına yedekler (OAuth jetonları hariç). Geri yüklemek için: aniclitr geri-yukle <dosya.json>.",
+			value: func(a *App) string { return "dışa aktar" },
+			run: func(a *App) tea.Cmd {
+				sum, err := backup.Export("", Version)
+				if err != nil {
+					a.notify("yedeklenemedi: "+err.Error(), "err")
+					return a.tick()
+				}
+				a.notify("yedeklendi: "+sum.Path, "ok")
+				return a.tick()
+			},
 		},
 		setting{
 			label: "MyAnimeList", desc: "Kitaplığı MyAnimeList hesabınızla iki yönlü eşitler: durum, puan, izlenen bölüm sayısı ve listeler.",
@@ -328,7 +342,7 @@ func (s *settings) update(a *App, msg tea.Msg) tea.Cmd {
 // settingGroup files a setting under a heading.
 func settingGroup(label string) int {
 	switch {
-	case label == "MyAnimeList" || label == "Tanıtım turu" || label == "Terminalden aç" || label == "Otomatik güncelle" || label == "Güncellemeleri denetle":
+	case label == "MyAnimeList" || label == "Tanıtım turu" || label == "Terminalden aç" || label == "Otomatik güncelle" || label == "Güncellemeleri denetle" || label == "Verileri yedekle":
 		return 0
 	case strings.HasPrefix(label, "Kaynak:") || label == "Arşiv modu":
 		return 3

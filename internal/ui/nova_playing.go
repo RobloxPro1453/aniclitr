@@ -7,12 +7,14 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
 	"aniclitr/internal/aniskip"
+	"aniclitr/internal/player"
 )
 
 func (p *playing) novaView(a *App, w, h int) string {
@@ -82,8 +84,13 @@ func (p *playing) novaView(a *App, w, h int) string {
 	if p.q.Label != "" {
 		chips = append(chips, pill(p.q.Label, acc))
 	}
-	if p.st != nil && len(p.st.Subtitles) > 0 {
+	if p.activeSub != "" {
+		chips = append(chips, fg(cOK).Background(colorOf(cSurface)).Render(" altyazı: "+truncate(p.activeSub, max(12, tw/2))+" "))
+	} else if p.st != nil && len(p.st.Subtitles) > 0 {
 		chips = append(chips, fg(cAccent2).Background(colorOf(cSurface)).Render(" altyazı: "+p.st.Subtitles[0].Label+" "))
+	}
+	if math.Abs(p.subDelay) >= 0.05 {
+		chips = append(chips, fg(cWarn).Background(colorOf(cSurface)).Bold(true).Render(" senkron: "+player.FormatSubDelay(p.subDelay)+" "))
 	}
 	if len(chips) > 0 {
 		info = append(info, wrapChips(chips, tw)...)
@@ -178,9 +185,9 @@ func (p *playing) novaView(a *App, w, h int) string {
 		ctrls := strings.Join([]string{
 			keycap("space") + " " + stMuted.Render("duraklat"),
 			keycap("←→") + " " + stMuted.Render("10 sn"),
-			keycap("n") + " " + stMuted.Render("sonraki"),
-			keycap("b") + " " + stMuted.Render("önceki"),
-			keycap("u") + " " + stMuted.Render("altyazı"),
+			keycap("n/b") + " " + stMuted.Render("bölüm"),
+			keycap("y") + " " + stMuted.Render("altyazı (mpv içi)"),
+			keycap("z/x") + " " + stMuted.Render("senkron ±0,1s"),
 			keycap("s") + " " + stMuted.Render("durdur"),
 		}, "  ")
 		out = append(out, "", center(truncate(ctrls, w-4), w))

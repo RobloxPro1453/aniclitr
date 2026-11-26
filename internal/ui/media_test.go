@@ -1,7 +1,12 @@
 package ui
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,15 +17,26 @@ import (
 	"aniclitr/internal/download"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
+	"aniclitr/internal/subs"
 )
 
-// TestMediaSnapshots dumps realistic Nova ANSI frames for README screenshots
-// and the animated demo GIF when ANICLITR_MEDIA_DIR is set.
+type mediaPlacement struct {
+	URL string `json:"url"`
+	Row int    `json:"row"`
+	Col int    `json:"col"`
+	W   int    `json:"w"`
+	H   int    `json:"h"`
+}
+
+// TestMediaSnapshots dumps realistic Nova ANSI frames (+ Sixel cover placement
+// coordinates when ANICLITR_MEDIA_COVERS is set) for README screenshots and
+// the animated demo GIF when ANICLITR_MEDIA_DIR is set.
 func TestMediaSnapshots(t *testing.T) {
 	dir := os.Getenv("ANICLITR_MEDIA_DIR")
 	if dir == "" {
 		t.Skip("set ANICLITR_MEDIA_DIR to generate README media snapshots")
 	}
+	coversDir := os.Getenv("ANICLITR_MEDIA_COVERS")
 
 	now := time.Now()
 	makeSchedule := func() []anilist.Airing {
@@ -54,7 +70,7 @@ func TestMediaSnapshots(t *testing.T) {
 			mk(127230, 44511, "Chainsaw Man", "test://p3", "MAPPA",
 				"Yoksulluk içinde şeytan avlayan Denji, yoldaşı Pochita ile birleşerek Testere İblisi'ne dönüşür ve Kamu Güvenliği bürosuna katılır.",
 				85, 920000, 12, 5, []string{"Aksiyon", "Fantastik"}, 30*time.Hour),
-			mk(131681, 46102, "Odd Taxi", "test://p5", "OLM",
+			mk(128547, 46102, "Odd Taxi", "test://p5", "OLM",
 				"Tokyo'nun gece sokaklarında taksi süren Odokawa, yolcularının sıradan sohbetleri arasında kayıp bir lise öğrencisinin izine rastlar.",
 				87, 450000, 13, 10, []string{"Gizem", "Dram"}, 52*time.Hour),
 			mk(457, 457, "Mushishi", "test://p4", "Artland",
@@ -70,6 +86,30 @@ func TestMediaSnapshots(t *testing.T) {
 		a.cfg.SpeedGraph = true
 		a.cfg.DownloadDir = "~/Videos/aniclitr"
 		a.schedule = makeSchedule()
+
+		// Load real anime cover artwork (if provided) and enable Sixel placement layout.
+		if coversDir != "" {
+			a.graphics = Graphics{Sixel: true, CellW: 10, CellH: 20}
+			a.gfx.on = true
+			for i := 0; i < 6; i++ {
+				key := fmt.Sprintf("test://p%d", i)
+				p := filepath.Join(coversDir, fmt.Sprintf("p%d.jpg", i))
+				raw, err := os.ReadFile(p)
+				if err != nil {
+					continue
+				}
+				img, _, err := image.Decode(bytes.NewReader(raw))
+				if err != nil {
+					continue
+				}
+				a.posters.set(posterMsg{
+					url:    key,
+					img:    img,
+					raw:    raw,
+					accent: dominant(img),
+				})
+			}
+		}
 
 		an := source.Anime{
 			Source: "animecix", ID: "100", Title: "Sousou no Frieren",
@@ -101,7 +141,6 @@ func TestMediaSnapshots(t *testing.T) {
 		}
 		a.episodes[epKey(an, 1)] = eps
 
-		// Seed realistic offline downloads + running download with speed sparkline.
 		dlRoot := t.TempDir()
 		f1 := filepath.Join(dlRoot, "S01E01.mp4")
 		f2 := filepath.Join(dlRoot, "S01E02.mp4")
@@ -178,6 +217,17 @@ func TestMediaSnapshots(t *testing.T) {
 				})
 				return p
 			},
+			"playing": func() screen {
+				p := newPlaying(an, eps[2], eps, "HakaiRyuu & Lexellures", "Tau Video", st, st.Qualities[0])
+				p.started, p.pos, p.dur, p.subDelay = true, 862, 1440, 0.2
+				p.subs.open = true
+				p.subs.rs = []subs.Result{
+					{Provider: "AniSub", Lang: "tr", Release: "Sousou no Frieren · 3. Bölüm (HolySubs)", Downloads: 418},
+					{Provider: "AniSub", Lang: "tr", Release: "Sousou no Frieren · 1-28 Paket (HakaiRyuu)", Downloads: 1205},
+					{Provider: "AniSub", Lang: "tr", Release: "Sousou no Frieren · 3. Bölüm (BD 1080p)", Downloads: 214},
+				}
+				return p
+			},
 			"downloads": func() screen {
 				dl := newDownloads()
 				dl.queue = true
@@ -189,11 +239,6 @@ func TestMediaSnapshots(t *testing.T) {
 				dl.diskAt = time.Now()
 				return dl
 			},
-			"playing": func() screen {
-				p := newPlaying(an, eps[2], eps, "HakaiRyuu & Lexellures", "Tau Video", st, st.Qualities[0])
-				p.started, p.pos, p.dur = true, 862, 1440
-				return p
-			},
 		}
 		for name, mk := range views {
 			a.stack = a.stack[:1]
@@ -202,6 +247,13 @@ func TestMediaSnapshots(t *testing.T) {
 				a.stack = append(a.stack, s)
 			}
 			a.trans = tween{}
+			// Pass 1 kicks off Sixel encodes for all visible covers; wait briefly, then Pass 2 captures exact Sixel placements!
+			_ = a.View()
+			if coversDir != "" {
+				for tries := 0; tries < 60 && a.gfx.busy(); tries++ {
+					time.Sleep(25 * time.Millisecond)
+				}
+			}
 			v := a.View()
 			if name == "downloads" {
 				if realDir := a.dl.Dir(); realDir != "" {
@@ -211,6 +263,14 @@ func TestMediaSnapshots(t *testing.T) {
 			outPath := filepath.Join(dir, fmt.Sprintf("%s-%s.ans", name, tag))
 			if err := os.WriteFile(outPath, []byte(v), 0o644); err != nil {
 				t.Fatal(err)
+			}
+			if coversDir != "" {
+				var ps []mediaPlacement
+				for _, pl := range a.gfx.shown {
+					ps = append(ps, mediaPlacement{URL: pl.url, Row: pl.row, Col: pl.col, W: pl.w, H: pl.h})
+				}
+				jb, _ := json.Marshal(ps)
+				_ = os.WriteFile(filepath.Join(dir, fmt.Sprintf("%s-%s.json", name, tag)), jb, 0o644)
 			}
 		}
 	}

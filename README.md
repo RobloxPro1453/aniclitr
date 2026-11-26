@@ -55,7 +55,15 @@
 
 Kalınan saniye, seri bazlı çözünürlük tercihi, çok sezonlu seri hizalaması ve açılış/bitiş (OP/ED) jenerik atlama otomatik yönetilir; oynatma sırasında terminal boşa çekilir ve işlemci kullanmaz.
 
-> **English summary.** `aniclitr` is an open-source (GPL-3.0), keyboard-driven Go terminal anime player built for Turkish-subtitled content. It searches six live sources in parallel (AnimeciX, AnimeTR, AniHub, SonAnime, Animim, HiAnime), resolves streams natively in Go (Tau Video, AniHub HLS, OK.ru, Google Drive, Sibnet, Voe, Vidmoly), plays via `mpv`, loads Turkish subtitles on the fly from [AniSub](https://anisub.co/) or local `.srt`/`.ass`/`.vtt` files, skips OP/ED via AniSkip & source timestamps, supports batch/range offline downloads with a live speed sparkline & disk-usage bar, renders Sixel/half-block artwork, and syncs two-way with MyAnimeList across multi-season chains.
+> **English summary.** `aniclitr` is an open-source (GPL-3.0), keyboard-driven Go terminal anime player built for Turkish-subtitled content. It searches six live sources in parallel (AnimeciX, AnimeTR, AniHub, SonAnime, Animim, HiAnime), resolves streams natively in Go (Tau Video, AniHub HLS, OK.ru, Google Drive, Sibnet, Voe, Vidmoly), plays via `mpv`, loads Turkish subtitles on the fly from [AniSub](https://anisub.co/) directly inside mpv's OSD or from local `.srt`/`.ass`/`.vtt` files with live sync fine-tuning, skips OP/ED via AniSkip & source timestamps, supports batch/range offline downloads with a live speed sparkline & disk-usage bar, renders Sixel/half-block artwork, offers quick CLI commands & single-file backup/restore, and syncs two-way with MyAnimeList across multi-season chains.
+
+### Kullanılan Teknolojiler
+
+[![Go](https://img.shields.io/badge/Go-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://go.dev/)
+[![Bubble Tea](https://img.shields.io/badge/Bubble%20Tea-FF6AA2?style=for-the-badge&logo=gnubash&logoColor=white)](https://github.com/charmbracelet/bubbletea)
+[![mpv](https://img.shields.io/badge/mpv-6B3FA0?style=for-the-badge&logo=mpv&logoColor=white)](https://mpv.io/)
+[![AniList](https://img.shields.io/badge/AniList-02A9FF?style=for-the-badge&logo=anilist&logoColor=white)](https://anilist.co/)
+[![MyAnimeList](https://img.shields.io/badge/MyAnimeList-2E51A2?style=for-the-badge&logo=myanimelist&logoColor=white)](https://myanimelist.net/)
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
 
@@ -98,7 +106,7 @@ Kalınan saniye, seri bazlı çözünürlük tercihi, çok sezonlu seri hizalama
 |---|---|
 | **Paralel Arama & Doğrudan Bağlantı** | Etkin tüm kaynaklarda eşzamanlı arama; aynı anime tek sonuçta birleştirilir. Arama kutusuna, komut paletine (`ctrl+k`) veya komut satırına yapıştırılan anime/bölüm bağlantısı doğrudan açılır. |
 | **Akıllı Oynatma (`mpv`)** | Saniye hassasiyetinde kaldığın yerden devam, **seri bazında kalite hafızası**, AniSkip + kaynak OP/ED otomatik atlama, otomatik sonraki bölüm ve isteğe bağlı **filler bölüm atlama**. |
-| **Canlı Türkçe Altyazı (`u`)** | Oynatmayı kesmeden **[AniSub](https://anisub.co/)** topluluk arşivinden (API anahtarsız!) veya OpenSubtitles'tan altyazı arayıp `.zip`/`.ass`/`.srt` yükleme; `l` ile yerel `.srt`/`.ass`/`.vtt` dosyası ekleme. |
+| **Canlı Türkçe Altyazı (`y`) & Senkron** | Alt-Tab yapmadan doğrudan `mpv` penceresi içinde `y` ile açılan **[AniSub](https://anisub.co/)** OSD altyazı seçici (API anahtarsız!); `z`/`x` (`±0,1s`), `Z`/`X` (`±0,5s`), `Alt+0` (sıfırla) ile canlı senkron ince ayarı; terminalde `l` ile yerel `.srt`/`.ass`/`.vtt` yükleme. |
 | **Yerel Çözücüler & Otomatik Kurtarma** | Tau Video, AniHub HLS, OK.ru, Vidmoly, Voe, Sibnet ve Google Drive doğrudan Go içinde çözülür; akışlar oynatılmadan doğrulanır. Bir sunucu açılmazsa sıradaki sunucu, fansub veya diğer açık kaynak otomatik denenir. |
 | **Nova & Klasik Arayüz** | Özel hücre-diff çizici (`internal/tty`) ile sıfır titreme; tüm ana ekranlarda Nova tasarımı (kapaktan renkli paneller, tuş kapakları, 3 sütunlu Keşfet) ve ayarlardan tek tuşla klasik arayüze dönüş. |
 | **MyAnimeList Köprüsü** | OAuth PKCE ile iki yönlü durum/puan/bölüm/liste eşitleme, AniList `PREQUEL`/`SEQUEL` zinciriyle çok sezonlu hizalama ve MAL'de `izliyor` olan serilerin doğrudan ana sayfadaki **Devam et** kartlarında görünmesi. |
@@ -152,11 +160,16 @@ go build -o bin/aniclitr ./cmd/aniclitr
 ### Komut Satırı
 
 ```text
-aniclitr                     Arayüzü başlatır
-aniclitr <url>               Verilen anime veya bölüm bağlantısını doğrudan açar
-aniclitr doctor [--blame]    Tüm kaynakları canlı test eder (--blame: yerel hata karnesi)
-aniclitr update              Son sürümü indirir ve doğrular
-aniclitr --version           Sürümü gösterir
+aniclitr                        Arayüzü başlatır
+aniclitr <url>                  Verilen anime veya bölüm bağlantısını doğrudan açar
+aniclitr devam [--list]         Son izlenen animeye devam eder (--list: düz metin liste)
+aniclitr ara <ad>               Etkin kaynaklarda hızlı CLI araması yapar
+aniclitr izle <ad> [bölüm]      Doğrudan ilgili animeyi arayıp açar
+aniclitr yedekle [dosya.json]   Ayar, geçmiş, kitaplık ve eşlemeleri tek dosyaya yedekler
+aniclitr geri-yukle <dosya>     Yedekten güvenli geri yükler (önce otomatik ön-yedek alır)
+aniclitr doctor [--blame]       Tüm kaynakları canlı test eder (--blame: yerel hata karnesi)
+aniclitr update                 Son sürümü indirir ve doğrular
+aniclitr --version              Sürümü gösterir
 ```
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
@@ -212,6 +225,7 @@ Arayüz öngörülebilir katmanlarla ilerler: **menü → liste → öğe → ey
 | `ctrl+e` · `F4` | Keşfet |
 | `ctrl+o` · `ctrl+t` | Ayarlar · Canlı tema seçici |
 | `ctrl+z` | Son silme/değişikliği geri al (2 dk içinde) |
+| `alt+←` · `alt+→` | Ekran geçmişinde geri / ileri |
 | `alt+a` · `ctrl+l` · `ctrl+c` | Arşiv modu · Ekranı yeniden çiz · Çıkış |
 
 ### Anime Ekranı
@@ -232,7 +246,9 @@ Arayüz öngörülebilir katmanlarla ilerler: **menü → liste → öğe → ey
 | `space` / `p` | Duraklat / devam et |
 | `←` `→` · `shift+←` `shift+→` | 10 saniye sar · 85 saniye atla |
 | `n` · `b` | Sonraki bölüm *(filler atlama destekli)* · Önceki bölüm |
-| `u` *(ardından `l`)* | **Altyazı ara (AniSub / OpenSubtitles)** · **`l`: yerel `.srt`/`.ass`/`.vtt` yükle** |
+| `y` | **Altyazı seçici (mpv içinde OSD menü — Alt-Tab gerekmez! `↑↓`/`1-8`/`Enter`)** |
+| `z` / `x` · `Z` / `X` · `Alt+0` / `0` | **Altyazı senkron ince ayarı:** `±0,1 sn` · `±0,5 sn` · `0,0 sn` sıfırla |
+| `l` *(terminal altyazı kartında)* | Bilgisayardan yerel `.srt`/`.ass`/`.ssa`/`.vtt` dosyası yükle |
 | `s` · `q` · `esc` | Oynatmayı durdur ve kaydet |
 
 ### Keşfet & Kitaplık
@@ -244,12 +260,14 @@ Arayüz öngörülebilir katmanlarla ilerler: **menü → liste → öğe → ey
 
 ---
 
-## Altyazı Desteği (AniSub & Yerel Dosya)
+## Altyazı Desteği (AniSub, mpv İçi OSD & Senkron Ayarı)
 
-Oynatma sırasında terminalde `u` tuşuna basıldığında oynatmayı kesmeden altyazı seçici açılır:
+Oynatma sırasında **doğrudan `mpv` penceresindeyken** (veya terminalde) `y` tuşuna basıldığında oynatmayı kesmeden altyazı seçici açılır:
 
-- **[AniSub](https://anisub.co/) (varsayılan, anahtarsız):** Topluluk tabanlı açık Türkçe anime altyazı arşivi otomatik taranır. Tek bölüm (`.ass`/`.srt`/`.vtt`) veya sezon paketi (`.zip`) içinden o an izlediğiniz bölüme karşılık gelen altyazı otomatik ayıklanıp çalışan `mpv` penceresine eklenir.
-- **Yerel altyazı (`l`):** Altyazı penceresindeyken `l` tuşuna basıp bilgisayarınızdaki herhangi bir `.ass`, `.srt`, `.ssa` veya `.vtt` dosyasının yolunu yapıştırarak anında yükleyebilirsiniz.
+- **`mpv` içi OSD menüsü (Alt-Tab yok):** `y` tuşu videonun üzerinde şeffaf bir ASS menüsü açar; `↑`/`↓` veya `1`–`8` ve `Enter` ile altyazı seçilip anında yüklenir, `Esc` menüyü kapatır.
+- **[AniSub](https://anisub.co/) (varsayılan, anahtarsız):** Topluluk tabanlı açık Türkçe anime altyazı arşivi otomatik taranır. Tek bölüm (`.ass`/`.srt`/`.vtt`) veya sezon paketi (`.zip`) içinden o an izlediğiniz bölüme karşılık gelen altyazı otomatik ayıklanıp `mpv`'ye eklenir.
+- **Senkron ince ayarı (fine-tuning):** Kaymış altyazıları hem `mpv` penceresinde hem terminalde `z` / `x` (`±0,1 sn`), `Shift+Z` / `Shift+X` (`±0,5 sn`) ve `Alt+0` / `0` (sıfırla) tuşlarıyla anlık hizalayabilirsiniz.
+- **Yerel altyazı (`l`):** Terminal altyazı kartındayken `l` tuşuna basıp bilgisayarınızdaki herhangi bir `.ass`, `.srt`, `.ssa` veya `.vtt` dosyasının yolunu yapıştırarak anında yükleyebilirsiniz.
 - **OpenSubtitles (isteğe bağlı):** `config.json` dosyasında `opensubtitles_api_key` tanımlıysa AniSub ile paralel aranır ve sonuçlar birlikte listelenir.
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
@@ -342,6 +360,21 @@ Tüm ayarlar `ctrl+o` menüsünden düzenlenir ve `%APPDATA%\aniclitr\config.jso
 | Kapaklar blok görünüyor | Windows Terminal 1.22+ kullanın ve **Ayarlar → Görsel kalitesi → sixel** seçin. |
 | Bir kaynak yanıt vermiyor | `aniclitr doctor --blame` çalıştırın veya **Menü → Kaynak durumu** ekranına bakın. |
 | Hata günlüğü | `%APPDATA%\aniclitr\aniclitr.log` |
+
+<p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
+
+---
+
+## Yol Haritası
+
+- [x] **Nova arayüzü** (tüm ana ekranlar, 3 sütunlu Keşfet, Sixel katman kararlılığı)
+- [x] **Canlı Türkçe altyazı & senkron** (AniSub, `mpv` içi OSD seçici, yerel `.srt`/`.ass`, `z`/`x` ince ayar)
+- [x] **Hızlı CLI & taşınabilir yedekleme** (`devam`, `ara`, `izle`, `yedekle`, `geri-yukle`, `alt+←`/`→`)
+- [ ] **AniList iki yönlü hesap eşitlemesi (OAuth)**
+- [ ] **Nova'nın varsayılan arayüz olması** (klasik ayarda yedek kalır)
+- [ ] **İsteğe bağlı kullanıcı kısayol dosyası (`keys.json`) ve ek kaynaklar**
+
+Ayrıntılı plan ve öneriler için [Issues](https://github.com/RobloxPro1453/aniclitr/issues) sayfasına göz atabilirsiniz.
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
 

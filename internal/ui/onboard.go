@@ -15,6 +15,12 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"0.20.0": {
+		"mpv içi OSD altyazı seçici (y): video izlerken Alt-Tab yapmadan y tuşuna basıp videonun üstünde AniSub altyazılarını seçip yükleyebilirsin (u çakışması kaldırıldı)",
+		"Altyazı senkron ince ayarı: mpv'de ve terminalde z/x (±0,1s), Z/X (±0,5s), Alt+0/0 (sıfırla) ile kaymış altyazıları anında hizala",
+		"Hızlı CLI komutları ve tek dosya yedekleme: aniclitr devam [--list], ara <ad>, izle <ad> [bölüm], yedekle ve geri-yukle (Ayarlar → Verileri yedekle)",
+		"Ekran geçmişi: alt+← ve alt+→ ile ekranlar arasında geri/ileri gez",
+	},
 	"0.19.0": {
 		"AniSub Türkçe altyazı desteği: oynatırken u tuşuna basınca anisub.co topluluk arşivi API anahtarı olmadan aranır ve .zip içinden ilgili bölümün .ass/.srt dosyası anında mpv'ye yüklenir",
 		"Yerel altyazı yükleme: oynatırken u → l ile bilgisayardaki herhangi bir .srt/.ass/.vtt dosyasını oynatmayı kesmeden ekleyebilirsin",

@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,20 +32,22 @@ const (
 	EvStarted EventKind = iota
 	EvProgress
 	EvSkipped
+	EvAction
 	EvEnded
 )
 
 // Event is sent to the UI.
 type Event struct {
-	Kind   EventKind
-	Pos    float64
-	Dur    float64
-	Speed  float64
-	Paused bool
-	Text   string // skipped segment label
-	Action string // on EvEnded: "next", "prev" or "" (user quit / eof)
-	EOF    bool   // file played to the end
-	Err    error
+	Kind     EventKind
+	Pos      float64
+	Dur      float64
+	Speed    float64
+	SubDelay float64
+	Paused   bool
+	Text     string // skipped segment label
+	Action   string // EvEnded: "next", "prev"; EvAction: live in-mpv command
+	EOF      bool   // file played to the end
+	Err      error
 }
 
 // Options configure one playback.
@@ -77,6 +81,8 @@ type Session struct {
 	conn      net.Conn
 	wmu       sync.Mutex
 	action    atomic.Value
+	subMu     sync.Mutex
+	subDelay  float64
 }
 
 var counter atomic.Int64
@@ -201,6 +207,17 @@ func (s *Session) send(cmd ...any) {
 	_, _ = s.conn.Write(append(b, '\n'))
 }
 
+func (s *Session) sendNamed(cmd map[string]any) {
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	if s.conn == nil {
+		return
+	}
+	b, _ := json.Marshal(map[string]any{"command": cmd})
+	_ = s.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	_, _ = s.conn.Write(append(b, '\n'))
+}
+
 // Quit asks mpv to close.
 func (s *Session) Quit() {
 	s.send("quit")
@@ -228,7 +245,76 @@ func (s *Session) Seek(sec float64) { s.send("seek", sec, "relative") }
 // selects it; title is shown in mpv's track list.
 func (s *Session) AddSub(path, title, lang string) {
 	s.send("sub-add", path, "select", title, lang)
-	s.send("show-text", "altyazı: "+title, 2500)
+	s.send("show-text", "✓ Altyazı yüklendi: "+title, 2800)
+}
+
+// FormatSubDelay formats a subtitle delay in seconds for Turkish OSD/UI display.
+func FormatSubDelay(sec float64) string {
+	sec = math.Round(sec*10) / 10
+	if math.Abs(sec) < 0.05 {
+		return "0,0 sn"
+	}
+	s := strings.ReplaceAll(fmt.Sprintf("%+.1f sn", sec), ".", ",")
+	if sec < 0 {
+		return s + " (erken)"
+	}
+	return s + " (geç)"
+}
+
+// AdjustSubDelay shifts mpv's subtitle sync by delta seconds and shows Turkish OSD.
+func (s *Session) AdjustSubDelay(delta float64) float64 {
+	s.subMu.Lock()
+	v := math.Round((s.subDelay+delta)*10) / 10
+	if math.Abs(v) < 0.05 {
+		v = 0
+	}
+	s.subDelay = v
+	s.subMu.Unlock()
+	s.send("set_property", "sub-delay", v)
+	s.send("show-text", "Altyazı senkronu: "+FormatSubDelay(v), 2200)
+	return v
+}
+
+// ResetSubDelay resets mpv's subtitle delay to 0.0s.
+func (s *Session) ResetSubDelay() {
+	s.subMu.Lock()
+	s.subDelay = 0
+	s.subMu.Unlock()
+	s.send("set_property", "sub-delay", 0.0)
+	s.send("show-text", "Altyazı senkronu: 0,0 sn (sıfırlandı)", 2200)
+}
+
+// ShowOSD flashes a short message inside mpv.
+func (s *Session) ShowOSD(text string, ms int) {
+	if ms <= 0 {
+		ms = 2200
+	}
+	s.send("show-text", text, ms)
+}
+
+// ShowSubMenu displays an interactive ASS overlay inside mpv and activates
+// modal navigation keys (arrows, Enter, 1-9, Esc) without requiring Alt-Tab.
+func (s *Session) ShowSubMenu(ass string) {
+	s.send("enable-section", "aniclitr-subs", "allow-hide-cursor+allow-vo-dragging")
+	s.sendNamed(map[string]any{
+		"name":   "osd-overlay",
+		"id":     77,
+		"format": "ass-events",
+		"data":   ass,
+		"res_x":  1280,
+		"res_y":  720,
+	})
+}
+
+// HideSubMenu clears the in-mpv subtitle overlay and restores normal mpv keys.
+func (s *Session) HideSubMenu() {
+	s.send("disable-section", "aniclitr-subs")
+	s.sendNamed(map[string]any{
+		"name":   "osd-overlay",
+		"id":     77,
+		"format": "none",
+		"data":   "",
+	})
 }
 
 func (s *Session) run(sock string, segs []aniskip.Segment) {
@@ -279,10 +365,38 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 		s.send("observe_property", 2, "duration")
 		s.send("observe_property", 3, "pause")
 		s.send("observe_property", 4, "speed")
+		s.send("observe_property", 5, "sub-delay")
 		s.send("keybind", "n", "script-message aniclitr-next")
 		s.send("keybind", "N", "script-message aniclitr-next")
 		s.send("keybind", "b", "script-message aniclitr-prev")
 		s.send("keybind", "B", "script-message aniclitr-prev")
+		// y opens the in-mpv AniSub overlay (never clashes with mpv's built-in u)
+		s.send("keybind", "y", "script-message aniclitr-subs")
+		// Subtitle sync fine-tuning directly in mpv: z/x ±0.1s, Z/X ±0.5s, Alt+0 reset
+		s.send("keybind", "z", "script-message aniclitr-subdelay -0.1")
+		s.send("keybind", "x", "script-message aniclitr-subdelay +0.1")
+		s.send("keybind", "Z", "script-message aniclitr-subdelay -0.5")
+		s.send("keybind", "X", "script-message aniclitr-subdelay +0.5")
+		s.send("keybind", "Alt+0", "script-message aniclitr-subdelay 0")
+		subSection := strings.Join([]string{
+			"UP script-message aniclitr-sub-up",
+			"DOWN script-message aniclitr-sub-down",
+			"k script-message aniclitr-sub-up",
+			"j script-message aniclitr-sub-down",
+			"ENTER script-message aniclitr-sub-pick",
+			"KP_ENTER script-message aniclitr-sub-pick",
+			"ESC script-message aniclitr-sub-close",
+			"1 script-message aniclitr-sub-num 1",
+			"2 script-message aniclitr-sub-num 2",
+			"3 script-message aniclitr-sub-num 3",
+			"4 script-message aniclitr-sub-num 4",
+			"5 script-message aniclitr-sub-num 5",
+			"6 script-message aniclitr-sub-num 6",
+			"7 script-message aniclitr-sub-num 7",
+			"8 script-message aniclitr-sub-num 8",
+			"9 script-message aniclitr-sub-num 9",
+		}, "\n")
+		s.send("define-section", "aniclitr-subs", subSection, "default")
 		if s.thumb != "" {
 			// quitting first grabs the frame you stopped at (resume preview)
 			s.send("keybind", "q", "script-message aniclitr-quit")
@@ -351,11 +465,21 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 					if json.Unmarshal(m.Data, &sp) == nil && sp > 0 {
 						speed = sp
 					}
+				case "sub-delay":
+					var sd float64
+					if json.Unmarshal(m.Data, &sd) == nil {
+						s.subMu.Lock()
+						s.subDelay = math.Round(sd*10) / 10
+						s.subMu.Unlock()
+					}
 				}
 				if time.Since(lastEmit) > 400*time.Millisecond {
 					lastEmit = time.Now()
+					s.subMu.Lock()
+					sd := s.subDelay
+					s.subMu.Unlock()
 					select {
-					case s.events <- Event{Kind: EvProgress, Pos: pos, Dur: dur, Speed: speed, Paused: paused}:
+					case s.events <- Event{Kind: EvProgress, Pos: pos, Dur: dur, Speed: speed, SubDelay: sd, Paused: paused}:
 					default: // UI busy; drop a frame rather than block mpv
 					}
 				}
@@ -374,6 +498,33 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 							time.Sleep(350 * time.Millisecond) // let mpv write it
 						}
 						s.send("quit")
+					case "aniclitr-subdelay":
+						if len(m.Args) > 1 {
+							if m.Args[1] == "0" {
+								s.ResetSubDelay()
+							} else if d, err := strconv.ParseFloat(m.Args[1], 64); err == nil {
+								s.AdjustSubDelay(d)
+							}
+							s.subMu.Lock()
+							sd := s.subDelay
+							s.subMu.Unlock()
+							select {
+							case s.events <- Event{Kind: EvProgress, Pos: pos, Dur: dur, Speed: speed, SubDelay: sd, Paused: paused}:
+							default:
+							}
+						}
+					case "aniclitr-subs", "aniclitr-sub-up", "aniclitr-sub-down", "aniclitr-sub-pick", "aniclitr-sub-close":
+						select {
+						case s.events <- Event{Kind: EvAction, Action: m.Args[0]}:
+						default:
+						}
+					case "aniclitr-sub-num":
+						if len(m.Args) > 1 {
+							select {
+							case s.events <- Event{Kind: EvAction, Action: "aniclitr-sub-num:" + m.Args[1]}:
+							default:
+							}
+						}
 					}
 				}
 			case "end-file":

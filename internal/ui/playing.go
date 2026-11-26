@@ -72,6 +72,8 @@ type playing struct {
 	nextEps   []source.Episode
 	finding   bool
 	attempt   int // automatic recoveries so far for this episode
+	subDelay  float64
+	activeSub string
 	subs      subsState
 }
 
@@ -92,9 +94,9 @@ func (p *playing) hints() []hint {
 		if p.subs.local {
 			return []hint{{"enter", "yerel dosyayı yükle"}, {"esc", "listeye dön"}}
 		}
-		return []hint{{"↑↓", "altyazı"}, {"enter", "yükle"}, {"l", "yerel dosya"}, {"esc", "kapat"}}
+		return []hint{{"↑↓/1-6", "seç"}, {"enter", "yükle"}, {"l", "yerel dosya"}, {"z/x", "senkron"}, {"esc", "kapat"}}
 	}
-	return []hint{{"space", "duraklat"}, {"←→", "10 sn"}, {"n", "sonraki"}, {"b", "önceki"}, {"u", "altyazı ara"}, {"s", "durdur"}}
+	return []hint{{"space", "duraklat"}, {"←→", "10 sn"}, {"n/b", "bölüm"}, {"y", "altyazı"}, {"z/x", "senkron"}, {"s", "durdur"}}
 }
 
 // While mpv plays, the terminal stays still: mpv's window is on top and
@@ -305,13 +307,15 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 			p.savedPos, p.savedAt = ev.Pos, time.Now()
 		}
 		p.started = true
-		p.pos, p.dur, p.paused = ev.Pos, ev.Dur, ev.Paused
+		p.pos, p.dur, p.paused, p.subDelay = ev.Pos, ev.Dur, ev.Paused, ev.SubDelay
 		if time.Since(p.lastSave) > 10*time.Second {
 			p.lastSave = time.Now()
 			p.save(a, false)
 		}
 	case player.EvSkipped:
 		p.skipText, p.skipAt = ev.Text, time.Now()
+	case player.EvAction:
+		return p.onMpvAction(a, ev.Action)
 	case player.EvEnded:
 		p.started = true
 		if ev.Err != nil {
@@ -433,8 +437,8 @@ func (p *playing) key(a *App, k tea.KeyMsg) tea.Cmd {
 	if p.subs.open {
 		return p.subKey(a, k)
 	}
-	if k.String() == "u" && p.sess != nil {
-		return p.searchSubs(a)
+	if k.String() == "y" && p.sess != nil {
+		return p.openSubs(a, false)
 	}
 	if !p.countdown.IsZero() {
 		switch k.String() {
@@ -475,6 +479,16 @@ func (p *playing) key(a *App, k tea.KeyMsg) tea.Cmd {
 		p.sess.Seek(-85)
 	case "shift+right", "L":
 		p.sess.Seek(85)
+	case "z":
+		return p.adjustSubDelay(a, -0.1, false)
+	case "x":
+		return p.adjustSubDelay(a, +0.1, false)
+	case "Z":
+		return p.adjustSubDelay(a, -0.5, false)
+	case "X":
+		return p.adjustSubDelay(a, +0.5, false)
+	case "0":
+		return p.adjustSubDelay(a, 0, true)
 	case "n":
 		p.sess.Next()
 	case "b":
@@ -614,7 +628,7 @@ func (p *playing) view(a *App, w, h int) string {
 		out = append(out, center(l, w))
 	}
 	if top+len(framed)+2 < h && p.sess != nil {
-		out = append(out, "", center(stMuted.Render("tuşlar mpv penceresinde de çalışır: ")+stText.Render("n")+stMuted.Render(" sonraki · ")+stText.Render("b")+stMuted.Render(" önceki"), w))
+		out = append(out, "", center(stMuted.Render("mpv penceresinde: ")+stText.Render("n/b")+stMuted.Render(" bölüm · ")+stText.Render("y")+stMuted.Render(" altyazı menüsü · ")+stText.Render("z/x")+stMuted.Render(" ±0,1s · ")+stText.Render("Z/X")+stMuted.Render(" ±0,5s · ")+stText.Render("Alt+0")+stMuted.Render(" sıfırla"), w))
 	}
 	return strings.Join(out, "\n")
 }

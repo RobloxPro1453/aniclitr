@@ -140,4 +140,46 @@ func TestSubProviderAlwaysAvailableAndLocalInputToggle(t *testing.T) {
 	if p.subs.local || p.typing() {
 		t.Fatalf("expected esc to exit local subtitle input")
 	}
+
+	// Fine-tuning sync keys inside subtitle card adjust subDelay cleanly.
+	p.subKey(a, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	p.subKey(a, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'X'}})
+	if p.subDelay != 0.6 {
+		t.Fatalf("expected +0.6s subDelay, got %.2f", p.subDelay)
+	}
+	p.subKey(a, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}})
+	if p.subDelay != 0.5 {
+		t.Fatalf("expected +0.5s subDelay after -0.1, got %.2f", p.subDelay)
+	}
+	p.subKey(a, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'0'}})
+	if p.subDelay != 0 {
+		t.Fatalf("expected 0.0s after reset, got %.2f", p.subDelay)
+	}
+
+	// ASS OSD overlay formats Turkish items cleanly for in-mpv menu.
+	p.subs.rs = nil
+	ass := p.buildMpvSubASS()
+	if !strings.Contains(ass, "ANISUB ALTYAZI") || !strings.Contains(ass, "senkron:") {
+		t.Fatalf("unexpected ASS OSD output: %s", ass)
+	}
+}
+
+func TestScreenHistoryBackAndForward(t *testing.T) {
+	t.Setenv("ANICLITR_HOME", t.TempDir())
+	a := New(config.Load(), Graphics{})
+	lib := newLibrary()
+	a.push(lib)
+	if len(a.stack) != 2 {
+		t.Fatalf("expected stack depth 2, got %d", len(a.stack))
+	}
+	// alt+left navigates back and saves library to forward stack.
+	a.Update(tea.KeyMsg{Type: tea.KeyLeft, Alt: true})
+	if len(a.stack) != 1 || len(a.forward) != 1 {
+		t.Fatalf("expected stack=1 forward=1 after alt+left, got stack=%d forward=%d", len(a.stack), len(a.forward))
+	}
+	// alt+right restores library.
+	a.Update(tea.KeyMsg{Type: tea.KeyRight, Alt: true})
+	if len(a.stack) != 2 || a.top() != screen(lib) || len(a.forward) != 0 {
+		t.Fatalf("expected library restored after alt+right, got stack=%d forward=%d", len(a.stack), len(a.forward))
+	}
 }

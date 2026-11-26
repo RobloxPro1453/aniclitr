@@ -72,7 +72,7 @@ func (a *App) helpBox() []string {
 			{"ctrl+z", "son silmeyi geri al"}, {"ctrl+l", "ekranı baştan çiz"}, {"F1", "işlemler / yardım"}, {"ctrl+c", "çık"},
 		}},
 		{"oynatırken (mpv'de de)", [][2]string{
-			{"n / b", "sonraki / önceki bölüm"}, {"space", "duraklat"}, {"← →", "10 sn sar"},
+			{"n / b", "sonraki / önceki bölüm"}, {"y", "altyazı seçici (mpv içi OSD)"}, {"z / x · Z / X", "altyazı senkronu (±0,1s / ±0,5s)"}, {"Alt+0 · 0", "altyazı senkronunu sıfırla"}, {"space", "duraklat"}, {"← →", "10 sn sar"},
 		}},
 		{"kitaplık", [][2]string{
 			{"a", "durum · puan · listeler (her ekranda)"}, {"1-9 · 0", "puan (0 = 10)"}, {"v", "liste / poster duvarı"}, {"i", "izleme istatistikleri"},
