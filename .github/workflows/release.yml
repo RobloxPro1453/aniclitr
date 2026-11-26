@@ -1,6 +1,6 @@
-# Pushing a vX.Y.Z tag (scripts/release.ps1 does it) tests aniclitr on
-# Windows, builds it for every platform and publishes a GitHub release with
-# a SHA-256 checksums.txt. Installed copies update themselves from it.
+# Pushing a vX.Y.Z tag tests aniclitr on Windows, builds it for every
+# platform and publishes a GitHub release with a SHA-256 checksums.txt.
+# Installed copies update themselves from it.
 name: release
 
 on:

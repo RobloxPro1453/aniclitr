@@ -654,8 +654,8 @@ Known traps:
 - ctrl+l is redraw, which is why the archive toggle is alt+a.
 
 **Ship a release.**
-1. Add `whatsNew["x.y.z"]` in `onboard.go` (it is both the in-app card and the release notes). Update README/TODO. Commit everything.
-2. Run `.\scripts\release.ps1 x.y.z`. It runs vet and tests, bumps `var version` in `main.go`, commits, creates the annotated tag `vx.y.z` with the notes, and pushes.
+1. Add `whatsNew["x.y.z"]` in `onboard.go` and an entry in `CHANGELOG.md`. Update `README.md` if user-facing behaviour changed. Commit everything.
+2. Run `go vet ./...` and `go test ./internal/...`, bump `var version` in `cmd/aniclitr/main.go`, commit `"aniclitr x.y.z"`, create an annotated tag `git tag -a vx.y.z`, and push `main` and `vx.y.z`.
 3. `.github/workflows/release.yml` then:
    - tests on windows-latest;
    - cross-builds 6 targets with `-X main.version` and `-X aniclitr/internal/update.Repo=$GITHUB_REPOSITORY`;

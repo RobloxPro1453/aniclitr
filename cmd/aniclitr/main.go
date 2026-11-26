@@ -34,7 +34,7 @@ import (
 	"aniclitr/internal/update"
 )
 
-// version is bumped by scripts/release.ps1; release builds also stamp it
+// version is bumped on release; CI release builds also stamp it
 // from the git tag (-ldflags "-X main.version=…").
 var version = "1.0.1"
 

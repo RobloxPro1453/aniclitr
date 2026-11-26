@@ -1,22 +1,15 @@
-# build output
+# Build output
 /bin/
 /dist/
 *.exe
 *.exe.old
 
-# third-party reference code and local tooling (not part of aniclitr)
-/refs/
-/.agents/
-/.taste-skill/
-/.claude/
-skills-lock.json
-
-# stray files (mpv's own screenshot key writes into the working folder)
+# Temporary & runtime artifacts
 mpv-shot*.jpg
 *.ans
 *.log
+*.tmp
 
-# isolated data dirs used while developing (ANICLITR_HOME)
+# Isolated development data dirs (ANICLITR_HOME)
 /.yerel/
 /.gocache/
-/docs/REFERANS_RAPORU.md

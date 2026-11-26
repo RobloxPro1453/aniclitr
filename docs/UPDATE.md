@@ -35,7 +35,7 @@ Kurulum **Ayarlar → Terminalden aç** üzerinden sonradan yapılabilir ya da k
 | Elle denetleme | Ayarlar → Güncellemeleri denetle ya da `aniclitr update` |
 | Sürümü görüntüleme | `aniclitr --version` |
 
-Kişisel veriler güncellemeden etkilenmez. Ayarlar, izleme geçmişi, kitaplık ve MyAnimeList oturumu `%APPDATA%\aniclitr\` altında; görsel önbelleği `%LOCALAPPDATA%\aniclitr\` altında saklanır.
+Kişisel veriler güncellemeden etkilenmez. Ayarlar, izleme geçmişi, kitaplık ve MyAnimeList/AniList oturumları `%APPDATA%\aniclitr\` altında; görsel önbelleği `%LOCALAPPDATA%\aniclitr\` altında saklanır.
 
 ## Sorun giderme
 
