@@ -2,6 +2,15 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [0.19.0]
+
+### Eklenenler
+- **AniSub Türkçe altyazı desteği (`internal/subs/anisub.go`):** Oynatma sırasında `u` tuşuna basıldığında [AniSub](https://anisub.co/) topluluk arşivi hiçbir API anahtarı gerektirmeden aranır; `.zip` paketlerinden doğrudan ilgili bölümün `.ass`/`.srt`/`.vtt` dosyası çıkarılıp çalışan `mpv` penceresine anında yüklenir. OpenSubtitles anahtarı tanımlıysa iki sağlayıcı paralel aranır.
+- **Yerel altyazı dosyası yükleme (`u` → `l`):** Oynatma sırasında bilgisayardaki herhangi bir `.ass`, `.srt`, `.ssa` veya `.vtt` dosyasının yolunu yapıştırıp oynatmayı kesmeden `mpv`'ye ekleyebilirsiniz.
+- **Kaynak OP/ED zamanları:** `Animim` ve `HiAnime` kaynaklarının sağladığı açılış/bitiş (intro/outro) zaman damgaları AniSkip'e tamamlayıcı/yedek olarak bağlandı; AniSkip kaydı olmayan bölümlerde de otomatik atlama çalışır.
+- **HiAnime filler rozeti ve isteğe bağlı atlama:** Filler işaretli bölümler klasik ve Nova bölüm listesinde `filler` etiketiyle görünür; **Ayarlar → Oynatma → Filler bölümleri atla** (`skip_filler`) açıldığında `n` ve otomatik sonraki bölüm geçişi filler bölümleri atlar.
+- **Görselli yeni README:** Gerçek Nova ekran görüntüleri, animasyonlu demo GIF ve kapsamlı Teşekkürler bölümüyle `README.md` baştan yenilendi.
+
 ## [0.18.0]
 
 ### Eklenenler

@@ -214,6 +214,7 @@ type Episode struct {
 	// ranges only look at positive numbers). Show it with Num().
 	Number int
 	Title  string
+	Filler bool
 }
 
 // ExtraNumber is the Number of an in-between episode: 12.5 → -1250.
@@ -355,13 +356,24 @@ type Subtitle struct {
 	URL   string
 }
 
+// SkipRange is a source-provided OP/ED interval in seconds.
+type SkipRange struct {
+	Start float64
+	End   float64
+}
+
+// Valid reports whether the range covers a positive interval.
+func (r SkipRange) Valid() bool { return r.Start >= 0 && r.End > r.Start }
+
 // Stream is a resolved, playable variant.
 type Stream struct {
 	Qualities []Quality // best first
 	Referer   string
 	UserAgent string
 	Subtitles []Subtitle
-	MalID     int // discovered while resolving (used for aniskip)
+	MalID     int       // discovered while resolving (used for aniskip)
+	Intro     SkipRange // optional source-provided OP range
+	Outro     SkipRange // optional source-provided ED range
 }
 
 // SortQualities orders renditions from best to worst (healthy before broken,

@@ -166,10 +166,21 @@ func (Provider) Episodes(ctx context.Context, a source.Anime, season int) ([]sou
 	return source.NormalizeEpisodes(&a, eps), nil
 }
 
+type skipWindow struct {
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
+}
+
 type fanVideo struct {
 	ID        string `json:"_id"`
 	FanSubID  string `json:"fanSubId"`
 	Credits   source.FlexString
+	Intro     *skipWindow `json:"intro"`
+	Outro     *skipWindow `json:"outro"`
+	IntroFrom float64     `json:"introStart"`
+	IntroTo   float64     `json:"introEnd"`
+	OutroFrom float64     `json:"outroStart"`
+	OutroTo   float64     `json:"outroEnd"`
 	VideoURLs []struct {
 		P1080      source.FlexString `json:"1080p_url"`
 		P720       source.FlexString `json:"720p_url"`
@@ -184,14 +195,32 @@ type fanVideo struct {
 	} `json:"assSubtitles"`
 }
 
-func episode(ctx context.Context, id string) ([]fanVideo, error) {
-	var res struct {
-		Videos []fanVideo `json:"fanSubVideos"`
+type episodeDetail struct {
+	Intro     *skipWindow `json:"intro"`
+	Outro     *skipWindow `json:"outro"`
+	IntroFrom float64     `json:"introStart"`
+	IntroTo   float64     `json:"introEnd"`
+	OutroFrom float64     `json:"outroStart"`
+	OutroTo   float64     `json:"outroEnd"`
+	Videos    []fanVideo  `json:"fanSubVideos"`
+}
+
+func pickRange(w *skipWindow, start, end float64) source.SkipRange {
+	if w != nil && w.End > w.Start && w.Start >= 0 {
+		return source.SkipRange{Start: w.Start, End: w.End}
 	}
+	if end > start && start >= 0 {
+		return source.SkipRange{Start: start, End: end}
+	}
+	return source.SkipRange{}
+}
+
+func episode(ctx context.Context, id string) (episodeDetail, error) {
+	var res episodeDetail
 	if err := netx.GetJSON(ctx, base+"/api/episodes/"+url.PathEscape(id), headers(), &res); err != nil {
-		return nil, err
+		return episodeDetail{}, err
 	}
-	return res.Videos, nil
+	return res, nil
 }
 
 // fanName is a fansub's name: from details, else asked once.
@@ -220,12 +249,12 @@ func fanName(ctx context.Context, id string) string {
 
 // Variants: one per fansub upload (and per CDN when a fansub has two).
 func (Provider) Variants(ctx context.Context, a source.Anime, ep source.Episode) ([]source.Variant, error) {
-	vids, err := episode(ctx, ep.ID)
+	det, err := episode(ctx, ep.ID)
 	if err != nil {
 		return nil, err
 	}
 	var out []source.Variant
-	for _, f := range vids {
+	for _, f := range det.Videos {
 		name := fanName(ctx, f.FanSubID)
 		for i, v := range f.VideoURLs {
 			if v.P1080 == "" && v.P720 == "" && v.P480 == "" && v.URL == "" {
@@ -251,18 +280,26 @@ func (Provider) Resolve(ctx context.Context, v source.Variant) (*source.Stream, 
 	if len(parts) != 3 {
 		return nil, extract.NewError(extract.KindNotFound, "animim: bölüm kimliği yok")
 	}
-	vids, err := episode(ctx, parts[0]) // subtitle links are signed: fetch fresh
+	det, err := episode(ctx, parts[0]) // subtitle links are signed: fetch fresh
 	if err != nil {
 		return nil, &extract.Error{Extractor: "Animim", Kind: extract.KindOf(err), Detail: err.Error(), Err: err}
 	}
 	var idx int
 	fmt.Sscanf(parts[2], "%d", &idx)
-	for _, f := range vids {
+	for _, f := range det.Videos {
 		if f.ID != parts[1] || idx >= len(f.VideoURLs) {
 			continue
 		}
 		vu := f.VideoURLs[idx]
-		st := &source.Stream{Referer: base + "/"}
+		intro := pickRange(f.Intro, f.IntroFrom, f.IntroTo)
+		if !intro.Valid() {
+			intro = pickRange(det.Intro, det.IntroFrom, det.IntroTo)
+		}
+		outro := pickRange(f.Outro, f.OutroFrom, f.OutroTo)
+		if !outro.Valid() {
+			outro = pickRange(det.Outro, det.OutroFrom, det.OutroTo)
+		}
+		st := &source.Stream{Referer: base + "/", Intro: intro, Outro: outro}
 		for _, q := range []struct {
 			u string
 			h int

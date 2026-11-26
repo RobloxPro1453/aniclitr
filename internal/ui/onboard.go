@@ -15,6 +15,12 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"0.19.0": {
+		"AniSub Türkçe altyazı desteği: oynatırken u tuşuna basınca anisub.co topluluk arşivi API anahtarı olmadan aranır ve .zip içinden ilgili bölümün .ass/.srt dosyası anında mpv'ye yüklenir",
+		"Yerel altyazı yükleme: oynatırken u → l ile bilgisayardaki herhangi bir .srt/.ass/.vtt dosyasını oynatmayı kesmeden ekleyebilirsin",
+		"Kaynak OP/ED zamanları: AniSkip kaydı olmayan bölümlerde Animim/HiAnime kaynaklarının kendi intro/outro zamanları devreye girer",
+		"Filler rozeti ve atlama: HiAnime filler bölümleri listede etiketlenir; Ayarlar → Oynatma → Filler bölümleri atla açılırsa sonraki bölüm geçişinde otomatik atlanır",
+	},
 	"0.18.0": {
 		"Keşfet ekranı baştan tasarlandı: solda her zaman görünür 6 bölümlük şerit, ortada sade odak sahnesi (2 sütunlu tür ızgarası, süre hapları), sağda kapaklı ayrıntı kartı; ← ve → artık habersiz sekme atlamıyor, sol şerit ile liste arasında öngörülebilir geçiyor",
 		"İşlemler kısayolu artık her yerde F1 olarak görünür (Türkçe Q klavyede tek tuş; ? arka planda çalışmaya devam eder)",

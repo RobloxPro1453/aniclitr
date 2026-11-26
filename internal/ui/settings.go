@@ -184,7 +184,8 @@ func newSettings() *settings {
 		})
 	}
 	s.items = append(s.items,
-		toggle("OP/ED otomatik atla", "AniSkip verisini kullanarak açılış ve bitiş jeneriklerini atlar.", func(a *App) *bool { return &a.cfg.AutoSkip }),
+		toggle("OP/ED otomatik atla", "AniSkip ve kaynak verisini kullanarak açılış ve bitiş jeneriklerini atlar.", func(a *App) *bool { return &a.cfg.AutoSkip }),
+		toggle("Filler bölümleri atla", "Otomatik geçişte ve n tuşunda filler işaretli bölümleri atlayıp sonraki ana hikâye bölümüne geçer (destekleyen kaynaklarda).", func(a *App) *bool { return &a.cfg.SkipFiller }),
 		toggle("Otomatik sonraki bölüm", "Bölüm bitince 6 saniyelik geri sayımın ardından aynı çeviri grubuyla sonraki bölüme geçer.", func(a *App) *bool { return &a.cfg.AutoNext }),
 		toggle("Kaynaklar arası yedek", "Bir bölümün tüm sunucuları çalışmazsa ya da bölüm o sitede yoksa diğer açık kaynaklardaki (AnimeciX, AnimeTR, AniHub) karşılığını bulup geçiş önerir.", func(a *App) *bool { return &a.cfg.AutoFallback }),
 		toggle("Tam ekran başlat", "Oynatıcı tam ekran açılır.", func(a *App) *bool { return &a.cfg.Fullscreen }),
@@ -331,7 +332,7 @@ func settingGroup(label string) int {
 		return 0
 	case strings.HasPrefix(label, "Kaynak:") || label == "Arşiv modu":
 		return 3
-	case label == "OP/ED otomatik atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu" || label == "Sunucu sırası":
+	case label == "OP/ED otomatik atla" || label == "Filler bölümleri atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu" || label == "Sunucu sırası":
 		return 2
 	}
 	return 1

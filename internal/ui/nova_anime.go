@@ -393,6 +393,9 @@ func (s *animeScreen) novaEpisodesStage(a *App, w, h int, acc string) []string {
 		}
 
 		var right []span
+		if ep.Filler {
+			right = append(right, sp("filler  ", cWarn))
+		}
 		if ent.Notes[key] != "" {
 			right = append(right, sp("✎ ", cAccent2))
 		}

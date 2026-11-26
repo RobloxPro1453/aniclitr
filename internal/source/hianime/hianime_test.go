@@ -90,4 +90,7 @@ func TestInBetweenEpisodes(t *testing.T) {
 	if eps[0].Number != 12 || !eps[1].Extra() || eps[1].Num() != "12,5" || eps[2].Number != 13 {
 		t.Fatalf("got %+v", eps)
 	}
+	if eps[0].Filler || !eps[1].Filler || eps[2].Filler {
+		t.Fatalf("expected only 12.5 to be marked filler: %+v", eps)
+	}
 }

@@ -40,9 +40,9 @@ var (
 	reDesc   = regexp.MustCompile(`(?s)<div class="description">\s*(.*?)\s*</div>`)
 	reType   = regexp.MustCompile(`<span class="fdi-item">([^<]+)</span>`)
 	reSubs   = regexp.MustCompile(`tick-sub"><i[^>]*></i>(\d+)`)
-	// ep-item may be followed by more classes ("ssl-item-filler"): fillers
-	// were silently dropped while the class had to end with ep-item
-	reEp     = regexp.MustCompile(`(?s)<a title="([^"]*)"\s+class="[^"]*ep-item[^"]*"\s+data-number="([^"]+)"\s+data-id="(\d+)"`)
+	// ep-item may be followed by more classes ("ssl-item-filler"): capture the
+	// class list so filler episodes can be badged and optionally skipped.
+	reEp     = regexp.MustCompile(`(?s)<a title="([^"]*)"\s+class="([^"]*ep-item[^"]*)"\s+data-number="([^"]+)"\s+data-id="(\d+)"`)
 	reServer = regexp.MustCompile(`(?s)server-item" data-type="(\w+)"\s+data-server-name="([^"]+)"\s+data-hash="([^"]+)"`)
 	reBlob   = regexp.MustCompile(`window\.__P="([^"]*)"`)
 	reMal    = regexp.MustCompile(`/mal/(\d+)/`)
@@ -131,11 +131,12 @@ func (Provider) Episodes(ctx context.Context, a source.Anime, season int) ([]sou
 	}
 	var eps []source.Episode
 	for _, m := range reEp.FindAllStringSubmatch(res.HTML, -1) {
-		n, ok := source.ParseEpisodeNumber(m[2]) // "12.5" used to become episode 0
+		n, ok := source.ParseEpisodeNumber(m[3]) // "12.5" used to become episode 0
 		if !ok {
 			continue
 		}
-		eps = append(eps, source.Episode{ID: m[3], Season: 1, Number: n, Title: html.UnescapeString(m[1])})
+		filler := strings.Contains(strings.ToLower(m[2]), "filler")
+		eps = append(eps, source.Episode{ID: m[4], Season: 1, Number: n, Title: html.UnescapeString(m[1]), Filler: filler})
 	}
 	source.SortEpisodes(eps)
 	if len(eps) == 0 {
@@ -214,6 +215,14 @@ func (Provider) Resolve(ctx context.Context, v source.Variant) (*source.Stream, 
 			Src     string `json:"src"`
 			Default bool   `json:"default"`
 		} `json:"subtitles"`
+		Intro struct {
+			Start float64 `json:"start"`
+			End   float64 `json:"end"`
+		} `json:"intro"`
+		Outro struct {
+			Start float64 `json:"start"`
+			End   float64 `json:"end"`
+		} `json:"outro"`
 	}
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("zoko: %w", err)
@@ -221,7 +230,12 @@ func (Provider) Resolve(ctx context.Context, v source.Variant) (*source.Stream, 
 	if cfg.Src == "" {
 		return nil, errors.New("zoko: kaynak yok")
 	}
-	st := &source.Stream{Referer: origin, Qualities: []source.Quality{{Label: "auto", URL: cfg.Src}}}
+	st := &source.Stream{
+		Referer:   origin,
+		Qualities: []source.Quality{{Label: "auto", URL: cfg.Src}},
+		Intro:     source.SkipRange{Start: cfg.Intro.Start, End: cfg.Intro.End},
+		Outro:     source.SkipRange{Start: cfg.Outro.Start, End: cfg.Outro.End},
+	}
 	for _, s := range cfg.Subtitles {
 		sub := source.Subtitle{Label: s.Label, URL: s.Src}
 		if s.Default {

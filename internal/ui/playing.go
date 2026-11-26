@@ -34,10 +34,11 @@ type playerMsg struct {
 }
 
 type adjacentMsg struct {
-	id  int
-	ep  *source.Episode
-	eps []source.Episode
-	err error
+	id            int
+	ep            *source.Episode
+	eps           []source.Episode
+	skippedFiller int
+	err           error
 }
 
 var playID int
@@ -81,12 +82,17 @@ func newPlaying(an source.Anime, ep source.Episode, eps []source.Episode, fansub
 
 func (p *playing) crumb() string { return "oynatılıyor" }
 
+func (p *playing) typing() bool { return p.subs.open && p.subs.local }
+
 func (p *playing) hints() []hint {
 	if !p.countdown.IsZero() {
 		return []hint{{"enter", "şimdi başlat"}, {"esc", "iptal"}}
 	}
 	if p.subs.open {
-		return []hint{{"↑↓", "altyazı"}, {"enter", "yükle"}, {"esc", "kapat"}}
+		if p.subs.local {
+			return []hint{{"enter", "yerel dosyayı yükle"}, {"esc", "listeye dön"}}
+		}
+		return []hint{{"↑↓", "altyazı"}, {"enter", "yükle"}, {"l", "yerel dosya"}, {"esc", "kapat"}}
 	}
 	return []hint{{"space", "duraklat"}, {"←→", "10 sn"}, {"n", "sonraki"}, {"b", "önceki"}, {"u", "altyazı ara"}, {"s", "durdur"}}
 }
@@ -109,15 +115,41 @@ func (p *playing) malID() int {
 	return p.st.MalID
 }
 
+// mergeSkipSegments complements AniSkip results with source-provided OP/ED
+// timestamps when AniSkip did not supply that segment family.
+func mergeSkipSegments(segs []aniskip.Segment, st *source.Stream) []aniskip.Segment {
+	if st == nil || (!st.Intro.Valid() && !st.Outro.Valid()) {
+		return segs
+	}
+	var hasOP, hasED bool
+	for _, s := range segs {
+		switch s.Kind {
+		case "op", "mixed-op":
+			hasOP = true
+		case "ed", "mixed-ed":
+			hasED = true
+		}
+	}
+	out := make([]aniskip.Segment, len(segs), len(segs)+2)
+	copy(out, segs)
+	if !hasOP && st.Intro.Valid() {
+		out = append(out, aniskip.Segment{Kind: "op", Start: st.Intro.Start, End: st.Intro.End})
+	}
+	if !hasED && st.Outro.Valid() {
+		out = append(out, aniskip.Segment{Kind: "ed", Start: st.Outro.Start, End: st.Outro.End})
+	}
+	return out
+}
+
 func (p *playing) start(a *App) tea.Cmd {
-	id, mal, ep, auto := p.id, p.malID(), p.ep.Number, a.cfg.AutoSkip
+	id, mal, ep, auto, st := p.id, p.malID(), p.ep.Number, a.cfg.AutoSkip, p.st
 	// Fetch OP/ED times first (quick, cached by the API), then launch mpv.
 	return tea.Batch(a.tick(), a.posters.want(p.an.Poster), run(4*time.Second, func(ctx context.Context) tea.Msg {
 		if !auto {
 			return segsMsg{id: id}
 		}
 		segs, _ := aniskip.Fetch(ctx, mal, ep)
-		return segsMsg{id: id, segs: segs}
+		return segsMsg{id: id, segs: mergeSkipSegments(segs, st)}
 	}))
 }
 
@@ -244,6 +276,9 @@ func (p *playing) update(a *App, msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		p.nextEp, p.nextEps = m.ep, m.eps
+		if m.skippedFiller > 0 {
+			a.notify(fmt.Sprintf("%d filler bölüm atlandı", m.skippedFiller), "ok")
+		}
 		if p.countdown.IsZero() { // explicit n/b: go immediately
 			return p.goAdjacent(a)
 		}
@@ -330,13 +365,21 @@ func (p *playing) findAdjacent(a *App, dir int, countdown bool) tea.Cmd {
 	if countdown {
 		p.countdown = time.Now().Add(6 * time.Second)
 	}
+	skipFiller := dir > 0 && a.cfg.SkipFiller
+	skipped := 0
 	for i, e := range p.eps {
 		if e.Number == p.ep.Number && e.Season == p.ep.Season {
-			if j := i + dir; j >= 0 && j < len(p.eps) {
+			j := i + dir
+			for skipFiller && j >= 0 && j < len(p.eps) && p.eps[j].Filler {
+				skipped++
+				j += dir
+			}
+			if j >= 0 && j < len(p.eps) {
 				ep := p.eps[j]
 				id := p.id
 				eps := p.eps
-				return func() tea.Msg { return adjacentMsg{id: id, ep: &ep, eps: eps} }
+				sk := skipped
+				return func() tea.Msg { return adjacentMsg{id: id, ep: &ep, eps: eps, skippedFiller: sk} }
 			}
 		}
 	}
@@ -360,11 +403,20 @@ func (p *playing) findAdjacent(a *App, dir int, countdown bool) tea.Cmd {
 		if err != nil || len(eps) == 0 {
 			return adjacentMsg{id: id, err: err}
 		}
-		ep := eps[0]
+		idx := 0
 		if dir < 0 {
-			ep = eps[len(eps)-1]
+			idx = len(eps) - 1
 		}
-		return adjacentMsg{id: id, ep: &ep, eps: eps}
+		sk := skipped
+		for skipFiller && idx < len(eps) && eps[idx].Filler {
+			sk++
+			idx++
+		}
+		if idx >= len(eps) {
+			return adjacentMsg{id: id}
+		}
+		ep := eps[idx]
+		return adjacentMsg{id: id, ep: &ep, eps: eps, skippedFiller: sk}
 	}))
 }
 
