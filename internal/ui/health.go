@@ -153,7 +153,10 @@ func (s *sourcesScreen) view(a *App, w, h int) string {
 		}
 		if on && probed {
 			lat := float64(hl.Latency) / float64(3*time.Second)
-			detail := fmt.Sprintf("    son yoklama %s", agoLong(hl.At))
+			detail := ""
+			if ts := agoLong(hl.At); ts != "" {
+				detail = "    son yoklama · " + ts
+			}
 			if hl.Err != "" {
 				detail += "  ·  " + truncate(hl.Err, cw-40)
 			}

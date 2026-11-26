@@ -530,12 +530,22 @@ func (h *home) previewRecent(a *App, e store.Entry, w, ht int) []string {
 		}
 		out = append(out, gradient(l, []string{acc.hex(), cAccent2}, true))
 	}
-	line := fmt.Sprintf("Sezon %d · Bölüm %d", e.Season, e.Episode)
+	line := fmt.Sprintf("Sezon %d · Bölüm %s", e.Season, source.EpNum(e.Episode))
 	if strings.EqualFold(e.Kind, "film") {
 		line = "Film"
 	}
 	out = append(out, stText.Render(line))
-	if e.Watched[store.EpKey(e.Season, e.Episode)] {
+	if e.Source == "mal" || e.Source == "anilist" {
+		tag := "MAL"
+		if e.Source == "anilist" {
+			tag = "AniList"
+		}
+		if e.Watched[store.EpKey(e.Season, e.Episode)] {
+			out = append(out, fg(cSky).Render(tag+" · izliyor")+stMuted.Render(fmt.Sprintf(" · sıradaki: %d. bölüm", e.Episode+1)))
+		} else {
+			out = append(out, fg(cSky).Render(tag+" · izliyor")+stMuted.Render(" · enter kaynakta açar"))
+		}
+	} else if e.Watched[store.EpKey(e.Season, e.Episode)] {
 		out = append(out, stOK.Render("✓ bitti")+stMuted.Render(" · enter sıradaki bölümü açar"))
 	} else {
 		bw := max(6, w-8)
@@ -544,7 +554,9 @@ func (h *home) previewRecent(a *App, e store.Entry, w, ht int) []string {
 			out = append(out, stMuted.Render("kaldığın an "+clock(e.Position)))
 		}
 	}
-	out = append(out, stFaint.Render(agoLong(e.UpdatedAt)))
+	if ts := agoLong(e.UpdatedAt); ts != "" {
+		out = append(out, stFaint.Render(ts))
+	}
 	return out
 }
 

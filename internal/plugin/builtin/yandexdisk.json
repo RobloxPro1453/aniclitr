@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "yandexdisk",
+  "name": "Yandex Disk",
+  "version": "1.0.0",
+  "note": "Migurdex uyarlaması — store-prefetch JSON akış çözücüsü",
+  "domains": ["yadi.sk", "disk.yandex.ru", "disk.yandex.com", "disk.yandex.com.tr"],
+  "steps": [
+    {
+      "op": "http_get",
+      "url": "{{url}}"
+    },
+    {
+      "op": "regex",
+      "from": "body",
+      "pattern": "(?s)<script[^>]*id=\"store-prefetch\"[^>]*>(.*?)</script>",
+      "var": "prefetch"
+    },
+    {
+      "op": "json_extract",
+      "from": "prefetch",
+      "path": "resources.*.videoStreams.videos[]",
+      "url_field": "url",
+      "label_field": "dimension",
+      "referer": "{{url}}"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "id": "streamtape",
+  "name": "Streamtape",
+  "version": "1.0.0",
+  "note": "weeb-cli / Migurdex uyarlaması — robotlink birleştirici",
+  "domains": [
+    "streamtape.com", "streamtape.to", "streamtape.net", "streamtape.xyz",
+    "streamtape.cc", "shavetape.cash", "adblocktape.wiki", "tapepops.com",
+    "strtape.tech", "streamta.pe"
+  ],
+  "steps": [
+    {
+      "op": "http_get",
+      "url": "{{url}}",
+      "headers": { "Referer": "{{origin}}/" }
+    },
+    {
+      "op": "regex",
+      "from": "body",
+      "pattern": "getElementById\\(['\"](?:robotlink|ideoolink)['\"]\\)\\.innerHTML\\s*=\\s*['\"]([^'\"]+)['\"]\\s*\\+\\s*['\"]([^'\"]+)['\"]",
+      "vars": ["part1", "part2"]
+    },
+    {
+      "op": "emit",
+      "url": "https:{{part1}}{{part2}}&stream=1",
+      "label": "auto",
+      "referer": "{{origin}}/"
+    }
+  ]
+}

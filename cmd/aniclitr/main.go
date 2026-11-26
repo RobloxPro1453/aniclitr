@@ -20,6 +20,7 @@ import (
 	"aniclitr/internal/logx"
 	"aniclitr/internal/nyaa"
 	"aniclitr/internal/pathx"
+	"aniclitr/internal/plugin"
 	"aniclitr/internal/source"
 	_ "aniclitr/internal/source/anihub"
 	_ "aniclitr/internal/source/animecix"
@@ -187,6 +188,11 @@ func main() {
 			initialWrapped = true
 		case "kur", "setup", "tools":
 			os.Exit(runInstallTools())
+		case "lab":
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			code := plugin.RunLab(ctx, os.Stdout, os.Args[2:])
+			cancel()
+			os.Exit(code)
 		case "-h", "--help", "help":
 			fmt.Println(`aniclitr                          arayüzü başlat
 aniclitr <url>                    anime veya bölüm adresini doğrudan aç
@@ -219,6 +225,13 @@ aniclitr --version                sürüm`)
 	}
 	logx.Init(config.Dir())
 	defer logx.Close()
+	if packs, errs := plugin.LoadAll(); len(errs) > 0 {
+		for _, err := range errs {
+			logx.Errorf("eklenti yükleme uyarısı: %v", err)
+		}
+	} else {
+		logx.Infof("eklenti motoru: %d sıfır-derleme çözücü yüklendi", len(packs))
+	}
 	logx.Infof("aniclitr %s · WT_SESSION=%v TERM=%q COLORTERM=%q", version, os.Getenv("WT_SESSION") != "", os.Getenv("TERM"), os.Getenv("COLORTERM"))
 
 	cfg := config.Load()

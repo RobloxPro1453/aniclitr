@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "id": "mailru",
+  "name": "Mail.ru",
+  "version": "1.0.0",
+  "note": "Migurdex uyarlaması — /+/video/meta JSON API çözücüsü",
+  "domains": ["my.mail.ru"],
+  "steps": [
+    {
+      "op": "regex",
+      "from": "url",
+      "pattern": "(?:embed|meta|_myvideo|myvideo)/(\\d+)",
+      "var": "vid",
+      "optional": true
+    },
+    {
+      "op": "regex",
+      "from": "url",
+      "skip_if": "vid",
+      "pattern": "([0-9]{10,})",
+      "var": "vid"
+    },
+    {
+      "op": "http_get",
+      "url": "https://my.mail.ru/+/video/meta/{{vid}}",
+      "headers": { "Referer": "https://my.mail.ru/video/embed/{{vid}}" }
+    },
+    {
+      "op": "json_extract",
+      "from": "body",
+      "path": "videos[]",
+      "url_field": "url",
+      "label_field": "key",
+      "referer": "https://my.mail.ru/"
+    }
+  ]
+}

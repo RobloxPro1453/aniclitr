@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "doodstream",
+  "name": "DoodStream",
+  "version": "1.0.0",
+  "note": "weeb-cli / Migurdex uyarlaması — pass_md5 akış çözücüsü",
+  "domains": [
+    "dood.so", "dood.wf", "dood.yt", "dood.li", "dood.la", "dood.to",
+    "dood.re", "dood.pm", "dood.ws", "doodstream.com", "ds2play.com",
+    "d000d.com", "d0000d.com", "do7go.com", "myvidplay.com"
+  ],
+  "steps": [
+    {
+      "op": "http_get",
+      "url": "{{url}}",
+      "headers": { "Referer": "{{origin}}/" }
+    },
+    {
+      "op": "regex",
+      "from": "body",
+      "pattern": "\\$\\.get\\(['\"](/pass_md5/[^'\"]+)['\"]",
+      "var": "pass_path"
+    },
+    {
+      "op": "regex",
+      "from": "pass_path",
+      "pattern": "/([^/]+)$",
+      "var": "token"
+    },
+    {
+      "op": "http_get",
+      "url": "{{origin}}{{pass_path}}",
+      "var": "base_url",
+      "headers": { "Referer": "{{url}}" }
+    },
+    {
+      "op": "emit",
+      "url": "{{base_url}}{{rand:10}}?token={{token}}&expiry={{now_ms}}",
+      "label": "auto",
+      "referer": "{{origin}}/"
+    }
+  ]
+}

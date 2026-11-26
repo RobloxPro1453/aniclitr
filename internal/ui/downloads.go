@@ -461,12 +461,19 @@ func (d *downloads) item(a *App, j download.Job, w int, sel bool) []string {
 		if j.Conns > 1 {
 			parts = append(parts, fmt.Sprintf("%d bağlantı", j.Conns))
 		}
-		if j.ETA > 0 {
-			parts = append(parts, "kalan "+j.ETA.Round(time.Second).String())
+		if eta := fmtETA(j.ETA); eta != "" {
+			parts = append(parts, "kalan "+eta)
 		}
 		info = strings.Join(parts, " · ")
 	case download.Done:
-		info = humanSize(j.Total) + " · " + agoLong(j.Finished)
+		var doneParts []string
+		if sz := humanSize(j.Total); sz != "" {
+			doneParts = append(doneParts, sz)
+		}
+		if ts := agoLong(j.Finished); ts != "" {
+			doneParts = append(doneParts, ts)
+		}
+		info = strings.Join(doneParts, " · ")
 	case download.Failed:
 		info = j.Err
 	case download.Resolving:
@@ -475,7 +482,7 @@ func (d *downloads) item(a *App, j download.Job, w int, sel bool) []string {
 		info = "sırada bekliyor"
 	}
 	infoW := min(46, w/2)
-	barW := w - 4 - infoW - 2
+	barW := max(4, w-4-infoW-2)
 	pb := progressBar(barW, j.Frac(), []string{acc, cAccent2})
 	if j.State == download.Running && a.motion() {
 		pb = sheen(pb, barW, j.Frac(), a.frame)

@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "id": "mixdrop",
+  "name": "MixDrop",
+  "version": "1.0.0",
+  "note": "Migurdex uyarlaması — /e/ yönlendirme + Dean Edwards P.A.C.K.E.R",
+  "domains": [
+    "mixdrop.", "miixdrop.", "mdy48tn97.com", "md3b0j6hj.com", "mdfx9dc8n.net"
+  ],
+  "steps": [
+    {
+      "op": "url_replace",
+      "pattern": "/f/",
+      "replace": "/e/"
+    },
+    {
+      "op": "http_get",
+      "url": "{{url}}",
+      "headers": { "Referer": "{{origin}}/" }
+    },
+    {
+      "op": "js_unpack",
+      "from": "body",
+      "var": "unpacked"
+    },
+    {
+      "op": "regex",
+      "from": "unpacked",
+      "pattern": "wurl\\s*=\\s*[\"']([^\"']+)[\"']",
+      "var": "wurl"
+    },
+    {
+      "op": "emit",
+      "url": "{{wurl}}",
+      "label": "auto",
+      "referer": "{{origin}}/"
+    }
+  ]
+}

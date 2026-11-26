@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -151,7 +152,11 @@ func (h *home) novaCard(a *App, e store.Entry, cw, ph int, sel bool) []string {
 			for y := 0; y < ph; y++ {
 				l := strings.Repeat(" ", cw)
 				if y == ph/2 {
-					l = center(stBold.Render(strings.ToUpper(string([]rune(an.Title)[:1]))), cw)
+					initCh := "?"
+					if rs := []rune(strings.TrimSpace(an.Title)); len(rs) > 0 {
+						initCh = strings.ToUpperSpecial(unicode.TurkishCase, string(rs[:1]))
+					}
+					l = center(stBold.Render(initCh), cw)
 				}
 				out = append(out, tile.Render(fit(l, cw)))
 			}
@@ -167,7 +172,7 @@ func (h *home) novaCard(a *App, e store.Entry, cw, ph int, sel bool) []string {
 	if e.Watched[store.EpKey(e.Season, e.Episode)] {
 		frac, c = 1, cOK
 	}
-	n := int(frac * float64(cw))
+	n := max(0, min(cw, int(frac*float64(cw))))
 	thick, thin := "━", "─"
 	if !sel {
 		c = mix(hex(c), hex(cBg), .35).hex()
@@ -300,14 +305,16 @@ func (h *home) novaView(a *App, w, ht int) string {
 			}
 		}
 		detail := stText.Render(line)
-		if e.Source == "mal" {
+		if e.Source == "mal" || e.Source == "anilist" {
 			detail += fg(cSky).Render("  ·  enter kaynakta açar")
 		} else if e.Watched[store.EpKey(e.Season, e.Episode)] {
 			detail += stOK.Render("  ·  ✓ bitti, enter sıradakini açar")
 		} else if p := e.Percent(); p > 0 {
 			detail += stMuted.Render(fmt.Sprintf("  ·  %%%d", p))
 		}
-		detail += stFaint.Render("  ·  " + agoLong(e.UpdatedAt))
+		if ts := agoLong(e.UpdatedAt); ts != "" {
+			detail += stFaint.Render("  ·  " + ts)
+		}
 		detailW := max(rowW, w-len(pad)-kitPad)
 		out = append(out, pad+truncate(detail, detailW))
 
@@ -398,7 +405,9 @@ func (h *home) novaResume(a *App, e store.Entry, w, ht int) []string {
 			txt = append(txt, stMuted.Render("kaldığın an "+clock(e.Position)))
 		}
 	}
-	txt = append(txt, stFaint.Render(agoLong(e.UpdatedAt)))
+	if ts := agoLong(e.UpdatedAt); ts != "" {
+		txt = append(txt, stFaint.Render(ts))
+	}
 	if len(pic) == 0 {
 		return txt
 	}
@@ -409,6 +418,12 @@ func (h *home) novaResume(a *App, e store.Entry, w, ht int) []string {
 
 // fmtWatch is watch time read aloud: "45 dk", "2 sa 10 dk".
 func fmtWatch(secs float64) string {
+	if secs <= 0 {
+		return "0 dk"
+	}
+	if secs < 60 {
+		return "< 1 dk"
+	}
 	m := int(secs / 60)
 	if m < 60 {
 		return fmt.Sprintf("%d dk", m)
@@ -422,8 +437,7 @@ func fmtWatch(secs float64) string {
 // whenLabel says when an episode airs: "bugün 21:00", "yarın 12:00", "Pzt 18:30".
 func whenLabel(t, now time.Time) string {
 	t = t.Local()
-	d0 := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	switch days := int(t.Sub(d0).Hours() / 24); days {
+	switch calendarDayDiff(t, now) {
 	case 0:
 		return "bugün " + t.Format("15:04")
 	case 1:

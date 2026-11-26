@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "id": "direct",
+  "name": "Direct Stream",
+  "version": "1.0.0",
+  "note": "Doğrudan .m3u8 veya .mp4 akış adresleri için sıfır-istek geçirici",
+  "domains": [],
+  "url_patterns": ["\\.(?:m3u8|mp4)(?:\\?|$)"],
+  "steps": [
+    {
+      "op": "emit",
+      "url": "{{url}}",
+      "label": "auto",
+      "referer": "{{origin}}/"
+    }
+  ]
+}

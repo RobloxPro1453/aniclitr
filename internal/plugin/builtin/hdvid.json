@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "id": "hdvid",
+  "name": "HdVid",
+  "version": "1.0.0",
+  "note": "Migurdex uyarlaması — yönlendirme takipli sources çıkarıcısı",
+  "domains": ["hdvid.tv", "hdvid.fun", "hdvid.website", "vidhdnow3.space"],
+  "steps": [
+    {
+      "op": "http_get",
+      "url": "{{url}}",
+      "no_follow": true,
+      "headers": { "Referer": "{{origin}}/" }
+    },
+    {
+      "op": "http_get",
+      "url": "{{location}}",
+      "only_if": "location",
+      "headers": { "Referer": "{{url}}" }
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "body",
+      "pattern": "file\\s*:\\s*[\"'](https?://[^\"']+)[\"'](?:\\s*,\\s*label\\s*:\\s*[\"']([^\"']+)[\"'])?",
+      "url_group": 1,
+      "label_group": 2,
+      "referer": "{{url}}",
+      "optional": true
+    }
+  ]
+}

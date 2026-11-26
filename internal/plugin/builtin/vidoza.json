@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "id": "vidoza",
+  "name": "Vidoza",
+  "version": "1.0.0",
+  "note": "weeb-cli uyarlaması — doğrudan MP4 kaynak çıkarıcı",
+  "domains": ["vidoza.net", "videzz.net", "vidoza.co"],
+  "steps": [
+    {
+      "op": "http_get",
+      "url": "{{url}}",
+      "headers": { "Referer": "{{origin}}/" }
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "body",
+      "pattern": "<source[^>]+src=[\"'](https?://[^\"']+\\.mp4[^\"']*)[\"']",
+      "url_group": 1,
+      "referer": "{{origin}}/",
+      "optional": true
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "body",
+      "pattern": "sourcesCode\\s*:\\s*\\[\\{\\s*src\\s*:\\s*[\"'](https?://[^\"']+\\.mp4[^\"']*)[\"']",
+      "url_group": 1,
+      "referer": "{{origin}}/",
+      "optional": true
+    }
+  ]
+}

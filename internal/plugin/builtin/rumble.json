@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "id": "rumble",
+  "name": "Rumble",
+  "version": "1.0.0",
+  "note": "Migurdex uyarlaması — embedJS JSON akış çıkarıcısı",
+  "domains": ["rumble.com"],
+  "steps": [
+    {
+      "op": "regex",
+      "from": "url",
+      "pattern": "/embed/([a-zA-Z0-9]+)",
+      "var": "vid",
+      "optional": true
+    },
+    {
+      "op": "http_get",
+      "url": "https://rumble.com/embedJS/u3/?request=video&ver=2&v={{vid}}",
+      "only_if": "vid"
+    },
+    {
+      "op": "http_get",
+      "url": "{{url}}",
+      "skip_if": "vid"
+    },
+    {
+      "op": "json_unescape",
+      "from": "body",
+      "var": "clean"
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "clean",
+      "pattern": "[\"'](https?://[^\"']+\\.(?:mp4|m3u8)[^\"']*)[\"']",
+      "url_group": 1,
+      "referer": "https://rumble.com/"
+    }
+  ]
+}

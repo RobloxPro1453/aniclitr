@@ -91,7 +91,7 @@ func calendarAniList(a *App, sched []anilist.Airing, w, ht int) []string {
 	byDay := map[int][]ent{}
 	for _, x := range sched {
 		t := x.At.Local()
-		day := int(time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location()).Sub(time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())).Hours() / 24)
+		day := calendarDayDiff(t, now)
 		if day < 0 || day > 6 {
 			continue
 		}

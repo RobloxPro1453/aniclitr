@@ -176,9 +176,8 @@ func Install(ctx context.Context, r Release, exe string) error {
 	if runtime.GOOS != "windows" {
 		_ = os.Chmod(tmp.Name(), 0o755)
 	}
-	old := exe + ".old"
-	_ = os.Remove(old)
-	if err := os.Rename(exe, old); err != nil {
+	old, err := moveAside(exe)
+	if err != nil {
 		return fmt.Errorf("eski sürüm kenara alınamadı: %w", err)
 	}
 	if err := os.Rename(tmp.Name(), exe); err != nil {
@@ -188,8 +187,48 @@ func Install(ctx context.Context, r Release, exe string) error {
 	return nil
 }
 
-// Cleanup removes what a previous update left behind (the .old binary).
-func Cleanup(exe string) { _ = os.Remove(exe + ".old") }
+// moveAside renames exe out of the way so a new binary can take its name.
+// It tries exe+".old" first; if a previous .old file is locked (common on
+// Windows when another instance or AV scanner holds it), it falls back to a
+// unique PID/timestamped backup name that Cleanup removes on a later launch.
+func moveAside(exe string) (string, error) {
+	primary := exe + ".old"
+	_ = os.Remove(primary)
+	if err := os.Rename(exe, primary); err == nil {
+		return primary, nil
+	}
+	var lastErr error
+	pid := os.Getpid()
+	for i := 0; i < 3; i++ {
+		cand := fmt.Sprintf("%s.old.%d.%d", exe, pid, time.Now().UnixNano()+int64(i))
+		if err := os.Rename(exe, cand); err == nil {
+			return cand, nil
+		} else {
+			lastErr = err
+		}
+	}
+	return "", lastErr
+}
+
+// Cleanup removes what previous updates left behind (.old, .old.<pid>.*, and
+// stale temporary downloads). Locked files are silently skipped until next run.
+func Cleanup(exe string) {
+	if exe == "" {
+		return
+	}
+	_ = os.Remove(exe + ".old")
+	if matches, err := filepath.Glob(exe + ".old.*"); err == nil {
+		for _, m := range matches {
+			_ = os.Remove(m)
+		}
+	}
+	dir := filepath.Dir(exe)
+	if tmps, err := filepath.Glob(filepath.Join(dir, ".aniclitr-yeni-*")); err == nil {
+		for _, m := range tmps {
+			_ = os.Remove(m)
+		}
+	}
+}
 
 func fetch(ctx context.Context, url string, w io.Writer) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

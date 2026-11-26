@@ -254,7 +254,13 @@ func progressBar(w int, frac float64, stops []string) string {
 
 // miniBar is a compact 1-row meter for list rows.
 func miniBar(w int, frac float64, c string) []span {
+	if w <= 0 {
+		return nil
+	}
 	n := int(frac*float64(w) + .5)
+	if n < 0 {
+		n = 0
+	}
 	if n > w {
 		n = w
 	}
@@ -263,7 +269,13 @@ func miniBar(w int, frac float64, c string) []span {
 
 var spinFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-func spinner(frame int) string { return spinFrames[frame%len(spinFrames)] }
+func spinner(frame int) string {
+	idx := frame % len(spinFrames)
+	if idx < 0 {
+		idx += len(spinFrames)
+	}
+	return spinFrames[idx]
+}
 
 func clock(sec float64) string {
 	if sec < 0 {
@@ -276,11 +288,24 @@ func clock(sec float64) string {
 	return fmt.Sprintf("%02d:%02d", s/60, s%60)
 }
 
+// calendarDayDiff returns the whole-day calendar difference between t and now
+// in the local timezone, immune to DST transitions and sub-day truncation.
+func calendarDayDiff(t, now time.Time) int {
+	tl, nl := t.Local(), now.Local()
+	d1 := time.Date(tl.Year(), tl.Month(), tl.Day(), 12, 0, 0, 0, time.UTC)
+	d0 := time.Date(nl.Year(), nl.Month(), nl.Day(), 12, 0, 0, 0, time.UTC)
+	return int(d1.Sub(d0) / (24 * time.Hour))
+}
+
 func ago(t time.Time) string {
+	return agoAt(t, time.Now())
+}
+
+func agoAt(t, now time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	d := time.Since(t)
+	d := now.Sub(t)
 	switch {
 	case d < 0:
 		return "yeni"
@@ -293,12 +318,78 @@ func ago(t time.Time) string {
 	case d < 7*24*time.Hour:
 		return fmt.Sprintf("%dg", int(d.Hours()/24))
 	}
-	return fmt.Sprintf("%d %s", t.Day(), trMonthsShort[t.Month()])
+	tl := t.Local()
+	return fmt.Sprintf("%d %s", tl.Day(), trMonthsShort[tl.Month()])
+}
+
+// agoLong formats t as natural Turkish relative time ("3 saat önce", "2 gün
+// önce") for the past 7 days, and as a clean absolute date ("21 Eyl" or
+// "21 Eyl 2025") for older timestamps — never appending "önce" to a date.
+func agoLong(t time.Time) string {
+	return agoLongAt(t, time.Now())
+}
+
+func agoLongAt(t, now time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	d := now.Sub(t)
+	switch {
+	case d < 0:
+		return "yeni"
+	case d < time.Minute:
+		return "şimdi"
+	case d < time.Hour:
+		return fmt.Sprintf("%d dk önce", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%d saat önce", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%d gün önce", int(d.Hours()/24))
+	}
+	tl, nl := t.Local(), now.Local()
+	if tl.Year() != nl.Year() {
+		return fmt.Sprintf("%d %s %d", tl.Day(), trMonthsShort[tl.Month()], tl.Year())
+	}
+	return fmt.Sprintf("%d %s", tl.Day(), trMonthsShort[tl.Month()])
+}
+
+// fmtETA formats a remaining download/playback duration in Turkish.
+func fmtETA(d time.Duration) string {
+	if d <= 0 {
+		return ""
+	}
+	s := int(d.Round(time.Second).Seconds())
+	if s <= 0 {
+		s = 1
+	}
+	if s < 60 {
+		return fmt.Sprintf("%d sn", s)
+	}
+	m := s / 60
+	rs := s % 60
+	if m < 60 {
+		if rs == 0 {
+			return fmt.Sprintf("%d dk", m)
+		}
+		return fmt.Sprintf("%d dk %d sn", m, rs)
+	}
+	h := m / 60
+	rm := m % 60
+	if rm == 0 {
+		return fmt.Sprintf("%d sa", h)
+	}
+	return fmt.Sprintf("%d sa %d dk", h, rm)
 }
 
 func humanSize(n int64) string {
 	if n <= 0 {
 		return ""
+	}
+	if n < 1024 {
+		return fmt.Sprintf("%d B", n)
+	}
+	if n < 1<<20 {
+		return fmt.Sprintf("%.0f KB", float64(n)/1024)
 	}
 	mb := float64(n) / (1 << 20)
 	if mb >= 1024 {

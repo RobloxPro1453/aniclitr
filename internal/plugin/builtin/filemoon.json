@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "filemoon",
+  "name": "Filemoon",
+  "version": "1.0.0",
+  "note": "weeb-cli uyarlaması — iframe + Dean Edwards P.A.C.K.E.R çözücüsü",
+  "domains": [
+    "filemoon.sx", "filemoon.to", "filemoon.in", "filemoon.wf",
+    "filemoon.nl", "moonmov.pro", "kerapoxy.cc", "furher.in"
+  ],
+  "steps": [
+    {
+      "op": "http_get",
+      "url": "{{url}}",
+      "headers": { "Referer": "{{origin}}/" }
+    },
+    {
+      "op": "regex",
+      "from": "body",
+      "pattern": "<iframe[^>]*src=[\"']([^\"']+)[\"']",
+      "var": "iframe_url",
+      "optional": true
+    },
+    {
+      "op": "http_get",
+      "url": "{{iframe_url}}",
+      "only_if": "iframe_url",
+      "headers": { "Referer": "{{origin}}/" }
+    },
+    {
+      "op": "js_unpack",
+      "from": "body",
+      "var": "unpacked"
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "unpacked",
+      "pattern": "file\\s*:\\s*[\"'](https?://[^\"']+\\.m3u8[^\"']*)[\"']",
+      "url_group": 1,
+      "hls": true,
+      "referer": "{{origin}}/",
+      "optional": true
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "unpacked",
+      "pattern": "sources\\s*:\\s*\\[\\{\\s*file\\s*:\\s*[\"'](https?://[^\"']+)[\"']",
+      "url_group": 1,
+      "referer": "{{origin}}/",
+      "optional": true
+    }
+  ]
+}

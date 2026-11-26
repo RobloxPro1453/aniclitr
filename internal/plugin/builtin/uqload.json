@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "uqload",
+  "name": "Uqload",
+  "version": "1.0.0",
+  "note": "Migurdex uyarlaması — domain normalize + Dean Edwards P.A.C.K.E.R",
+  "domains": ["uqload."],
+  "steps": [
+    {
+      "op": "url_replace",
+      "pattern": "uqload\\.[a-z0-9]+",
+      "replace": "uqload.vc"
+    },
+    {
+      "op": "url_replace",
+      "pattern": "/(?:embed-)+",
+      "replace": "/embed-"
+    },
+    {
+      "op": "http_get",
+      "url": "{{url}}",
+      "headers": { "Referer": "{{url}}" }
+    },
+    {
+      "op": "js_unpack",
+      "from": "body",
+      "var": "unpacked",
+      "optional": true
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "unpacked",
+      "only_if": "unpacked",
+      "pattern": "file\\s*:\\s*[\"'](https?://[^\"']+)[\"']",
+      "url_group": 1,
+      "referer": "https://uqload.vc/",
+      "optional": true
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "body",
+      "pattern": "sources\\s*:\\s*\\[[\"'](https?://[^\"']+\\.(?:mp4|m3u8)[^\"']*)[\"']",
+      "url_group": 1,
+      "referer": "https://uqload.vc/",
+      "optional": true
+    }
+  ]
+}

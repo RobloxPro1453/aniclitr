@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "blogger",
+  "name": "Blogger",
+  "version": "1.0.0",
+  "note": "anime-sdk uyarlaması — googlevideo.com doğrudan çıkarıcı",
+  "domains": ["blogger.com", "www.blogger.com"],
+  "url_patterns": ["blogger\\.com/video\\.g\\?token="],
+  "steps": [
+    {
+      "op": "http_get",
+      "url": "{{url}}",
+      "headers": { "Accept": "text/html" }
+    },
+    {
+      "op": "json_unescape",
+      "from": "body",
+      "var": "clean"
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "clean",
+      "pattern": "(https://[^\"'\\\\\\s<>]+?\\.googlevideo\\.com/videoplayback[^\"'\\\\\\s<>]+)",
+      "url_group": 1,
+      "referer": "https://www.blogger.com/"
+    }
+  ]
+}

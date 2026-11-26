@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -102,7 +103,7 @@ func (s *torrentScreen) crumb() string {
 	if s.focus == 2 {
 		return "torrent › dosyalar"
 	}
-	return "torrent › " + strings.ToLower(torrentTabs[s.tab].label)
+	return "torrent › " + strings.ToLowerSpecial(unicode.TurkishCase, torrentTabs[s.tab].label)
 }
 
 func (s *torrentScreen) typing() bool { return s.focus == 0 }
@@ -745,7 +746,13 @@ func (s *torrentScreen) renderDetailPane(a *App, w, h int, acc string) []string 
 	}
 	out = append(out, kv("İndirme", fmt.Sprintf("%d kez", it.Downloads)))
 	if !it.Published.IsZero() {
-		out = append(out, kv("Tarih", agoLong(it.Published)+" ("+it.Published.Local().Format("02.01.2006")+")"))
+		rel := agoLong(it.Published)
+		abs := it.Published.Local().Format("02.01.2006")
+		if strings.Contains(rel, "önce") || rel == "şimdi" || rel == "yeni" {
+			out = append(out, kv("Tarih", rel+" ("+abs+")"))
+		} else {
+			out = append(out, kv("Tarih", abs))
+		}
 	}
 
 	out = append(out, "", stFaint.Render(strings.Repeat("─", innerW)))

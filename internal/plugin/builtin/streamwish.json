@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "id": "streamwish",
+  "name": "StreamWish",
+  "version": "1.0.0",
+  "note": "Migurdex uyarlaması — 30+ ayna domain + Dean Edwards P.A.C.K.E.R",
+  "domains": [
+    "streamwish.com", "streamwish.to", "embedwish.com", "wishembed.pro",
+    "vidcloud.top", "jwplayerhls.com", "wishonly.site", "dwish.pro",
+    "awish.pro", "mwish.pro", "cloudwish.xyz", "playerwish.com",
+    "rapidplayers.com", "streamhg.com", "hlsflex.com", "swiftplayers.com",
+    "ultpreplayer.com", "recordplay.biz", "hgplaycdn.com", "hailindihg.com",
+    "davioad.com", "hglink.to", "medixiru.com", "hgcloud.to", "hgplayer.sbs",
+    "audinifer.com", "vibuxer.com", "hanerix.com", "masukestin.com",
+    "playnixes.com", "hglamioz.com", "niramirus.com", "ghbrisk.com",
+    "filelions.to", "filelions.live", "vidhide.com", "vidhidepro.com"
+  ],
+  "mirrors": [
+    "audinifer.com", "ghbrisk.com", "hanerix.com", "vibuxer.com", "playnixes.com"
+  ],
+  "mirror_template": "https://{{mirror}}/e/{{code}}",
+  "steps": [
+    {
+      "op": "regex",
+      "from": "url",
+      "pattern": "(?:/(?:e|f|embed-|d)/|/)([a-zA-Z0-9]{8,20})(?:\\.html)?",
+      "var": "code",
+      "optional": true
+    },
+    {
+      "op": "http_get",
+      "url": "{{url}}",
+      "headers": { "Referer": "{{origin}}/" },
+      "optional": true
+    },
+    {
+      "op": "js_unpack",
+      "from": "body",
+      "var": "unpacked",
+      "optional": true
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "unpacked",
+      "only_if": "unpacked",
+      "pattern": "(?:hls\\d*|file)[\"']?\\s*:\\s*[\"'](https?://[^\"']+)[\"']",
+      "url_group": 1,
+      "hls": true,
+      "referer": "{{origin}}/",
+      "optional": true
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "body",
+      "pattern": "(?:hls\\d*|file)[\"']?\\s*:\\s*[\"'](https?://[^\"']+\\.m3u8[^\"']*)[\"']",
+      "url_group": 1,
+      "hls": true,
+      "referer": "{{origin}}/",
+      "optional": true
+    },
+    {
+      "op": "mirror_retry",
+      "only_if": "code",
+      "pattern": "(?:hls\\d*|file)[\"']?\\s*:\\s*[\"'](https?://[^\"']+)[\"']",
+      "hls": true,
+      "optional": true
+    }
+  ]
+}

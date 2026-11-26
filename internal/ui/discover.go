@@ -337,32 +337,43 @@ var trMonths = []string{"", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Hazira
 
 func dayLabel(t, now time.Time) string {
 	t = t.Local()
-	y1, m1, d1 := t.Date()
-	y2, m2, d2 := now.Date()
+	_, m1, d1 := t.Date()
 	base := fmt.Sprintf("%s %d %s", trWeekdays[t.Weekday()], d1, trMonths[m1])
-	switch {
-	case y1 == y2 && m1 == m2 && d1 == d2:
+	switch calendarDayDiff(t, now) {
+	case 0:
 		return "bugün · " + base
-	case t.Sub(time.Date(y2, m2, d2, 0, 0, 0, 0, now.Location())) < 48*time.Hour && t.After(now):
+	case 1:
 		return "yarın · " + base
 	}
 	return base
 }
 
-// countdown formats time until t ("2sa 14dk", "yayında").
+// countdown formats time until t ("2sa 14dk", "yayınlandı").
 func countdown(t time.Time) string {
-	d := time.Until(t)
+	return countdownAt(t, time.Now())
+}
+
+func countdownAt(t, now time.Time) string {
+	d := t.Sub(now)
 	switch {
 	case d <= 0:
 		return "yayınlandı"
 	case d < time.Minute:
-		return fmt.Sprintf("%dsn", int(d.Seconds()))
+		return fmt.Sprintf("%dsn", max(1, int(d.Seconds())))
 	case d < time.Hour:
 		return fmt.Sprintf("%ddk", int(d.Minutes()))
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%dsa %ddk", int(d.Hours()), int(d.Minutes())%60)
+		h, m := int(d.Hours()), int(d.Minutes())%60
+		if m == 0 {
+			return fmt.Sprintf("%dsa", h)
+		}
+		return fmt.Sprintf("%dsa %ddk", h, m)
 	}
-	return fmt.Sprintf("%dg %dsa", int(d.Hours()/24), int(d.Hours())%24)
+	days, h := int(d.Hours()/24), int(d.Hours())%24
+	if h == 0 {
+		return fmt.Sprintf("%dg", days)
+	}
+	return fmt.Sprintf("%dg %dsa", days, h)
 }
 
 func (d *discover) selected(a *App) *anilist.Media {

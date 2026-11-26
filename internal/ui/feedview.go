@@ -214,7 +214,10 @@ func feedCard(a *App, it source.FeedItem, w, h int) []string {
 	if it.Season > 1 {
 		ep = fmt.Sprintf("Sezon %d · %s. bölüm", it.Season, source.EpNum(it.Episode))
 	}
-	out = append(out, stText.Render(ep), stMuted.Render(agoLong(it.Released)))
+	out = append(out, stText.Render(ep))
+	if ts := agoLong(it.Released); ts != "" {
+		out = append(out, stMuted.Render(ts))
+	}
 	if it.Fansub != "" && it.Fansub != "Bilinmeyen" {
 		out = append(out, stMuted.Render(truncate(shortFansub(it.Fansub), w)))
 	}

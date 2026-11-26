@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "id": "sendvid",
+  "name": "Sendvid",
+  "version": "1.0.0",
+  "note": "Migurdex uyarlaması — og:video meta ve source çıkarıcısı",
+  "domains": ["sendvid.com"],
+  "steps": [
+    {
+      "op": "http_get",
+      "url": "{{url}}",
+      "headers": { "Referer": "https://sendvid.com/" }
+    },
+    {
+      "op": "regex",
+      "from": "body",
+      "pattern": "<meta\\s+property=\"og:video:height\"\\s+content=\"(\\d+)\"",
+      "var": "height",
+      "optional": true
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "body",
+      "pattern": "<meta\\s+property=\"og:video(?::secure_url)?\"\\s+content=\"(https?://[^\"]+)\"",
+      "url_group": 1,
+      "label": "{{height}}",
+      "referer": "https://sendvid.com/",
+      "optional": true
+    },
+    {
+      "op": "emit_regex_all",
+      "from": "body",
+      "pattern": "<source\\s+src=\"(https?://[^\"]+\\.mp4[^\"]*)\"",
+      "url_group": 1,
+      "label": "{{height}}",
+      "referer": "https://sendvid.com/",
+      "optional": true
+    }
+  ]
+}

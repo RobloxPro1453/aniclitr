@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "id": "dailymotion",
+  "name": "Dailymotion",
+  "version": "1.0.0",
+  "note": "Migurdex uyarlaması — player/metadata API çözücüsü",
+  "domains": ["dailymotion.com", "dai.ly"],
+  "steps": [
+    {
+      "op": "regex",
+      "from": "url",
+      "pattern": "(?:/video/|dai\\.ly/|[?&]video=)([a-zA-Z0-9]+)",
+      "var": "vid"
+    },
+    {
+      "op": "http_get",
+      "url": "https://www.dailymotion.com/player/metadata/video/{{vid}}"
+    },
+    {
+      "op": "json_extract",
+      "from": "body",
+      "path": "qualities.auto[]",
+      "url_field": "url",
+      "hls": true,
+      "referer": "https://www.dailymotion.com/"
+    }
+  ]
+}

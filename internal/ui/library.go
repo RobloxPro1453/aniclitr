@@ -888,20 +888,13 @@ func (l *library) card(a *App, it store.Item, w, h int) []string {
 	if g := genreLine(it.Genres, w); g != "" {
 		out = append(out, "", g)
 	}
-	out = append(out, "")
-	out = append(out, stMuted.Render("eklendi "+agoLong(it.AddedAt)))
-	if !it.FinishedAt.IsZero() {
-		out = append(out, stMuted.Render("bitirdin "+agoLong(it.FinishedAt)))
+	if ts := agoLong(it.AddedAt); ts != "" {
+		out = append(out, "", stMuted.Render("eklendi · "+ts))
+	}
+	if ts := agoLong(it.FinishedAt); ts != "" {
+		out = append(out, stMuted.Render("bitirdin · "+ts))
 	}
 	return block(out, w, h)
-}
-
-func agoLong(t time.Time) string {
-	s := ago(t)
-	if s == "yeni" || s == "şimdi" {
-		return s
-	}
-	return s + " önce"
 }
 
 // watchedCount reconciles history.json watched map, library/MAL Watched count,

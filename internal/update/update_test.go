@@ -90,3 +90,47 @@ func TestInstallRefusesBadChecksum(t *testing.T) {
 		t.Fatalf("temp download left behind: %v", left)
 	}
 }
+
+func TestInstallFallsBackWhenPrimaryOldBlocked(t *testing.T) {
+	bin := []byte("brand new aniclitr")
+	h := sha256.Sum256(bin)
+	fakeGitHub(t, bin, hex.EncodeToString(h[:]))
+	rel, err := Latest(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "aniclitr.exe")
+	if err := os.WriteFile(exe, []byte("current binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate an unremovable primary .old target (non-empty directory blocks
+	// os.Remove and os.Rename across all OSes, matching a locked Windows .old).
+	blocked := exe + ".old"
+	if err := os.MkdirAll(filepath.Join(blocked, "lock"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(context.Background(), rel, exe); err != nil {
+		t.Fatalf("expected PID fallback to succeed when .old is blocked: %v", err)
+	}
+	if b, _ := os.ReadFile(exe); string(b) != "brand new aniclitr" {
+		t.Fatalf("binary not swapped: %q", b)
+	}
+	backups, _ := filepath.Glob(exe + ".old.*")
+	if len(backups) != 1 {
+		t.Fatalf("expected 1 timestamped backup, got %v", backups)
+	}
+	if b, _ := os.ReadFile(backups[0]); string(b) != "current binary" {
+		t.Fatalf("backup content mismatch: %q", b)
+	}
+	// Also seed a stale temp file to verify Cleanup removes both .old.* and temps.
+	stale := filepath.Join(dir, ".aniclitr-yeni-stale")
+	_ = os.WriteFile(stale, []byte("partial"), 0o644)
+	Cleanup(exe)
+	if left, _ := filepath.Glob(exe + ".old.*"); len(left) != 0 {
+		t.Fatalf("cleanup missed .old.* backups: %v", left)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("cleanup missed stale temp file")
+	}
+}

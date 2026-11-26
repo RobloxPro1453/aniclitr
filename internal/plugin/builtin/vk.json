@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "id": "vk",
+  "name": "VK Video",
+  "version": "1.0.0",
+  "note": "Migurdex uyarlaması — embed files JSON çıkarıcısı",
+  "domains": ["vk.com", "vkvideo.ru"],
+  "steps": [
+    {
+      "op": "http_get",
+      "url": "{{url}}",
+      "headers": { "Referer": "{{origin}}/" }
+    },
+    {
+      "op": "regex",
+      "from": "body",
+      "pattern": "[\"']files[\"']\\s*:\\s*(\\{[^}]+\\})",
+      "var": "files_json"
+    },
+    {
+      "op": "json_unescape",
+      "from": "files_json",
+      "var": "files_json"
+    },
+    {
+      "op": "json_extract",
+      "from": "files_json",
+      "path": "",
+      "referer": "{{url}}"
+    }
+  ]
+}
