@@ -14,6 +14,7 @@ type Config struct {
 	Quality      string          `json:"quality"`       // "best", "1080p", "720p"...
 	AutoSkip     bool            `json:"auto_skip"`              // aniskip / source OP/ED
 	SkipFiller   bool            `json:"skip_filler,omitempty"`  // skip filler-marked episodes on next/auto-next
+	Anime4K      string          `json:"anime4k,omitempty"`      // "kapalı" | "hafif" | "dengeli" | "yüksek"
 	AutoNext     bool            `json:"auto_next"`              // continue to the next episode
 	Fullscreen   bool            `json:"fullscreen"`    // start mpv fullscreen
 	Posters      bool            `json:"posters"`       // draw cover art

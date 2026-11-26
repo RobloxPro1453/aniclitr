@@ -99,6 +99,28 @@ func TestScreenSweep(t *testing.T) {
 					p.started, p.pos, p.dur = true, 600, 1420
 					return p
 				},
+				"wrapped": func() screen {
+					ws := newWrappedScreen(a)
+					ws.slideAt = time.Now().Add(-2 * time.Second)
+					return ws
+				},
+				"wrapped_persona": func() screen {
+					ws := newWrappedScreen(a)
+					ws.slide = 4
+					ws.slideAt = time.Now().Add(-2 * time.Second)
+					return ws
+				},
+				"party": func() screen {
+					return newPartyScreen()
+				},
+				"discover_mood": func() screen {
+					d := newDiscover()
+					d.tab = tRecs
+					d.menu = false
+					d.moodIdx = 0
+					d.moodOK = true
+					return d
+				},
 			}
 			for name, mk := range screens {
 				a.stack = a.stack[:1]

@@ -9,7 +9,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"aniclitr/internal/backup"
+	"aniclitr/internal/shaders"
 	"aniclitr/internal/source"
+	"aniclitr/internal/tools"
 )
 
 type setting struct {
@@ -92,6 +94,19 @@ func newSettings() *settings {
 				a.notify("yedeklendi: "+sum.Path, "ok")
 				return a.tick()
 			},
+		},
+		setting{
+			label: "Eksik araçları kur", desc: "Eksik yardımcı araçları (mpv, yt-dlp, aria2c, ffmpeg) tek tuşla otomatik kurar. Terminalden aniclitr kur ile de çalıştırılabilir.",
+			value: func(a *App) string {
+				if a.toolsBusy {
+					return "kuruluyor…"
+				}
+				if m := tools.Missing(); len(m) > 0 {
+					return fmt.Sprintf("%d eksik", len(m))
+				}
+				return "hepsi kurulu ✓"
+			},
+			run: func(a *App) tea.Cmd { return a.installMissingTools() },
 		},
 		setting{
 			label: "MyAnimeList", desc: "Kitaplığı MyAnimeList hesabınızla iki yönlü eşitler: durum, puan, izlenen bölüm sayısı ve listeler.",
@@ -224,6 +239,13 @@ func newSettings() *settings {
 		toggle("Otomatik sonraki bölüm", "Bölüm bitince 6 saniyelik geri sayımın ardından aynı çeviri grubuyla sonraki bölüme geçer.", func(a *App) *bool { return &a.cfg.AutoNext }),
 		toggle("Kaynaklar arası yedek", "Bir bölümün tüm sunucuları çalışmazsa ya da bölüm o sitede yoksa diğer açık kaynaklardaki (AnimeciX, AnimeTR, AniHub) karşılığını bulup geçiş önerir.", func(a *App) *bool { return &a.cfg.AutoFallback }),
 		toggle("Tam ekran başlat", "Oynatıcı tam ekran açılır.", func(a *App) *bool { return &a.cfg.Fullscreen }),
+		cycle("Anime4K görüntü iyileştirme", "mpv GPU shader paketiyle anime çizgilerini keskinleştirir ve sıkıştırma gürültüsünü temizler (kapalı · hafif · dengeli · yüksek). Video izlerken mpv içinde Alt+4 ile anlık değiştirilebilir.",
+			shaders.Profiles, func(a *App) *string {
+				if a.cfg.Anime4K == "" {
+					a.cfg.Anime4K = shaders.Off
+				}
+				return &a.cfg.Anime4K
+			}, nil),
 		setting{
 			label: "Kapak görselleri", desc: "Anime kapaklarını terminalde gösterir.",
 			on:  func(a *App) bool { return a.cfg.Posters },
@@ -363,11 +385,11 @@ func (s *settings) update(a *App, msg tea.Msg) tea.Cmd {
 // settingGroup files a setting under a heading.
 func settingGroup(label string) int {
 	switch {
-	case label == "MyAnimeList" || label == "AniList" || label == "Discord Rich Presence" || label == "Masaüstü bildirimleri" || label == "Tanıtım turu" || label == "Terminalden aç" || label == "Otomatik güncelle" || label == "Güncellemeleri denetle" || label == "Verileri yedekle":
+	case label == "MyAnimeList" || label == "AniList" || label == "Discord Rich Presence" || label == "Masaüstü bildirimleri" || label == "Tanıtım turu" || label == "Terminalden aç" || label == "Otomatik güncelle" || label == "Güncellemeleri denetle" || label == "Verileri yedekle" || label == "Eksik araçları kur":
 		return 0
 	case strings.HasPrefix(label, "Kaynak:") || label == "Arşiv modu":
 		return 3
-	case label == "OP/ED otomatik atla" || label == "Filler bölümleri atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu" || label == "Sunucu sırası":
+	case label == "OP/ED otomatik atla" || label == "Filler bölümleri atla" || label == "Otomatik sonraki bölüm" || label == "Kaynaklar arası yedek" || label == "Tam ekran başlat" || label == "Anime4K görüntü iyileştirme" || label == "Tercih edilen kalite" || label == "Tercih edilen sunucu" || label == "Sunucu sırası":
 		return 2
 	}
 	return 1

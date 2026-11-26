@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"aniclitr/internal/player"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
+	"aniclitr/internal/watchparty"
 )
 
 type segsMsg struct {
@@ -40,6 +42,20 @@ type adjacentMsg struct {
 	eps           []source.Episode
 	skippedFiller int
 	err           error
+}
+
+type prefetchedEp struct {
+	ep     source.Episode
+	fansub string
+	host   string
+	vurl   string
+	st     *source.Stream
+	q      source.Quality
+}
+
+type prefetchNextMsg struct {
+	id   int
+	pref *prefetchedEp
 }
 
 var playID int
@@ -76,6 +92,12 @@ type playing struct {
 	subDelay  float64
 	activeSub string
 	subs      subsState
+
+	// zero-wait next episode pre-fetch & watch-party sync tracking
+	prefetchStarted bool
+	prefetched      *prefetchedEp
+	lastSyncPos     float64
+	lastSyncPaused  bool
 }
 
 func newPlaying(an source.Anime, ep source.Episode, eps []source.Episode, fansub, host string, st *source.Stream, q source.Quality) *playing {
@@ -97,7 +119,7 @@ func (p *playing) hints() []hint {
 		}
 		return []hint{{"↑↓/1-6", "seç"}, {"enter", "yükle"}, {"l", "yerel dosya"}, {"z/x", "senkron"}, {"esc", "kapat"}}
 	}
-	return []hint{{"space", "duraklat"}, {"←→", "10 sn"}, {"n/b", "bölüm"}, {"y", "altyazı"}, {"z/x", "senkron"}, {"s", "durdur"}}
+	return []hint{{"space", "duraklat"}, {"←→", "10 sn"}, {"n/b", "bölüm"}, {"y", "altyazı"}, {"z/x", "senkron"}, {"T", "uyku zamanlayıcısı"}, {"P", "birlikte izle"}, {"s", "durdur"}}
 }
 
 // While mpv plays, the terminal stays still: mpv's window is on top and
@@ -183,6 +205,7 @@ func (p *playing) launch(a *App) tea.Cmd {
 		Start:      p.resumeAt(a),
 		Speed:      a.playSpeed,
 		Fullscreen: a.cfg.Fullscreen,
+		Anime4K:    a.cfg.Anime4K,
 		Segments:   p.segs,
 		ExtraArgs:  a.cfg.ExtraMpvArgs,
 		MpvPath:    a.cfg.MpvPath,
@@ -267,6 +290,22 @@ func (p *playing) update(a *App, msg tea.Msg) tea.Cmd {
 	case subsMsg, subGotMsg:
 		p.onSubs(a, msg)
 		return nil
+	case prefetchNextMsg:
+		if m.id == p.id && m.pref != nil {
+			p.prefetched = m.pref
+		}
+		return nil
+	case partyEvMsg:
+		if m.ok && m.ev.Kind == "sync" && p.sess != nil {
+			p.lastSyncPaused = m.ev.Paused
+			p.lastSyncPos = m.ev.Pos
+			p.sess.SetPause(m.ev.Paused)
+			if math.Abs(m.ev.Pos-p.pos) > watchparty.DriftThreshold {
+				p.sess.SeekAbs(m.ev.Pos)
+				p.sess.ShowOSD("◈ "+m.ev.Nick+" senkronladı", 1800)
+			}
+		}
+		return nil
 	case adjacentMsg:
 		if m.id != p.id {
 			return nil
@@ -326,6 +365,30 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 			p.lastSave = time.Now()
 			p.save(a, false)
 		}
+		// Sleep timer (time-based expiration)
+		if a.sleep.expired() && p.sess != nil {
+			p.save(a, true)
+			a.sleep.mode = sleepOff
+			p.sess.ShowOSD("☾ Uyku zamanlayıcısı doldu — kapatılıyor", 2000)
+			p.sess.Quit()
+			a.notify("☾ uyku zamanlayıcısı oynatmayı durdurdu", "ok")
+			return nil
+		}
+		// Watch Party live broadcast (pause toggle or manual seek > 2.5s)
+		if a.party != nil {
+			if ev.Paused != p.lastSyncPaused || math.Abs(ev.Pos-p.lastSyncPos) > 2.5 {
+				p.lastSyncPaused = ev.Paused
+				p.lastSyncPos = ev.Pos
+				a.party.BroadcastState(ev.Pos, ev.Paused)
+			} else {
+				p.lastSyncPos = ev.Pos
+			}
+		}
+		// Zero-wait next-episode pre-fetch once past 70% or in final 3 minutes
+		if !p.prefetchStarted && a.cfg.AutoNext && !p.an.IsMovie() && p.dur > 60 && (p.pos/p.dur >= 0.70 || p.dur-p.pos <= 180) {
+			p.prefetchStarted = true
+			return p.startPrefetch(a)
+		}
 	case player.EvSkipped:
 		p.skipText, p.skipAt = ev.Text, time.Now()
 	case player.EvAction:
@@ -361,6 +424,18 @@ func (p *playing) onEvent(a *App, ev player.Event) tea.Cmd {
 		}
 		p.save(a, true)
 		p.sess = nil
+		if ev.Action == "" && (ev.EOF || (p.dur > 0 && p.pos/p.dur >= 0.85)) {
+			if stop, suspend := a.sleep.onEpisodeFinished(); stop {
+				a.notify("☾ uyku zamanlayıcısı durdurdu", "ok")
+				if a.top() == screen(p) {
+					a.pop()
+				}
+				if suspend {
+					suspendOS()
+				}
+				return nil
+			}
+		}
 		switch {
 		case ev.Action == "next":
 			return p.findAdjacent(a, +1, false)
@@ -441,9 +516,86 @@ func (p *playing) findAdjacent(a *App, dir int, countdown bool) tea.Cmd {
 	}))
 }
 
-// goAdjacent hands over to a picker that auto-plays with the same fansub/host.
+// startPrefetch quietly resolves the next episode's stream URL in the
+// background while the user finishes watching, making the transition instant.
+func (p *playing) startPrefetch(a *App) tea.Cmd {
+	var next *source.Episode
+	skipFiller := a.cfg.SkipFiller
+	for i, e := range p.eps {
+		if e.Number == p.ep.Number && e.Season == p.ep.Season {
+			j := i + 1
+			for skipFiller && j < len(p.eps) && p.eps[j].Filler {
+				j++
+			}
+			if j < len(p.eps) {
+				ep := p.eps[j]
+				next = &ep
+			}
+			break
+		}
+	}
+	if next == nil {
+		return nil
+	}
+	prov := source.Get(p.an.Source)
+	if prov == nil {
+		return nil
+	}
+	id, an, ep, prefFan, prefHost := p.id, p.an, *next, p.fansub, p.host
+	pickQ := func(st *source.Stream) source.Quality { return a.pickQualityFor(an, st) }
+	return run(25*time.Second, func(ctx context.Context) tea.Msg {
+		vs, err := prov.Variants(ctx, an, ep)
+		if err != nil || len(vs) == 0 {
+			return prefetchNextMsg{id: id}
+		}
+		// Pick best matching variant (same fansub & host preferred).
+		var cands []source.Variant
+		for _, v := range vs {
+			if strings.EqualFold(shortFansub(v.Fansub), shortFansub(prefFan)) && strings.EqualFold(v.Host, prefHost) {
+				cands = append(cands, v)
+			}
+		}
+		for _, v := range vs {
+			if strings.EqualFold(shortFansub(v.Fansub), shortFansub(prefFan)) {
+				cands = append(cands, v)
+			}
+		}
+		if len(cands) == 0 {
+			cands = vs
+		}
+		if len(cands) > 3 {
+			cands = cands[:3]
+		}
+		for _, v := range cands {
+			st, err := prov.Resolve(ctx, v)
+			if err == nil && st != nil && len(st.Qualities) > 0 {
+				return prefetchNextMsg{
+					id: id,
+					pref: &prefetchedEp{
+						ep:     ep,
+						fansub: v.Fansub,
+						host:   v.Host,
+						vurl:   v.URL,
+						st:     st,
+						q:      pickQ(st),
+					},
+				}
+			}
+		}
+		return prefetchNextMsg{id: id}
+	})
+}
+
+// goAdjacent hands over to a pre-fetched player instantly when available, or
+// falls back to a picker that auto-plays with the same fansub/host.
 func (p *playing) goAdjacent(a *App) tea.Cmd {
 	ep := *p.nextEp
+	if pf := p.prefetched; pf != nil && pf.st != nil && pf.ep.Number == ep.Number && pf.ep.Season == ep.Season {
+		np := newPlaying(p.an, pf.ep, p.nextEps, pf.fansub, pf.host, pf.st, pf.q)
+		np.vurl = pf.vurl
+		a.pop()
+		return tea.Batch(a.push(np), np.start(a))
+	}
 	pk := newPicker(p.an, ep, p.nextEps, true)
 	pk.prefFan, pk.prefHost = p.fansub, p.host
 	a.pop()
@@ -510,6 +662,13 @@ func (p *playing) key(a *App, k tea.KeyMsg) tea.Cmd {
 		p.sess.Next()
 	case "b":
 		p.sess.Prev()
+	case "T":
+		lbl := a.sleep.cycle()
+		p.sess.ShowOSD("☾ Uyku zamanlayıcısı: "+lbl, 2400)
+		a.notify("☾ uyku zamanlayıcısı: "+lbl, "ok")
+		return a.tick()
+	case "P":
+		return a.push(newPartyScreen())
 	case "s", "esc", "q":
 		p.sess.Quit()
 	}

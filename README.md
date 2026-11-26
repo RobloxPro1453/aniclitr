@@ -55,7 +55,7 @@
 
 Kalınan saniye, seri bazlı çözünürlük tercihi, çok sezonlu seri hizalaması ve açılış/bitiş (OP/ED) jenerik atlama otomatik yönetilir; oynatma sırasında terminal boşa çekilir ve işlemci kullanmaz.
 
-> **English summary.** `aniclitr` v1.0 is an open-source (GPL-3.0), keyboard-driven Go terminal anime player built for Turkish-subtitled content. It searches six live sources in parallel (AnimeciX, AnimeTR, AniHub, SonAnime, Animim, HiAnime) plus Nyaa.si torrents, resolves streams natively in Go (Tau Video, AniHub HLS, OK.ru, Google Drive, Sibnet, Voe, Vidmoly), plays via `mpv` with Discord Rich Presence, loads Turkish subtitles on the fly from [AniSub](https://anisub.co/) directly inside mpv's OSD or from local `.srt`/`.ass`/`.vtt` files with live sync fine-tuning, skips OP/ED via AniSkip & source timestamps, supports batch/range offline downloads with a live speed sparkline & disk-usage bar, renders Sixel/half-block artwork in the default Nova UI, offers quick CLI commands (`devam`, `ara`, `izle`, `indir`, `torrent`, `yedekle`, `geri-yukle`) & custom `keys.json`, sends desktop notifications, and syncs two-way with both MyAnimeList and AniList.
+> **English summary.** `aniclitr` v1.2 is an open-source (GPL-3.0), keyboard-driven Go terminal anime player built for Turkish-subtitled content. It searches six live sources in parallel (AnimeciX, AnimeTR, AniHub, SonAnime, Animim, HiAnime) plus Nyaa.si torrents with smart title-relevance ranking, resolves streams natively in Go, plays via `mpv` with embedded **Anime4K** GPU shaders (`Alt+4` live toggle), **zero-wait next-episode pre-fetching**, **Watch Party** LAN/TCP sync, **Sleep Timer** (`Alt+s`), Discord Rich Presence, live in-mpv **AniSub** OSD subtitles (`y`) & sync fine-tuning (`z`/`x`), OP/ED skip, animated **Anime Wrapped** with zero-model Turkish persona commentary & shareable PNG card (`aniclitr ozet --png`), **Keşfet Mood Wizard**, one-key auto tool installer (`aniclitr kur`), batch/range offline downloads, Sixel/half-block Nova UI, and two-way MyAnimeList & AniList OAuth sync.
 
 ### Kullanılan Teknolojiler
 
@@ -105,17 +105,19 @@ Kalınan saniye, seri bazlı çözünürlük tercihi, çok sezonlu seri hizalama
 | Alan | Açıklama |
 |---|---|
 | **Paralel Arama & Doğrudan Bağlantı** | Etkin tüm kaynaklarda eşzamanlı arama; aynı anime tek sonuçta birleştirilir. Arama kutusuna, komut paletine (`ctrl+k`) veya komut satırına yapıştırılan anime/bölüm bağlantısı doğrudan açılır. |
-| **Akıllı Oynatma (`mpv`)** | Saniye hassasiyetinde kaldığın yerden devam, **seri bazında kalite hafızası**, AniSkip + kaynak OP/ED otomatik atlama, otomatik sonraki bölüm ve isteğe bağlı **filler bölüm atlama**. |
+| **Akıllı Oynatma (`mpv`) & Anime4K** | Saniye hassasiyetinde kaldığın yerden devam, **seri bazında kalite hafızası**, **sıfır bekleme sonraki bölüm ön-hazırlama**, gömülü **Anime4K** GPU iyileştirme (`Alt+4` canlı geçiş), **Uyku Zamanlayıcısı** (`Alt+s` / `T`), AniSkip + kaynak OP/ED atlama ve **filler bölüm atlama**. |
+| **Birlikte İzle (Watch Party)** | Harici sunucu veya hesap gerektirmeden yerel TCP odası kur (`h`) / katıl (`j`); duraklatma ve sarma her iki `mpv` penceresinde anlık eşitlenir (`ctrl+k` veya oynatırken `P`). |
+| **Canlı Anime Özeti (Wrapped)** | 6 slaytlık animasyonlu terminal özeti, sıfır-model Türkçe kişilik & yorum motoru ve tek tuşla `900×1200` paylaşılabilir PNG kart (`aniclitr ozet [--png]`, Kitaplık'ta `W`). |
 | **Canlı Türkçe Altyazı (`y`) & Senkron** | Alt-Tab yapmadan doğrudan `mpv` penceresi içinde `y` ile açılan **[AniSub](https://anisub.co/)** OSD altyazı seçici (API anahtarsız!); `z`/`x` (`±0,1s`), `Z`/`X` (`±0,5s`), `Alt+0` (sıfırla) ile canlı senkron ince ayarı; terminalde `l` ile yerel `.srt`/`.ass`/`.vtt` yükleme. |
 | **Yerel Çözücüler & Otomatik Kurtarma** | Tau Video, AniHub HLS, OK.ru, Vidmoly, Voe, Sibnet ve Google Drive doğrudan Go içinde çözülür; akışlar oynatılmadan doğrulanır. Bir sunucu açılmazsa sıradaki sunucu, fansub veya diğer açık kaynak otomatik denenir. |
 | **Nova Varsayılan Arayüz** | Özel hücre-diff çizici (`internal/tty`) ile sıfır titreme; tüm ana ekranlarda Nova tasarımı varsayılan olarak gelir (kapaktan renkli paneller, tuş kapakları, 3 sütunlu Keşfet); klasik görünüm ayarlardan her zaman seçilebilir. |
 | **MyAnimeList & AniList Eşitleme** | OAuth ile **iki yönlü** durum/puan/bölüm/özel liste eşitleme, AniList `PREQUEL`/`SEQUEL` zinciriyle çok sezonlu hizalama ve her iki hesapta `izliyor` olan serilerin doğrudan ana sayfadaki **Devam et** kartlarında görünmesi. |
-| **Nyaa.si Torrent Desteği (`alt+t` / `T`)** | Resmi Nyaa.si RSS akışı üzerinden hızlı anime torrent araması (Türkçe/Güvenilir filtreleri, seed sıralaması), `aria2c` ile tek tuşla indirme (`d`), `webtorrent --mpv` veya sistem istemcisiyle anında açma (`enter`) ve `aniclitr torrent` CLI. |
+| **Nyaa.si Torrent Desteği (`alt+t` / `T`)** | Resmi Nyaa.si RSS akışı üzerinden akıllı tam-eşleşme sıralamalı torrent araması (`Tümü`, `Türkçe`, `İngilizce`, `Raw (Ham)`, `Güvenilir`), `aria2c` ile indirme (`d`), magnet kopyalama (`c`), `webtorrent --mpv` açma (`enter`) ve `aniclitr torrent` CLI. |
 | **Discord Rich Presence & Bildirimler** | İzlediğin anime, bölüm ve kapak görselini yerel Discord istemcisinde gösterme (sıfır bağımlılık) + takip ettiğin serilerin yeni bölümü çıkınca / indirme bitince masaüstü bildirimi. |
-| **Hızlı CLI, Yedekleme & `keys.json`** | `devam`, `ara`, `izle`, `indir`, `torrent`, tek dosya güvenli `yedekle`/`geri-yukle`, ekran geçmişi (`alt+←`/`→`) ve kişiselleştirilebilir `keys.json` kısayol dosyası. |
+| **Hızlı CLI, Yedekleme & Otomatik Kurulum** | `devam`, `ara`, `izle`, `indir`, `torrent`, `ozet [--png]`, eksik araçları tek komutla kuran **`aniclitr kur`**, güvenli `yedekle`/`geri-yukle`, ekran geçmişi (`alt+←`/`→`) ve kişiselleştirilebilir `keys.json`. |
 | **Esnek Toplu İndirme & Depolama** | Tek bölüm (`d`), çoklu seçim (`v`), özel aralık (`30-100`), buradan sona veya tüm sezon (`D`); canlı hız kıvılcım grafiği (`▁▂▃▅▆▇`), disk/depolama çubuğu, `aria2c` / `yt-dlp` / dahili indirici. |
 | **Karakterler ve Seslendirenler (`c`)** | Sixel/half-block karakter & seiyuu portreleri, ana/yardımcı roller ve spoiler korumalı biyografiler (`x`). |
-| **Kitaplık, İstatistikler & Keşfet** | Durumlar, 1–10 puan, özel listeler, `i` ile grafiksel izleme istatistikleri; 3 sütunlu **Keşfet** (takvim, bu akşam süre hapları, sezon, 2 sütunlu tür ızgarası, kişisel öneriler, rastgele). |
+| **Kitaplık, İstatistikler & Keşfet (Ruh Hali)** | Durumlar, 1–10 puan, özel listeler, `i` ile istatistikler (`W` ile Wrapped); 3 sütunlu **Keşfet** (takvim, bu akşam süre hapları, sezon, 2 sütunlu tür ızgarası, kişisel öneriler + **6'lı Ruh Hali sihirbazı**, rastgele). |
 | **Kendi Kendini Güncelleme** | Kurulu kopya GitHub Releases üzerinden SHA-256 doğrulamalı olarak otomatik güncellenir. |
 
 <p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
@@ -132,6 +134,8 @@ Kalınan saniye, seri bazlı çözünürlük tercihi, çok sezonlu seri hizalama
 | **yt-dlp** | Yedek sunucular, fragmanlar ve HLS indirmeleri *(isteğe bağlı)* | `winget install yt-dlp.yt-dlp` |
 | **aria2c** | Çok bağlantılı hızlı indirme *(isteğe bağlı)* | `winget install aria2.aria2` |
 | **ffmpeg** | HLS akışlarını MP4'e dönüştürme *(isteğe bağlı)* | `winget install Gyan.FFmpeg` |
+
+> **Tek komutla otomatik kurulum:** Eksik araçları elle aramanıza gerek yok — ilk açılış turunda **`i`** tuşuna basarak, **Ayarlar → Eksik araçları kur** seçerek veya terminalde **`aniclitr kur`** yazarak hepsini otomatik kurabilirsiniz.
 
 **Önerilen terminal:** Windows Terminal 1.22+ (truecolor ve Sixel desteği). Pencere en az `60×18` karakter olmalıdır.
 
@@ -170,6 +174,8 @@ aniclitr ara <ad>                 Etkin kaynaklarda hızlı CLI araması yapar
 aniclitr izle <ad> [bölüm]        Doğrudan ilgili animeyi arayıp açar
 aniclitr indir <ad> [aralık]      Doğrudan indirme için animeyi arar (örn: 1-12)
 aniclitr torrent <ad> [--raw]     Nyaa.si torrent arar (--raw/--tr/--trusted/--magnet N)
+aniclitr ozet [--png [dosya]]     Canlı animasyonlu Anime Özeti (--png: 900×1200 paylaşım kartı)
+aniclitr kur                      Eksik yardımcı araçları (mpv, yt-dlp, aria2c, ffmpeg) otomatik kurar
 aniclitr yedekle [dosya.json]     Ayar, geçmiş, kitaplık ve eşlemeleri tek dosyaya yedekler
 aniclitr geri-yukle <dosya>       Yedekten güvenli geri yükler (önce otomatik ön-yedek alır)
 aniclitr doctor [--blame]         Tüm kaynakları canlı test eder (--blame: yerel hata karnesi)
@@ -255,6 +261,9 @@ Arayüz öngörülebilir katmanlarla ilerler: **menü → liste → öğe → ey
 | `n` · `b` | Sonraki bölüm *(filler atlama destekli)* · Önceki bölüm |
 | `y` | **Altyazı seçici (mpv içinde OSD menü — Alt-Tab gerekmez! `↑↓`/`1-8`/`Enter`)** |
 | `z` / `x` · `Z` / `X` · `Alt+0` / `0` | **Altyazı senkron ince ayarı:** `±0,1 sn` · `±0,5 sn` · `0,0 sn` sıfırla |
+| `Alt+4` *(mpv içi)* | **Anime4K** GPU profilini canlı değiştir (`kapalı → hafif → dengeli → yüksek`) |
+| `Alt+s` *(mpv)* · `T` *(terminal)* | **Uyku zamanlayıcısı** (`1 bölüm`, `2 bölüm`, `30/60 dk`, `PC'yi uyut`) |
+| `P` *(terminal)* | **Birlikte İzle** (Watch Party) oda yönetimi |
 | `l` *(terminal altyazı kartında)* | Bilgisayardan yerel `.srt`/`.ass`/`.ssa`/`.vtt` dosyası yükle |
 | `s` · `q` · `esc` | Oynatmayı durdur ve kaydet |
 

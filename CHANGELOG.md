@@ -2,6 +2,21 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [1.2.0]
+
+### Eklenenler
+- **Anime4K GPU Görüntü İyileştirme (`internal/shaders`):** Gömülü, iGPU dostu 4 kademeli GLSL shader motoru (`kapalı`, `hafif`, `dengeli`, `yüksek`) — 5-tap CAS keskinleştirme, kenar koruyan bilateral gürültü temizleyici, çizgi onarım ve yönlü 2× luma yükseltme; **Ayarlar → Oynatma → Anime4K** üzerinden seçilebilir ve video izlerken `mpv` içinde **`Alt+4`** ile yeniden başlatmadan canlı değiştirilebilir.
+- **Canlı Animasyonlu Anime Özeti / Wrapped (`internal/wrapped`, `wrappedui.go`):** Kitaplık ve geçmiş verinden 6 slaytlık animasyonlu hikâye (sayaç açılışı, 7 günlük izleme ritmi, tür çubukları, zirve podyumu, 8 arketipli sıfır-model Türkçe kişilik/yorum motoru ve **`e`** ile tek tuşla `900×1200` paylaşılabilir PNG kart); **Kitaplık → `W`**, `ctrl+k` veya CLI'dan `aniclitr ozet [--png]` ile açılır.
+- **Birlikte İzle / Watch Party (`internal/watchparty`, `partyui.go`):** Hesap ve harici sunucu gerektirmeyen sıfır bağımlılık TCP oda kurma (`h`) / katılma (`j`); duraklatma ve sarma işlemlerini `mpv` pencereleri arasında 1,5 sn kayma korumasıyla anlık eşitler (`ctrl+k` veya oynatırken `P`), isteğe bağlı Syncplay algılar.
+- **Uyku Zamanlayıcısı (`internal/ui/sleep.go`):** `mpv` içinde **`Alt+s`**, terminal oynatma ekranında **`T`** veya `ctrl+k` üzerinden döngü (`Kapalı → Bu bölüm bitince dur → 2 bölüm → 30 dk → 60 dk → Bölüm bitince PC'yi uyut`); yalnızca etkinken oynatılıyor kartında sade `☾` rozeti görünür.
+- **Sıfır Bekleme Sonraki Bölüm Ön-Hazırlama:** Bölüm %70'i geçtiğinde veya son 3 dakikaya girildiğinde sıradaki (filler olmayan) bölümün video akışı arka planda sessizce çözülür; geçişte seçici ekranı atlanır ve `mpv` anında açılır.
+- **Keşfet "Ruh Haline Göre" Sihirbazı (`internal/anilist/moods.go`):** **Keşfet → Öneriler** içine 6 küratörlü ruh hali modu eklendi (`m` veya `[` `]` ile geçiş: *Kısa & Akıcı*, *Gizli Cevherler*, *Saf Aksiyon*, *Ağlatan Dram*, *Kafa Boşaltmalık*, *Zihin Yakan Gizem*).
+- **Tek Tuşla Otomatik Araç Kurulumu (`internal/tools`, `aniclitr kur`):** Eksik `mpv`, `yt-dlp`, `aria2c`, `ffmpeg` araçlarını ilk kurulum turunda (`i`), Ayarlar'da veya terminalden `aniclitr kur` ile otomatik indirip kurar (`yt-dlp` doğrudan taşınabilir olarak, diğerleri sessiz `winget`/`brew`).
+- **Winget Otomatik Senkronizasyon (`.github/workflows/release.yml`, `packaging/winget/`):** Her yeni `vX.Y.Z` GitHub Release etiketinde isteğe bağlı `WINGET_TOKEN` üzerinden `microsoft/winget-pkgs` güncelleme akışı eklendi.
+
+### Düzeltilenler
+- **Akıllı tam-eşleşme arama sıralaması (`results.go`, `internal/nyaa`):** Hem normal kaynak aramasında hem Nyaa.si torrent aramasında tam/önek başlık eşleşmeleri (ör. `another` aramasında **Another**) alakasız uzun başlıklı serilerin (*"...in Another World"*) üstünde sıralanır.
+
 ## [1.0.1]
 
 ### Eklenenler

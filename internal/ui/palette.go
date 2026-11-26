@@ -76,6 +76,14 @@ func (a *App) paletteItems() []palItem {
 	add(ic("feed"), "Keşfet: takvim · sezon · öneriler · rastgele", "ekran", "ctrl+e", func(a *App) tea.Cmd { return a.openDiscover() })
 	add("↓", "İndirilenler", "ekran", "ctrl+d", func(a *App) tea.Cmd { return a.openDownloads() })
 	add("✦", "Torrent · Nyaa.si", "ekran", "alt+t", func(a *App) tea.Cmd { return a.push(newTorrentScreen("")) })
+	add("✦", "Anime Özeti · Wrapped", "ekran", "animasyonlu + PNG", func(a *App) tea.Cmd { return a.push(newWrappedScreen(a)) })
+	add("◈", "Birlikte İzle · Watch Party", "ekran", "oda kur / katıl", func(a *App) tea.Cmd { return a.push(newPartyScreen()) })
+	add("☾", "Uyku zamanlayıcısı", "oynatma", a.sleep.label(), func(a *App) tea.Cmd {
+		lbl := a.sleep.cycle()
+		a.notify("☾ uyku zamanlayıcısı: "+lbl, "ok")
+		return a.tick()
+	})
+	add("↓", "Eksik yardımcı araçları kur", "ayar", "mpv/yt-dlp/aria2c", func(a *App) tea.Cmd { return a.installMissingTools() })
 	add(ic("archive"), "İndirme klasörünü aç", "indirme", "", func(a *App) tea.Cmd {
 		_ = os.MkdirAll(a.dl.Dir(), 0o755)
 		_ = exec.Command("explorer", a.dl.Dir()).Start()

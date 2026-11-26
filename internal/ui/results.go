@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -149,11 +150,66 @@ func (r *results) rebuild() {
 			r.items = append(r.items, e)
 		}
 	}
+	if q := strings.TrimSpace(r.query); q != "" {
+		sort.SliceStable(r.items, func(i, j int) bool {
+			return searchTitleRelevance(q, r.items[i].main) > searchTitleRelevance(q, r.items[j].main)
+		})
+	}
 	for i, it := range r.items {
 		if it.main.Key() == keep {
 			r.cur = i
 		}
 	}
+}
+
+// searchTitleRelevance ranks exact and prefix matches above incidental substring
+// hits (e.g. searching "another" places "Another" above "...in Another World").
+func searchTitleRelevance(query string, an source.Anime) int {
+	nq := strings.Join(strings.Fields(string(foldRunes(query))), " ")
+	if nq == "" {
+		return 0
+	}
+	qWords := strings.Fields(nq)
+	best := 0
+	for _, raw := range []string{an.Title, an.AltTitle} {
+		nt := strings.Join(strings.Fields(string(foldRunes(raw))), " ")
+		if nt == "" {
+			continue
+		}
+		sc := 0
+		switch {
+		case nt == nq:
+			sc = 100
+		case strings.HasPrefix(nt, nq+" ") || strings.HasPrefix(nt, nq+":") || strings.HasPrefix(nt, nq+"-"):
+			sc = 82
+		default:
+			tWords := strings.Fields(nt)
+			matched := 0
+			for _, qw := range qWords {
+				for _, tw := range tWords {
+					if strings.Trim(tw, ":,-()[]!?.'\"") == qw {
+						matched++
+						break
+					}
+				}
+			}
+			if matched == len(qWords) {
+				if len(tWords) <= len(qWords)+1 {
+					sc = 72
+				} else if len(tWords) <= len(qWords)+3 {
+					sc = 52
+				} else {
+					sc = 32
+				}
+			} else if strings.Contains(nt, nq) {
+				sc = 16
+			}
+		}
+		if sc > best {
+			best = sc
+		}
+	}
+	return best
 }
 
 func (r *results) selected() (entry, bool) {

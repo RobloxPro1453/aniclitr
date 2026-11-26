@@ -2,12 +2,12 @@ package ui
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"aniclitr/internal/player"
+	"aniclitr/internal/tools"
 )
 
 // Version is set by main (shown in "what's new").
@@ -15,6 +15,12 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"1.2.0": {
+		"Anime4K GPU görüntü iyileştirme: Ayarlar → Oynatma → Anime4K (kapalı/hafif/dengeli/yüksek) veya video izlerken mpv içinde Alt+4 ile canlı geçiş",
+		"Canlı animasyonlu Anime Özeti (Wrapped): aniclitr ozet (veya Kitaplık'ta W / ctrl+k) ile 6 slaytlık izleyici kişiliği, yorumlar ve tek tuşla 900×1200 PNG kart (aniclitr ozet --png)",
+		"Birlikte İzle (Watch Party) ve Uyku Zamanlayıcısı: ctrl+k veya oynatırken P ile yerel oda kur/katıl; Alt+s / T ile bölüm veya süre bitince durdur / PC'yi uyut",
+		"Sıfır bekleme sonraki bölüm ön-hazırlama, Keşfet'te 6'lı Ruh Hali sihirbazı (Öneriler → m), tek tuşla otomatik araç kurulumu (aniclitr kur) ve akıllı tam-eşleşme arama sıralaması",
+	},
 	"1.0.1": {
 		"Torrent · Nyaa.si artık 2 sütunlu Nova arayüzünde ve Raw (Ham Japonca) kategorisi (4), sıralama (o), kalite/paket süzgeci (q) ve magnet kopyalama (c) destekliyor",
 		"✦ Torrent artık Ana Sayfa alt çubuğunda, Anime sayfasında (T Torrent) ve F1 işlemler menüsünde açıkça görünür",
@@ -169,12 +175,9 @@ type onboard struct {
 
 // newOnboard checks the helper tools once; the guide shows what is missing.
 func newOnboard(a *App, isUpdate bool) *onboard {
-	o := &onboard{isUpdate: isUpdate, tools: map[string]bool{}}
-	_, err := player.FindMpv(a.cfg.MpvPath)
-	o.tools["mpv"] = err == nil
-	for _, t := range []string{"yt-dlp", "aria2c", "ffmpeg"} {
-		_, err := exec.LookPath(t)
-		o.tools[t] = err == nil
+	o := &onboard{isUpdate: isUpdate, tools: tools.Status()}
+	if _, err := player.FindMpv(a.cfg.MpvPath); err == nil {
+		o.tools["mpv"] = true
 	}
 	return o
 }
@@ -237,6 +240,10 @@ func (o *onboard) hints() []hint {
 	switch o.step {
 	case obWelcome:
 		h = append(h, hint{"t", "tema seç"})
+	case obTools:
+		if o.hasMissingTools() {
+			h = append(h, hint{"i", "eksikleri kur"})
+		}
 	case obMal:
 		h = append(h, hint{"b", "şimdi bağlan"})
 	case obPath:
@@ -267,7 +274,23 @@ func (o *onboard) next(a *App) tea.Cmd {
 	return a.tick()
 }
 
+func (o *onboard) hasMissingTools() bool {
+	for _, name := range []string{"mpv", "yt-dlp", "aria2c", "ffmpeg"} {
+		if !o.tools[name] {
+			return true
+		}
+	}
+	return false
+}
+
 func (o *onboard) update(a *App, msg tea.Msg) tea.Cmd {
+	if _, ok := msg.(toolsDoneMsg); ok {
+		o.tools = tools.Status()
+		if _, err := player.FindMpv(a.cfg.MpvPath); err == nil {
+			o.tools["mpv"] = true
+		}
+		return nil
+	}
 	k, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return nil
@@ -279,6 +302,10 @@ func (o *onboard) update(a *App, msg tea.Msg) tea.Cmd {
 		return o.next(a)
 	case "left", "h":
 		o.step = max(0, o.step-1)
+	case "i", "I":
+		if o.step == obTools && !o.isUpdate && o.hasMissingTools() {
+			return a.installMissingTools()
+		}
 	case "t":
 		if o.step == obWelcome {
 			a.openPalette("tema ")
@@ -355,8 +382,13 @@ func (o *onboard) view(a *App, w, h int) string {
 			body = append(body, check("yt-dlp", "bazı kaynaklar ve fragmanlar için (önerilir)", "winget install yt-dlp.yt-dlp")...)
 			body = append(body, check("aria2c", "hızlı indirme (yoksa dahili indirici kullanılır)", "winget install aria2.aria2")...)
 			body = append(body, check("ffmpeg", "HLS indirmelerini MP4'e dönüştürmek için", "winget install Gyan.FFmpeg")...)
+			if a.toolsBusy {
+				body = append(body, "", stAccent.Render(spinner(a.frame/2)+" Eksik araçlar otomatik kuruluyor…"))
+			} else if o.hasMissingTools() {
+				body = append(body, "", " "+keycap("i")+" "+fg(cOK).Bold(true).Render("Eksik araçları tek tuşla otomatik kur")+stMuted.Render(" (veya terminalden: aniclitr kur)"))
+			}
 			if !o.tools["mpv"] {
-				body = append(body, "", stWarn.Render("Oynatma için mpv gereklidir. mpv'yi kurduktan sonra aniclitr'i yeniden başlatın."))
+				body = append(body, "", stWarn.Render("Oynatma için mpv gereklidir. i ile kurabilir ya da winget ile yükleyebilirsiniz."))
 			}
 		case obHow:
 			type stp struct{ n, head, sub string }

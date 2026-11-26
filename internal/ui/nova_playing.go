@@ -15,6 +15,7 @@ import (
 
 	"aniclitr/internal/aniskip"
 	"aniclitr/internal/player"
+	"aniclitr/internal/shaders"
 )
 
 func (p *playing) novaView(a *App, w, h int) string {
@@ -91,6 +92,18 @@ func (p *playing) novaView(a *App, w, h int) string {
 	}
 	if math.Abs(p.subDelay) >= 0.05 {
 		chips = append(chips, fg(cWarn).Background(colorOf(cSurface)).Bold(true).Render(" senkron: "+player.FormatSubDelay(p.subDelay)+" "))
+	}
+	if a.cfg.Anime4K != "" && a.cfg.Anime4K != shaders.Off {
+		chips = append(chips, fg(cAccent2).Background(colorOf(cSurface)).Bold(true).Render(" ✦ A4K: "+a.cfg.Anime4K+" "))
+	}
+	if sp := a.sleep.shortPill(); sp != "" {
+		chips = append(chips, fg(cWarn).Background(colorOf(cSurface)).Bold(true).Render(" "+sp+" "))
+	}
+	if a.party != nil {
+		chips = append(chips, fg(cOK).Background(colorOf(cSurface)).Bold(true).Render(fmt.Sprintf(" ◈ oda · %d ", a.party.PeerCount())))
+	}
+	if p.prefetched != nil {
+		chips = append(chips, fg(cOK).Background(colorOf(cSurface)).Render(" ⚡ sıradaki hazır "))
 	}
 	if len(chips) > 0 {
 		info = append(info, wrapChips(chips, tw)...)

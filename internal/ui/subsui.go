@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"aniclitr/internal/player"
+	"aniclitr/internal/shaders"
 	"aniclitr/internal/subs"
 )
 
@@ -175,6 +176,21 @@ func (p *playing) onMpvAction(a *App, action string) tea.Cmd {
 			off := p.subWindowOffset(8)
 			return p.pickSub(a, off+n-1)
 		}
+	case action == "aniclitr-anime4k":
+		a.cfg.Anime4K = shaders.Next(a.cfg.Anime4K)
+		_ = a.cfg.Save()
+		if p.sess != nil {
+			p.sess.SetShaders(a.cfg.Anime4K)
+		}
+		a.notify("Anime4K: "+shaders.Label(a.cfg.Anime4K), "ok")
+		return a.tick()
+	case action == "aniclitr-sleep":
+		lbl := a.sleep.cycle()
+		if p.sess != nil {
+			p.sess.ShowOSD("☾ Uyku zamanlayıcısı: "+lbl, 2400)
+		}
+		a.notify("☾ uyku zamanlayıcısı: "+lbl, "ok")
+		return a.tick()
 	}
 	return nil
 }

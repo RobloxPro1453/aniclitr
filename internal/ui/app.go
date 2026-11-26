@@ -29,6 +29,8 @@ import (
 	"aniclitr/internal/malsync"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
+	"aniclitr/internal/tools"
+	"aniclitr/internal/watchparty"
 )
 
 // screen is one level of the navigation stack.
@@ -98,6 +100,16 @@ type urlOpenMsg struct {
 	ep      *source.Episode
 	handled bool
 	err     error
+}
+
+type partyEvMsg struct {
+	ev watchparty.Event
+	ok bool
+}
+
+type toolsDoneMsg struct {
+	installed []string
+	failed    []string
 }
 
 // ---- app ----
@@ -179,6 +191,9 @@ type App struct {
 	alErr      string
 	rpc        *discord.Client
 	keys       config.KeyMap
+	sleep      sleepTimer
+	party      *watchparty.Room
+	toolsBusy  bool
 
 	schedule []anilist.Airing // this week's airing (AniList)
 	coverAt  string           // poster the cover theme currently follows
@@ -223,6 +238,7 @@ type App struct {
 	initQuery    string
 	initEp       int
 	initDLRange  string
+	initWrapped  bool
 	forward      []screen // screen history for alt+left / alt+right
 
 	// screensaver
@@ -314,6 +330,8 @@ func (a *App) Init() tea.Cmd {
 	}
 	if a.initURL != "" {
 		cmds = append(cmds, a.openURL(a.initURL))
+	} else if a.initWrapped {
+		cmds = append(cmds, a.push(newWrappedScreen(a)))
 	} else if a.initContinue {
 		if recent := a.continueEntries(); len(recent) > 0 {
 			cmds = append(cmds, continueEntry(a, recent[0]))
@@ -352,6 +370,51 @@ func (a *App) SetInitialWatch(query string, ep int) {
 func (a *App) SetInitialDownload(query, epRange string) {
 	a.initQuery = strings.TrimSpace(query)
 	a.initDLRange = strings.TrimSpace(epRange)
+}
+
+// SetInitialWrapped opens the animated Wrapped summary immediately on startup.
+func (a *App) SetInitialWrapped() {
+	a.initWrapped = true
+}
+
+func (a *App) waitParty() tea.Cmd {
+	r := a.party
+	if r == nil {
+		return nil
+	}
+	return guard("oda", func() tea.Msg {
+		ev, ok := <-r.Events
+		return partyEvMsg{ev: ev, ok: ok}
+	})
+}
+
+func (a *App) installMissingTools() tea.Cmd {
+	if a.toolsBusy {
+		a.notify("araç kurulumu zaten devam ediyor…", "warn")
+		return a.tick()
+	}
+	missing := tools.Missing()
+	if len(missing) == 0 {
+		a.notify("tüm yardımcı araçlar zaten kurulu (mpv, yt-dlp, aria2c, ffmpeg)", "ok")
+		return a.tick()
+	}
+	a.toolsBusy = true
+	names := make([]string, len(missing))
+	for i, m := range missing {
+		names[i] = m.Name
+	}
+	a.notify("kuruluyor: "+strings.Join(names, ", ")+"…", "")
+	return tea.Batch(a.tick(), run(8*time.Minute, func(ctx context.Context) tea.Msg {
+		var okList, failList []string
+		for _, m := range missing {
+			if err := tools.Install(ctx, m.Name); err != nil {
+				failList = append(failList, m.Name)
+			} else {
+				okList = append(okList, m.Name)
+			}
+		}
+		return toolsDoneMsg{installed: okList, failed: failList}
+	}))
 }
 
 func (a *App) openURL(raw string) tea.Cmd {
@@ -761,6 +824,9 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 			if pl, ok := a.top().(*playing); ok && pl.sess != nil {
 				pl.sess.Quit()
 			}
+			if a.party != nil {
+				a.party.Close()
+			}
 			if a.rpc != nil {
 				a.rpc.Close()
 			}
@@ -909,6 +975,33 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 	case aniListMsg:
 		a.onAniList()
 		cmds = append(cmds, a.waitAniList())
+	case partyEvMsg:
+		if m.ok {
+			switch m.ev.Kind {
+			case "join":
+				a.notify(fmt.Sprintf("◈ %s odaya katıldı (%d kişi)", m.ev.Nick, m.ev.Peers), "ok")
+			case "leave":
+				a.notify(fmt.Sprintf("◈ %s odadan ayrıldı (%d kişi)", m.ev.Nick, m.ev.Peers), "warn")
+			case "closed":
+				a.party = nil
+				a.notify("◈ birlikte izleme odası kapandı", "warn")
+			}
+			if a.party != nil {
+				cmds = append(cmds, a.waitParty())
+			}
+			cmds = append(cmds, a.tick())
+		}
+	case toolsDoneMsg:
+		a.toolsBusy = false
+		switch {
+		case len(m.installed) > 0 && len(m.failed) == 0:
+			a.notify("✓ araçlar kuruldu: "+strings.Join(m.installed, ", "), "ok")
+		case len(m.installed) > 0:
+			a.notify("kuruldu: "+strings.Join(m.installed, ", ")+" · kurulamadı: "+strings.Join(m.failed, ", "), "warn")
+		case len(m.failed) > 0:
+			a.notify("kurulamadı: "+strings.Join(m.failed, ", ")+" (aniclitr kur ile terminalden dene)", "err")
+		}
+		cmds = append(cmds, a.tick())
 	case malOpenMsg:
 		cmds = append(cmds, a.onMalOpen(m))
 	case urlOpenMsg:

@@ -127,7 +127,7 @@ func (l *library) hints() []hint {
 		return []hint{{"enter", "tamam"}, {"esc", "vazgeç"}}
 	}
 	if l.sideID == "stats" {
-		return []hint{{"↑↓", "raf"}, {"i", "listeye dön"}, {"m", "MAL"}, {"esc", "geri"}}
+		return []hint{{"↑↓", "raf"}, {"W", "anime özeti (wrapped)"}, {"i", "listeye dön"}, {"m", "MAL"}, {"esc", "geri"}}
 	}
 	if l.focus == 0 {
 		h := []hint{{"↑↓", "raf"}, {"→ enter", "aç"}, {"i", "istatistikler"}, {"n", "yeni liste"}}
@@ -330,6 +330,8 @@ func (l *library) key(a *App, k tea.KeyMsg) tea.Cmd {
 		return l.prefetch(a)
 	case "m":
 		return a.push(newMalScreen(a))
+	case "W":
+		return a.push(newWrappedScreen(a))
 	case "i", "I":
 		if sh.id == "stats" {
 			l.selectShelf(a, "all")

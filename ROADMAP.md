@@ -14,9 +14,15 @@ Bu belge `aniclitr`'in tamamlanan temel kilometre taşlarını ve `v1.0.0` sonra
 - **Hızlı CLI & taşınabilirlik:** `devam`, `ara`, `izle`, `indir`, `torrent`, tek dosya güvenli `yedekle`/`geri-yukle`, `keys.json` özel kısayollar ve ekran geçmişi (`alt+←`/`alt+→`).
 - **Ekosistem:** Discord Rich Presence (sıfır bağımlılık yerel IPC), işletim sistemi masaüstü bildirimleri, kaynak OP/ED zamanları, HiAnime `filler` rozeti ve otomatik atlama.
 
-## v1.1+ için Değerlendirilenler
+## v1.2.0 ile Tamamlananlar
 
-- **Birlikte izleme:** Syncplay entegrasyonu.
-- **Sezon & Keşfet gelişmiş filtreleri:** Çoklu tür kesişimi, yıl ve puan aralığı süzgeci.
-- **Yıllık izleme özeti:** Yıl sonu istatistik kartları ve izleme alışkanlıkları.
+- **Anime4K GPU görüntü iyileştirme:** 4 profilli gömülü GLSL shader motoru + `mpv` içinde `Alt+4` canlı geçiş.
+- **Canlı animasyonlu Anime Özeti (Wrapped):** 6 slaytlık hikâye, sıfır-model Türkçe kişilik/yorum motoru ve `900×1200` paylaşılabilir PNG kart (`aniclitr ozet --png`).
+- **Birlikte İzle (Watch Party) & Uyku Zamanlayıcısı:** Sıfır bağımlılık TCP oda eşitleme (`P` / `ctrl+k`) ve bölüm/süre/PC uyutma zamanlayıcısı (`Alt+s` / `T`).
+- **Sıfır bekleme sonraki bölüm ön-hazırlama:** %70 sonrasında sonraki bölümün akışını arka planda çözüp anında oynatma.
+- **Keşfet Ruh Hali Sihirbazı & Tek Tuşla Araç Kurulumu:** Öneriler içinde 6 küratörlü ruh hali (`m`), `aniclitr kur` otomatik araç kurucu, Winget otomatik senkron ve tam-eşleşme arama sıralaması.
+
+## Sonraki Sürümler için Değerlendirilenler
+
+- **Gömülü torrent akışı:** İndirmeye gerek kalmadan torrent içindeki video dosyasını seçip doğrudan `mpv` ile oynatma ve düzenli seri klasörlemesi.
 - **Ek açık kaynak sağlayıcıları:** Bot koruması ve Cloudflare engeli olmayan açık API/HTML sunan yeni Türkçe kaynaklar.

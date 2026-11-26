@@ -53,7 +53,11 @@ internal/
   cli/                    fast non-TUI CLI commands (search, continue list, torrent list, backup/restore)
   discord/                zero-dependency Discord Rich Presence over local IPC pipe/socket
   notify/                 zero-dependency OS desktop notifications (Windows WinRT, notify-send, osascript)
-  nyaa/                   public Nyaa.si RSS torrent search, magnet builder, aria2c/webtorrent launchers
+  nyaa/                   public Nyaa.si RSS torrent search, relevance ranking, magnet builder, aria2c/webtorrent launchers
+  shaders/                embedded optimized Anime4K GLSL shaders (4 profiles, live Alt+4 mpv switching)
+  tools/                  managed portable tools dir & auto-installer (mpv, yt-dlp, aria2c, ffmpeg)
+  watchparty/             zero-dependency LAN/TCP Watch Together playback sync room
+  wrapped/                deterministic Turkish Wrapped persona/narrative engine & pure-Go 900x1200 PNG card exporter
   logx/                   rotating log at %APPDATA%\aniclitr\aniclitr.log, Panic() with stack
   netx/                   shared HTTP client (Chrome UA, cookie jar, retries)
   source/                 provider contract, registry, health probe, URLOpener

@@ -504,16 +504,24 @@ func TestResultsMergeAndMovieSeparation(t *testing.T) {
 	}
 	r.rebuild()
 	if len(r.items) != 3 {
-		t.Fatalf("expected 3 merged result rows (Another, Youjo Senki TV, Youjo Senki Movie), got %d", len(r.items))
+		t.Fatalf("expected 3 merged result rows (Youjo Senki TV, Youjo Senki Movie, Another), got %d", len(r.items))
 	}
-	if len(r.items[0].all()) != 3 {
-		t.Fatalf("expected Another to merge all 3 sources into one card, got %d", len(r.items[0].all()))
+	// Exact query match ("youjo senki") must rank #1 ahead of unrelated titles.
+	if r.items[0].main.Title != "Youjo Senki" {
+		t.Fatalf("expected Youjo Senki to rank #1 for query 'youjo senki', got %q", r.items[0].main.Title)
 	}
-	if len(r.items[1].all()) != 2 {
-		t.Fatalf("expected Youjo Senki TV to merge 2 sources, got %d", len(r.items[1].all()))
+	byTitle := map[string]entry{}
+	for _, it := range r.items {
+		byTitle[it.main.Title] = it
 	}
-	if len(r.items[2].all()) != 1 || !r.items[2].main.IsMovie() {
-		t.Fatalf("expected Youjo Senki Movie to stay separate as MOVIE, got %+v", r.items[2].main)
+	if len(byTitle["Another"].all()) != 3 {
+		t.Fatalf("expected Another to merge all 3 sources into one card, got %d", len(byTitle["Another"].all()))
+	}
+	if len(byTitle["Youjo Senki"].all()) != 2 {
+		t.Fatalf("expected Youjo Senki TV to merge 2 sources, got %d", len(byTitle["Youjo Senki"].all()))
+	}
+	if len(byTitle["Youjo Senki Movie"].all()) != 1 || !byTitle["Youjo Senki Movie"].main.IsMovie() {
+		t.Fatalf("expected Youjo Senki Movie to stay separate as MOVIE, got %+v", byTitle["Youjo Senki Movie"].main)
 	}
 }
 

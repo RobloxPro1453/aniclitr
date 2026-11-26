@@ -57,3 +57,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "${GITHUB_REF_NAME}" dist/* --title "aniclitr ${GITHUB_REF_NAME#v}" --notes-file notes.md
+      - name: Publish to Winget (optional)
+        if: ${{ env.WINGET_TOKEN != '' }}
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: RobloxPro1453.aniclitr
+          installers-regex: 'aniclitr_windows_.*\.exe$'
+          token: ${{ secrets.WINGET_TOKEN }}

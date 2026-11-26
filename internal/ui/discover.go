@@ -39,6 +39,12 @@ type recsMsg struct {
 	err   error
 }
 
+type moodMsg struct {
+	key   string
+	items []anilist.Media
+	err   error
+}
+
 type randMsg struct {
 	m   anilist.Media
 	err error
@@ -97,6 +103,12 @@ type discover struct {
 	recsOK  bool
 	recsErr error
 
+	moodIdx   int // -1 = personal recs; 0..len(MoodPresets)-1 = curated mood wizard
+	moodKey   string
+	moodItems []anilist.Media
+	moodOK    bool
+	moodErr   error
+
 	rnd     *anilist.Media
 	rndErr  error
 	rndNote string // what the dice were rolled on
@@ -115,7 +127,7 @@ type discover struct {
 
 func newDiscover() *discover {
 	s, y := anilist.SeasonOf(time.Now())
-	return &discover{menu: true, at: time.Now(), sName: s, sYear: y, budget: 60, gmode: anilist.ModeTop}
+	return &discover{menu: true, at: time.Now(), sName: s, sYear: y, budget: 60, gmode: anilist.ModeTop, moodIdx: -1}
 }
 
 // openDiscover brings Keşfet forward.
@@ -155,6 +167,8 @@ func (d *discover) hints() []hint {
 			return []hint{{"enter", "türü aç"}, {"m", "sıralama: " + d.gmode}, {"← esc", "bölümler"}}
 		}
 		h = append(h, hint{"m", "sıralama: " + d.gmode}, hint{"[ ]", "önceki / sonraki tür"}, hint{"space", "bu türden zar at"})
+	case tRecs:
+		h = append(h, hint{"m / [ ]", "ruh hali değiştir"})
 	case tRandom:
 		h = append(h, hint{"space", "zar at"})
 	}
@@ -165,7 +179,7 @@ func (d *discover) animating(a *App) bool {
 	if a.top() != screen(d) {
 		return false
 	}
-	loading := (d.tab == tGenre && !d.genreOK) || (d.tab == tCal && !d.schedOK) || (d.tab == tSeason && !d.seasonOK) || (d.tab == tRecs && !d.recsOK) || (d.tab == tRandom && d.rnd == nil && d.rndErr == nil)
+	loading := (d.tab == tGenre && !d.genreOK) || (d.tab == tCal && !d.schedOK) || (d.tab == tSeason && !d.seasonOK) || (d.tab == tRecs && ((d.moodIdx < 0 && !d.recsOK) || (d.moodIdx >= 0 && !d.moodOK))) || (d.tab == tRandom && d.rnd == nil && d.rndErr == nil)
 	// the calendar's countdowns tick once a second (cheap: only changed cells are written)
 	return loading || d.rolling.active() || revealing(d.at, 20, a.motion()) || (d.tab == tCal && a.frame%30 == 0)
 }
@@ -197,6 +211,19 @@ func (d *discover) load(a *App) tea.Cmd {
 			return seasonMsg{s, y, items, err}
 		})
 	case tRecs:
+		if d.moodIdx >= 0 && d.moodIdx < len(anilist.MoodPresets) {
+			preset := anilist.MoodPresets[d.moodIdx]
+			if d.moodOK && d.moodKey == preset.ID {
+				return nil
+			}
+			d.moodKey = preset.ID
+			d.moodOK = false
+			d.moodErr = nil
+			return run(40*time.Second, func(ctx context.Context) tea.Msg {
+				items, err := anilist.ByMood(ctx, preset)
+				return moodMsg{key: preset.ID, items: items, err: err}
+			})
+		}
 		if d.recsOK {
 			return nil
 		}
@@ -213,7 +240,7 @@ func (d *discover) load(a *App) tea.Cmd {
 		}
 		return run(60*time.Second, func(ctx context.Context) tea.Msg {
 			if len(liked) == 0 {
-				return recsMsg{err: fmt.Errorf("öneri için kitaplığında puanladığın ya da bitirdiğin anime olmalı")}
+				return recsMsg{err: fmt.Errorf("öneri için kitaplığında puanladığın/bitirdiğin anime olmalı · m ile Ruh Hali önerilerini hemen dene")}
 			}
 			items, err := anilist.Recommend(ctx, liked, have)
 			return recsMsg{items, err}
@@ -288,8 +315,14 @@ func (d *discover) rows(a *App) []drow {
 			out = append(out, drow{m: &d.season[i]})
 		}
 	case tRecs:
-		for i := range d.recs {
-			out = append(out, drow{m: &d.recs[i]})
+		if d.moodIdx >= 0 {
+			for i := range d.moodItems {
+				out = append(out, drow{m: &d.moodItems[i]})
+			}
+		} else {
+			for i := range d.recs {
+				out = append(out, drow{m: &d.recs[i]})
+			}
 		}
 	case tGenre:
 		for i := range d.genreItems {
@@ -366,6 +399,12 @@ func (d *discover) update(a *App, msg tea.Msg) tea.Cmd {
 		d.recs, d.recsErr, d.recsOK = m.items, m.err, true
 		d.at = time.Now()
 		return d.wantPosters(a)
+	case moodMsg:
+		if m.key == d.moodKey {
+			d.moodItems, d.moodErr, d.moodOK = m.items, m.err, true
+			d.at = time.Now()
+			return d.wantPosters(a)
+		}
 	case randMsg:
 		if m.err != nil {
 			d.rndErr = m.err
@@ -508,6 +547,24 @@ func (d *discover) key(a *App, k tea.KeyMsg) tea.Cmd {
 				i, d.sYear = 0, d.sYear+1
 			}
 			d.sName, d.seasonOK, d.season, *c = order[i], false, nil, 0
+			return tea.Batch(d.load(a), a.tick())
+		}
+		if d.tab == tRecs {
+			total := len(anilist.MoodPresets) + 1 // -1 (personal) + 6 moods
+			pos := d.moodIdx + 1
+			if k.String() == "]" {
+				pos = (pos + 1) % total
+			} else {
+				pos = (pos - 1 + total) % total
+			}
+			d.moodIdx, *c, d.off[tRecs] = pos-1, 0, 0
+			return tea.Batch(d.load(a), a.tick())
+		}
+	case "m":
+		if d.tab == tRecs {
+			total := len(anilist.MoodPresets) + 1
+			pos := (d.moodIdx + 2) % total
+			d.moodIdx, *c, d.off[tRecs] = pos-1, 0, 0
 			return tea.Batch(d.load(a), a.tick())
 		}
 	case " ", "r":
@@ -665,7 +722,11 @@ func (d *discover) list(a *App, w, h int) []string {
 	case tSeason:
 		err, ok = d.seasonErr, d.seasonOK
 	case tRecs:
-		err, ok = d.recsErr, d.recsOK
+		if d.moodIdx >= 0 {
+			err, ok = d.moodErr, d.moodOK
+		} else {
+			err, ok = d.recsErr, d.recsOK
+		}
 	case tGenre:
 		err, ok = d.genreErr, d.genreOK
 	}

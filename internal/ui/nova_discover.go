@@ -97,7 +97,12 @@ func (d *discover) novaHead(a *App, w int) []string {
 			ctx = pill(upperTR(tr)+" · "+d.gmode, cAccent)
 		}
 	case tRecs:
-		ctx = pill("SANA ÖZEL", cOK)
+		if d.moodIdx >= 0 && d.moodIdx < len(anilist.MoodPresets) {
+			mp := anilist.MoodPresets[d.moodIdx]
+			ctx = pill(mp.Icon+" "+upperTR(mp.Title), cAccent2)
+		} else {
+			ctx = pill("SANA ÖZEL", cOK)
+		}
 	case tRandom:
 		if d.rndNote != "" {
 			ctx = pill(upperTR(d.rndNote), cWarn)
@@ -128,6 +133,8 @@ func (d *discover) novaHead(a *App, w int) []string {
 			}
 		case tRandom:
 			right = keycap("space") + " " + stMuted.Render("yeni zar") + "  " + keycap("enter") + " " + stMuted.Render("aç")
+		case tRecs:
+			right = keycap("m") + " " + stMuted.Render("ruh hali") + "  " + keycap("a") + " " + stMuted.Render("listeye") + "  " + keycap("t") + " " + stMuted.Render("fragman")
 		default:
 			right = keycap("a") + " " + stMuted.Render("listeye") + "  " + keycap("t") + " " + stMuted.Render("fragman")
 		}
@@ -282,11 +289,16 @@ func (d *discover) novaStagePanel(a *App, w, h int, focused bool) []string {
 		return panel(title, d.novaGenreList(a, iw, ih), w, h, focused, acc, tag)
 
 	case tRecs:
-		title = "sana göre"
-		if d.recsOK && len(d.recs) > 0 {
-			tag = fmt.Sprintf("%d öneri", len(d.recs))
+		title = "sana göre · ruh hali"
+		if d.moodIdx >= 0 && d.moodIdx < len(anilist.MoodPresets) {
+			title = anilist.MoodPresets[d.moodIdx].Title
+			tag = "m / [ ] ruh hali"
+		} else if d.recsOK && len(d.recs) > 0 {
+			tag = fmt.Sprintf("%d öneri · m ruh hali", len(d.recs))
+		} else {
+			tag = "m ruh hali"
 		}
-		return panel(title, d.list(a, iw, ih), w, h, focused, acc, tag)
+		return panel(title, d.novaRecsBody(a, iw, ih), w, h, focused, acc, tag)
 
 	case tRandom:
 		title = "rastgele öneri"
@@ -389,6 +401,31 @@ func (d *discover) novaGenreGrid(a *App, w, h int) []string {
 		}
 		out = append(out, strings.Join(parts, "  "))
 	}
+	return block(out, w, h)
+}
+
+// novaRecsBody renders the interactive "Ruh Haline Göre" mood pill bar above the recommendations list.
+func (d *discover) novaRecsBody(a *App, w, h int) []string {
+	var pills []string
+	if d.moodIdx < 0 {
+		pills = append(pills, pill("★ Sana göre", cOK))
+	} else {
+		pills = append(pills, fg(cMuted).Background(colorOf(cSurface)).Render(" Sana göre "))
+	}
+	for i, mp := range anilist.MoodPresets {
+		short := strings.Fields(mp.Title)[0]
+		if i == d.moodIdx {
+			pills = append(pills, pill(mp.Icon+" "+mp.Title, cAccent2))
+		} else {
+			pills = append(pills, fg(cMuted).Background(colorOf(cSurface)).Render(" "+mp.Icon+" "+short+" "))
+		}
+	}
+	out := []string{truncate(strings.Join(pills, " "), w)}
+	if d.moodIdx >= 0 && d.moodIdx < len(anilist.MoodPresets) {
+		out = append(out, stMuted.Render(truncate(anilist.MoodPresets[d.moodIdx].Desc, w)))
+	}
+	out = append(out, stFaint.Render(strings.Repeat("─", w)))
+	out = append(out, d.list(a, w, max(1, h-len(out)))...)
 	return block(out, w, h)
 }
 

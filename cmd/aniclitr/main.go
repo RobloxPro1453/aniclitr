@@ -29,14 +29,16 @@ import (
 	_ "aniclitr/internal/source/hianime"
 	_ "aniclitr/internal/source/sonanime"
 	"aniclitr/internal/store"
+	"aniclitr/internal/tools"
 	"aniclitr/internal/tty"
 	"aniclitr/internal/ui"
 	"aniclitr/internal/update"
+	"aniclitr/internal/wrapped"
 )
 
 // version is bumped on release; CI release builds also stamp it
 // from the git tag (-ldflags "-X main.version=…").
-var version = "1.0.1"
+var version = "1.2.0"
 
 func main() {
 	var initialURL string
@@ -44,6 +46,7 @@ func main() {
 	var initialQuery string
 	var initialEp int
 	var initialDLRange string
+	var initialWrapped bool
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "doctor":
@@ -157,6 +160,33 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "ozet", "özet", "wrapped":
+			exportPNG := false
+			outPath := ""
+			for i := 2; i < len(os.Args); i++ {
+				if os.Args[i] == "--png" || os.Args[i] == "-p" {
+					exportPNG = true
+					if i+1 < len(os.Args) && !strings.HasPrefix(os.Args[i+1], "-") {
+						outPath = os.Args[i+1]
+						i++
+					}
+				}
+			}
+			if exportPNG {
+				rep := wrapped.Build(store.Open(), store.OpenLibrary(), time.Now())
+				p, err := wrapped.ExportPNG(rep, outPath)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "özet kartı hatası:", err)
+					os.Exit(1)
+				}
+				fmt.Printf("✦ %s (%s)\n", rep.Archetype, rep.Tagline)
+				fmt.Printf("  %.1f saat · %d bölüm · %d seri\n", rep.TotalHours, rep.TotalEpisodes, rep.TotalSeries)
+				fmt.Printf("✓ PNG özet kartı kaydedildi: %s\n", p)
+				return
+			}
+			initialWrapped = true
+		case "kur", "setup", "tools":
+			os.Exit(runInstallTools())
 		case "-h", "--help", "help":
 			fmt.Println(`aniclitr                          arayüzü başlat
 aniclitr <url>                    anime veya bölüm adresini doğrudan aç
@@ -165,6 +195,8 @@ aniclitr ara <ad>                 kaynaklarda hızlı CLI araması yap
 aniclitr izle <ad> [bölüm]        doğrudan ilgili animeyi ara ve aç
 aniclitr indir <ad> [aralık]      doğrudan indirme için animeyi ara (örn: 1-12)
 aniclitr torrent <ad> [--magnet]  Nyaa.si torrent ara (--magnet N: magnet yazdır)
+aniclitr ozet [--png [dosya]]     canlı animasyonlu Anime Özeti (--png: paylaşım kartı)
+aniclitr kur                      eksik yardımcı araçları (mpv/yt-dlp/aria2c/ffmpeg) kur
 aniclitr yedekle [dosya.json]     ayar, geçmiş ve kitaplığı tek dosyaya yedekle
 aniclitr geri-yukle <dosya>       yedekten güvenli geri yükle (ön-yedek alır)
 aniclitr doctor [q]               kaynakları ve bağımlılıkları canlı test et
@@ -208,6 +240,8 @@ aniclitr --version                sürüm`)
 	switch {
 	case initialURL != "":
 		app.SetInitialURL(initialURL)
+	case initialWrapped:
+		app.SetInitialWrapped()
 	case initialContinue:
 		app.SetInitialContinue()
 	case initialDLRange != "":
@@ -291,5 +325,39 @@ func runUpdate() int {
 		return 1
 	}
 	fmt.Println("kuruldu:", rel.Version, "→", target)
+	return 0
+}
+
+func runInstallTools() int {
+	fmt.Println("aniclitr yardımcı araç denetimi:")
+	st := tools.Status()
+	var missing []tools.Spec
+	for _, s := range tools.All {
+		if st[s.Name] {
+			fmt.Printf("  ✓ %-8s kurulu  (%s)\n", s.Name, s.Purpose)
+		} else {
+			fmt.Printf("  ✗ %-8s eksik   (%s)\n", s.Name, s.Purpose)
+			missing = append(missing, s)
+		}
+	}
+	if len(missing) == 0 {
+		fmt.Println("Tüm yardımcı araçlar hazır.")
+		return 0
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	failed := 0
+	for _, m := range missing {
+		fmt.Printf("\n↓ %s kuruluyor…\n", m.Name)
+		if err := tools.Install(ctx, m.Name); err != nil {
+			fmt.Fprintf(os.Stderr, "  ✗ %v\n", err)
+			failed++
+		} else {
+			fmt.Printf("  ✓ %s kuruldu.\n", m.Name)
+		}
+	}
+	if failed > 0 {
+		return 1
+	}
 	return 0
 }

@@ -22,7 +22,9 @@ import (
 	"aniclitr/internal/aniskip"
 	"aniclitr/internal/logx"
 	"aniclitr/internal/netx"
+	"aniclitr/internal/shaders"
 	"aniclitr/internal/source"
+	"aniclitr/internal/tools"
 )
 
 // EventKind enumerates playback events.
@@ -58,6 +60,7 @@ type Options struct {
 	Start      float64
 	Speed      float64
 	Fullscreen bool
+	Anime4K    string // "", "kapalı", "hafif", "dengeli", "yüksek"
 	Segments   []aniskip.Segment
 	ExtraArgs  []string
 	MpvPath    string
@@ -92,9 +95,9 @@ func FindMpv(override string) (string, error) {
 	if override != "" {
 		return override, nil
 	}
-	p, err := exec.LookPath("mpv")
+	p, err := tools.LookPath("mpv")
 	if err != nil {
-		return "", errors.New("mpv bulunamadı — kurulum: winget install mpv-player.mpv-CI.MSVC")
+		return "", errors.New("mpv bulunamadı — otomatik kurulum için: aniclitr kur")
 	}
 	if runtime.GOOS == "windows" && strings.EqualFold(filepath.Ext(p), ".com") {
 		exe := strings.TrimSuffix(p, filepath.Ext(p)) + ".exe"
@@ -170,6 +173,9 @@ func buildArgs(o Options, sock string) []string {
 	if o.Fullscreen {
 		args = append(args, "--fs")
 	}
+	if a4k := shaders.MpvArgs(o.Anime4K); len(a4k) > 0 {
+		args = append(args, a4k...)
+	}
 	if o.Quality.HLSBandwidth > 0 {
 		// URL is the master playlist (the rendition's audio is a separate
 		// group): pick the chosen rendition; a later option overrides "max"
@@ -238,8 +244,27 @@ func (s *Session) Prev() { s.action.Store("prev"); s.send("quit") }
 // TogglePause flips play/pause.
 func (s *Session) TogglePause() { s.send("cycle", "pause") }
 
+// SetPause sets explicit pause state (used by Watch Party sync).
+func (s *Session) SetPause(paused bool) { s.send("set_property", "pause", paused) }
+
 // Seek moves relative seconds.
 func (s *Session) Seek(sec float64) { s.send("seek", sec, "relative") }
+
+// SeekAbs jumps to an absolute timestamp in seconds (used by Watch Party sync).
+func (s *Session) SeekAbs(sec float64) { s.send("seek", sec, "absolute") }
+
+// SetShaders switches Anime4K shader profile live without restarting mpv.
+func (s *Session) SetShaders(profile string) {
+	list, err := shaders.ShaderList(profile)
+	if err != nil || list == "" {
+		s.send("change-list", "glsl-shaders", "clr", "")
+		s.send("show-text", "Anime4K: Kapalı", 2200)
+		return
+	}
+	s.send("set_property", "hwdec", "auto-copy")
+	s.send("change-list", "glsl-shaders", "set", list)
+	s.send("show-text", "✦ Anime4K: "+shaders.Label(profile), 2600)
+}
 
 // AddSub loads an external subtitle file into the running player and
 // selects it; title is shown in mpv's track list.
@@ -378,6 +403,8 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 		s.send("keybind", "Z", "script-message aniclitr-subdelay -0.5")
 		s.send("keybind", "X", "script-message aniclitr-subdelay +0.5")
 		s.send("keybind", "Alt+0", "script-message aniclitr-subdelay 0")
+		s.send("keybind", "Alt+4", "script-message aniclitr-anime4k")
+		s.send("keybind", "Alt+s", "script-message aniclitr-sleep")
 		subSection := strings.Join([]string{
 			"UP script-message aniclitr-sub-up",
 			"DOWN script-message aniclitr-sub-down",
@@ -513,7 +540,7 @@ func (s *Session) run(sock string, segs []aniskip.Segment) {
 							default:
 							}
 						}
-					case "aniclitr-subs", "aniclitr-sub-up", "aniclitr-sub-down", "aniclitr-sub-pick", "aniclitr-sub-close":
+					case "aniclitr-subs", "aniclitr-sub-up", "aniclitr-sub-down", "aniclitr-sub-pick", "aniclitr-sub-close", "aniclitr-anime4k", "aniclitr-sleep":
 						select {
 						case s.events <- Event{Kind: EvAction, Action: m.Args[0]}:
 						default:

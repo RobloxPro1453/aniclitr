@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"aniclitr/internal/netx"
+	"aniclitr/internal/tools"
 )
 
 // base is a var so tests can replay recorded RSS feeds via httptest.
@@ -97,6 +98,7 @@ type Item struct {
 	Turkish    bool
 	Raw        bool
 	Batch      bool
+	Relevance  int // query title relevance tier (100=exact, 80=prefix, 55=word, 20=phrase)
 	Published  time.Time
 }
 
@@ -140,10 +142,48 @@ type rssFeed struct {
 }
 
 var (
-	reGroup = regexp.MustCompile(`^\[([^\[\]]{1,28})\]`)
-	reSize  = regexp.MustCompile(`(?i)^\s*([\d.]+)\s*(B|KiB|KB|MiB|MB|GiB|GB|TiB|TB)\s*$`)
-	reBatch = regexp.MustCompile(`(?i)(batch|complete|\b0?1\s*[-~]\s*\d{2}\b|season\s*\d|s\d{2}\b|bd\s*box)`)
+	reGroup    = regexp.MustCompile(`^\[([^\[\]]{1,28})\]`)
+	reSize     = regexp.MustCompile(`(?i)^\s*([\d.]+)\s*(B|KiB|KB|MiB|MB|GiB|GB|TiB|TB)\s*$`)
+	reBatch    = regexp.MustCompile(`(?i)(batch|complete|\b0?1\s*[-~]\s*\d{2}\b|season\s*\d|s\d{2}\b|bd\s*box)`)
+	reBrackets = regexp.MustCompile(`\[[^\]]*\]|\([^\)]*\)`)
+	reEpTail   = regexp.MustCompile(`(?i)(\s+-\s+\d.*|\bs\d{1,2}e\d{1,3}.*|\b(1080p|720p|2160p|480p|bdrip|web-dl|webrip|hevc|x264|x265|flac|10bit)\b.*)`)
 )
+
+// CleanSeriesName extracts the core anime title from a torrent release string
+// (e.g. "[Shiniori-Raws] Another (BD 1920x1080 x265)" -> "another").
+func CleanSeriesName(title string) string {
+	s := reBrackets.ReplaceAllString(title, " ")
+	s = strings.NewReplacer(".", " ", "_", " ").Replace(s)
+	s = reEpTail.ReplaceAllString(s, "")
+	s = strings.ToLower(strings.TrimSpace(s))
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// RelevanceScore tiers how closely a torrent's series title matches query so
+// searching "another" ranks "Another" ahead of "Re:ZERO ... in Another World".
+func RelevanceScore(query, title string) int {
+	q := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(query)), " "))
+	if q == "" {
+		return 50
+	}
+	clean := CleanSeriesName(title)
+	switch {
+	case clean == q:
+		return 100
+	case strings.HasPrefix(clean, q+" ") || strings.HasPrefix(clean, q+":") || strings.HasPrefix(clean, q+"-"):
+		return 80
+	case len(clean) <= len(q)+10 && strings.Contains(clean, q):
+		return 65
+	case strings.Contains(" "+clean+" ", " "+q+" "):
+		// Penalize long unrelated subtitles like "Starting Life in Another World".
+		if len(strings.Fields(clean)) >= len(strings.Fields(q))+3 {
+			return 20
+		}
+		return 50
+	default:
+		return 10
+	}
+}
 
 func parseGroup(title string) string {
 	if m := reGroup.FindStringSubmatch(strings.TrimSpace(title)); m != nil {
@@ -281,6 +321,7 @@ func Search(ctx context.Context, query, cat, filter string) ([]Item, error) {
 			Turkish:    isTurkishRelease(title),
 			Raw:        cat == CatRaw || isRawRelease(title, catStr),
 			Batch:      reBatch.MatchString(title),
+			Relevance:  RelevanceScore(query, title),
 			Published:  pub,
 		})
 	}
@@ -289,10 +330,16 @@ func Search(ctx context.Context, query, cat, filter string) ([]Item, error) {
 }
 
 // SortItems sorts a slice of Nyaa items in place according to mode.
+// Under the default SortSeeders mode, title relevance tier wins first so exact
+// matches aren't buried under unrelated high-seed series.
 func SortItems(items []Item, mode SortMode) {
 	sort.SliceStable(items, func(i, j int) bool {
 		a, b := items[i], items[j]
 		switch mode {
+		case SortSeeders:
+			if a.Relevance != b.Relevance {
+				return a.Relevance > b.Relevance
+			}
 		case SortNewest:
 			if !a.Published.Equal(b.Published) {
 				return a.Published.After(b.Published)
@@ -317,9 +364,9 @@ func SortItems(items []Item, mode SortMode) {
 	})
 }
 
-// HasAria2 reports whether aria2c is available on PATH.
+// HasAria2 reports whether aria2c is available in aniclitr's tools dir or PATH.
 func HasAria2() bool {
-	_, err := exec.LookPath("aria2c")
+	_, err := tools.LookPath("aria2c")
 	return err == nil
 }
 
@@ -328,9 +375,9 @@ func StartAria2(dir, target string) error {
 	if strings.TrimSpace(target) == "" {
 		return errors.New("geçersiz torrent/magnet bağlantısı")
 	}
-	bin, err := exec.LookPath("aria2c")
+	bin, err := tools.LookPath("aria2c")
 	if err != nil {
-		return errors.New("aria2c bulunamadı — kurulum: winget install aria2.aria2")
+		return errors.New("aria2c bulunamadı — kurulum: aniclitr kur veya winget install aria2.aria2")
 	}
 	if dir != "" {
 		_ = os.MkdirAll(dir, 0o755)
