@@ -100,8 +100,8 @@ func TestFooterIsShort(t *testing.T) {
 		if len(hs) > 5 {
 			t.Errorf("%T: %d footer hints", s, len(hs))
 		}
-		if hs[len(hs)-2].label != "işlemler" || hs[len(hs)-1].key != "esc" {
-			t.Errorf("%T: footer should end with işlemler · geri: %+v", s, hs)
+		if hs[len(hs)-2].key != "F1" || hs[len(hs)-2].label != "işlemler" || hs[len(hs)-1].key != "esc" {
+			t.Errorf("%T: footer should end with F1 işlemler · esc geri: %+v", s, hs)
 		}
 	}
 }

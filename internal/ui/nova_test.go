@@ -304,3 +304,90 @@ func TestNovaPickerAndPlayingViews(t *testing.T) {
 		}
 	}
 }
+
+func TestNovaDiscoverRedesignAndSpatialKeys(t *testing.T) {
+	a := novaApp(t)
+	d := newDiscover()
+	d.schedOK = true
+	d.seasonOK = true
+	d.season = []anilist.Media{
+		{ID: 1, IDMal: 52991, Format: "TV", Episodes: 28, Score: 91, Season: "FALL", SeasonYear: 2023,
+			Title: anilist.Titles{Romaji: "Sousou no Frieren"}, Genres: []string{"Adventure", "Drama"}},
+	}
+	a.stack = append(a.stack, d)
+
+	// Starts on left rail; → enters active room; inside room → NEVER jumps tabs; ← returns to rail.
+	if !d.menu || d.tab != tCal {
+		t.Fatalf("initial discover state: menu=%v tab=%d", d.menu, d.tab)
+	}
+	a.Update(key("down"))
+	a.Update(key("down")) // Bu sezon
+	a.Update(key("right"))
+	if d.menu || d.tab != tSeason {
+		t.Fatalf("→ on rail should enter Bu sezon: menu=%v tab=%d", d.menu, d.tab)
+	}
+	a.Update(key("right"))
+	if d.tab != tSeason || d.menu {
+		t.Fatalf("→ inside a section must NEVER jump to another section: menu=%v tab=%d", d.menu, d.tab)
+	}
+	wide := d.view(a, 150, 36)
+	if len(strings.Split(wide, "\n")) != 36 {
+		t.Fatalf("nova discover wide height mismatch")
+	}
+	plain := ansi.Strip(wide)
+	for _, want := range []string{"Keşfet", "Takvim", "Bu sezon", "Sousou no Frieren", "9.1"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("nova discover missing %q:\n%s", want, plain)
+		}
+	}
+
+	// ← steps cleanly back to the left rail without jumping to another tab.
+	a.Update(key("left"))
+	if !d.menu || d.tab != tSeason {
+		t.Fatalf("← inside a section should return to rail on same tab: menu=%v tab=%d", d.menu, d.tab)
+	}
+}
+
+func TestContinueEntriesIncludesMalWatching(t *testing.T) {
+	a := novaApp(t)
+	a.hist.Update(source.Anime{Source: "animecix", ID: "1", Title: "Frieren", MalID: 52991}, func(e *store.Entry) {
+		e.Season, e.Episode = 1, 4
+	})
+	// Duplicate already in history must NOT appear twice.
+	a.lib.Upsert(store.Item{Source: "mal", AnimeID: "52991", Title: "Sousou no Frieren", MalID: 52991, Status: store.Watching, Watched: 4})
+	// New MAL watching show not yet opened locally MUST appear in continueEntries.
+	a.lib.Upsert(store.Item{Source: "mal", AnimeID: "40748", Title: "Jujutsu Kaisen", MalID: 40748, Status: store.Watching, Watched: 7, EpCount: 24})
+	// Completed / Planned items must NOT appear in continueEntries.
+	a.lib.Upsert(store.Item{Source: "mal", AnimeID: "111", Title: "Planned Show", MalID: 111, Status: store.Planned})
+
+	got := a.continueEntries()
+	if len(got) != 2 {
+		t.Fatalf("continueEntries len = %d, want 2: %+v", len(got), got)
+	}
+	if got[0].Title != "Frieren" || got[1].Title != "Jujutsu Kaisen" || got[1].Episode != 7 {
+		t.Fatalf("unexpected continueEntries: %+v", got)
+	}
+}
+
+func TestPickQualityForRemembersPerShow(t *testing.T) {
+	a := novaApp(t)
+	a.cfg.Quality = "best"
+	an := source.Anime{Source: "animecix", ID: "77", Title: "One Piece"}
+	a.hist.Update(an, func(e *store.Entry) {
+		e.Quality = "720p"
+	})
+	st := &source.Stream{Qualities: []source.Quality{
+		{Label: "1080p", Height: 1080, URL: "u1080"},
+		{Label: "720p", Height: 720, URL: "u720"},
+		{Label: "480p", Height: 480, URL: "u480"},
+	}}
+	q := a.pickQualityFor(an, st)
+	if q.Label != "720p" {
+		t.Fatalf("pickQualityFor = %q, want 720p (per-show memory)", q.Label)
+	}
+	// A different anime without saved preference still follows global cfg.Quality ("best").
+	other := source.Anime{Source: "animecix", ID: "88", Title: "Frieren"}
+	if q2 := a.pickQualityFor(other, st); q2.Label != "1080p" {
+		t.Fatalf("pickQualityFor(other) = %q, want 1080p", q2.Label)
+	}
+}

@@ -15,6 +15,12 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"0.18.0": {
+		"Keşfet ekranı baştan tasarlandı: solda her zaman görünür 6 bölümlük şerit, ortada sade odak sahnesi (2 sütunlu tür ızgarası, süre hapları), sağda kapaklı ayrıntı kartı; ← ve → artık habersiz sekme atlamıyor, sol şerit ile liste arasında öngörülebilir geçiyor",
+		"İşlemler kısayolu artık her yerde F1 olarak görünür (Türkçe Q klavyede tek tuş; ? arka planda çalışmaya devam eder)",
+		"MAL Devam et köprüsü: MyAnimeList'te İzliyor olup aniclitr'de henüz açmadığın seriler artık ana sayfadaki Devam et kartlarında görünür ve tek tuşla kaynakta açılır",
+		"Seri bazında kalite hafızası: her anime için son izlediğin çözünürlük (ör. 720p / 1080p) ayrı hatırlanır ve sonraki bölümlerde otomatik seçilir",
+	},
 	"0.17.0": {
 		"Sixel kapakları artık kaya gibi: arama önerileri, açılır menüler veya yazma efektleri açıkken kapakların yan tarafa kayması/ışınlanması kökünden giderildi",
 		"Yeni arayüz (Nova) artık tüm ana ekranlarda: Anime sayfası, çeviri/sunucu seçici, oynatılıyor kartı, Kitaplık ve Keşfet ekranları Nova diline geçti; dar terminallerde de temizce katlanır",

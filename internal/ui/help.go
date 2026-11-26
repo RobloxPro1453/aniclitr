@@ -69,7 +69,7 @@ func (a *App) helpBox() []string {
 			{"alt+m · F10", "menü (≡)"}, {"alt+n · F9", "bildirimler (◆)"},
 			{"ctrl+k", "komut paleti"}, {"ctrl+b · F2", "kitaplık"}, {"ctrl+d · F3", "indirilenler"}, {"ctrl+e · F4", "keşfet"}, {"ctrl+t", "tema seç (canlı)"},
 			{"esc", "geri"}, {"/", "ara"}, {"ctrl+o", "ayarlar"}, {"alt+a", "arşiv modu"},
-			{"ctrl+z", "geri al"}, {"ctrl+l", "ekranı baştan çiz"}, {"? · F1", "bu pencere"}, {"ctrl+c", "çık"},
+			{"ctrl+z", "son silmeyi geri al"}, {"ctrl+l", "ekranı baştan çiz"}, {"F1", "işlemler / yardım"}, {"ctrl+c", "çık"},
 		}},
 		{"oynatırken (mpv'de de)", [][2]string{
 			{"n / b", "sonraki / önceki bölüm"}, {"space", "duraklat"}, {"← →", "10 sn sar"},

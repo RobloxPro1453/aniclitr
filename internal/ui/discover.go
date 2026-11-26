@@ -140,7 +140,7 @@ func (d *discover) crumb() string {
 
 func (d *discover) hints() []hint {
 	if d.menu {
-		return []hint{{"enter", "aç"}, {"1-6", "bölüme git"}, {"esc", "geri"}}
+		return []hint{{"enter", "gir"}, {"1-6", "bölüm"}, {"esc", "geri"}}
 	}
 	h := []hint{{"enter", "aç"}, {"a", "listeme ekle"}, {"t", "fragman"}}
 	switch d.tab {
@@ -149,10 +149,10 @@ func (d *discover) hints() []hint {
 	case tSeason:
 		h = append(h, hint{"[ ]", "sezon"})
 	case tTonight:
-		return []hint{{"+ -", "süre"}, {"enter", "aç"}, {"tab", "sonraki bölüm"}, {"esc", "bölümler"}}
+		return []hint{{"+ -", "süre"}, {"enter", "aç"}, {"← esc", "bölümler"}}
 	case tGenre:
 		if d.gpick {
-			return []hint{{"enter", "bu türü aç"}, {"m", "sıralama: " + d.gmode}, {"tab", "sonraki bölüm"}, {"esc", "bölümler"}}
+			return []hint{{"enter", "türü aç"}, {"m", "sıralama: " + d.gmode}, {"← esc", "bölümler"}}
 		}
 		h = append(h, hint{"m", "sıralama: " + d.gmode}, hint{"[ ]", "önceki / sonraki tür"}, hint{"space", "bu türden zar at"})
 	case tRandom:
@@ -429,12 +429,12 @@ func (d *discover) key(a *App, k tea.KeyMsg) tea.Cmd {
 		}
 	}
 	switch k.String() {
-	case "esc", "q", "backspace":
+	case "esc", "q", "backspace", "left", "h":
 		if d.tab == tGenre && !d.gpick {
-			d.gpick = true // back to the genre list
+			d.gpick = true // back to the genre picker
 			return a.tick()
 		}
-		d.menu = true // one step back: the section menu
+		d.menu = true // step back cleanly to the left navigation rail
 		a.slide(-1)
 		return a.tick()
 	}
@@ -454,16 +454,19 @@ func (d *discover) key(a *App, k tea.KeyMsg) tea.Cmd {
 	rows := d.rows(a)
 	c := &d.cur[d.tab]
 	switch k.String() {
-	case "tab", "right", "l":
+	case "tab":
 		d.tab = (d.tab + 1) % len(discoverTabs)
 		d.gpick = d.tab == tGenre
 		d.at = time.Now()
 		return tea.Batch(d.load(a), a.tick())
-	case "shift+tab", "left", "h":
+	case "shift+tab":
 		d.tab = (d.tab + len(discoverTabs) - 1) % len(discoverTabs)
 		d.gpick = d.tab == tGenre
 		d.at = time.Now()
 		return tea.Batch(d.load(a), a.tick())
+	case "right", "l":
+		// Never silently jump between sections on arrow keys.
+		return nil
 	case "1", "2", "3", "4", "5", "6":
 		d.tab = int(k.String()[0] - '1')
 		d.gpick = d.tab == tGenre
@@ -569,6 +572,9 @@ func (a *App) trailer(malID int, name string) tea.Cmd {
 // ---- view ----
 
 func (d *discover) view(a *App, w, h int) string {
+	if a.nova() {
+		return d.novaView(a, w, h)
+	}
 	if d.menu {
 		return d.menuView(a, w, h)
 	}

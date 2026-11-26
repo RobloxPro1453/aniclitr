@@ -566,6 +566,51 @@ func (a *App) selectionRules() choose.Rules {
 	}.Effective(a.cfg.Quality)
 }
 
+// pickQualityFor prefers the quality last played for this anime (across
+// sources via sibling), falling back to the global cfg.Quality preference.
+func (a *App) pickQualityFor(an source.Anime, st *source.Stream) source.Quality {
+	pref := ""
+	if e, ok := a.hist.Get(an.Key()); ok && e.Quality != "" {
+		pref = e.Quality
+	} else if sib, ok := a.sibling(an); ok && sib.Quality != "" {
+		pref = sib.Quality
+	}
+	if pref != "" {
+		if q, ok := matchQualityPref(st.Qualities, pref); ok {
+			return q
+		}
+	}
+	return a.pickQuality(st)
+}
+
+func matchQualityPref(qs []source.Quality, pref string) (source.Quality, bool) {
+	if len(qs) == 0 {
+		return source.Quality{}, false
+	}
+	for _, c := range qs {
+		if !c.Broken && strings.EqualFold(c.Label, pref) {
+			return c, true
+		}
+	}
+	var h int
+	for _, tok := range strings.Fields(strings.ToLower(pref)) {
+		if strings.HasSuffix(tok, "p") {
+			fmt.Sscanf(strings.TrimSuffix(tok, "p"), "%d", &h)
+			if h > 0 {
+				break
+			}
+		}
+	}
+	if h > 0 {
+		for _, c := range qs {
+			if !c.Broken && c.Height > 0 && c.Height <= h {
+				return c, true
+			}
+		}
+	}
+	return source.Quality{}, false
+}
+
 // pickQuality applies the configured preference.
 func (a *App) pickQuality(st *source.Stream) source.Quality {
 	q := st.Qualities[0]

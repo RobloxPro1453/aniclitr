@@ -97,7 +97,7 @@ func (a *App) openActions() {
 	for _, h := range globalActions() {
 		add(h)
 	}
-	items = append(items, dropItem{icon: "?", color: cMuted, label: "bütün kısayollar", note: "F1",
+	items = append(items, dropItem{icon: "≡", color: cMuted, label: "bütün kısayollar", note: "",
 		run: func(a *App) tea.Cmd { a.help = true; return nil }})
 	a.openList("işlemler", items)
 	a.drop.kind = "actions"
@@ -105,11 +105,12 @@ func (a *App) openActions() {
 }
 
 // footerHints is what the footer shows: the screen's first keys, then
-// işlemler and the way back. Everything else is one ? away.
+// işlemler (F1 — works cleanly on Turkish keyboards; ? remains an alias)
+// and the way back.
 func (a *App) footerHints() []hint {
 	var hs []hint
 	for _, h := range a.top().hints() {
-		if h.key == "?" || h.key == "esc" || strings.HasPrefix(h.key, "esc") {
+		if h.key == "?" || h.key == "F1" || h.key == "esc" || strings.HasPrefix(h.key, "esc") {
 			continue
 		}
 		hs = append(hs, h)
@@ -117,11 +118,7 @@ func (a *App) footerHints() []hint {
 			break
 		}
 	}
-	key := "?"
-	if t, ok := a.top().(typer); ok && t.typing() {
-		key = "F1" // ? would land in the text field
-	}
-	hs = append(hs, hint{key, "işlemler"})
+	hs = append(hs, hint{"F1", "işlemler"})
 	if len(a.stack) > 1 {
 		hs = append(hs, hint{"esc", "geri"})
 	}

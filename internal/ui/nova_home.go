@@ -239,7 +239,7 @@ func (h *home) novaView(a *App, w, ht int) string {
 	out = append(out, center(h.novaStatus(a), w), "")
 
 	gw := min(w-kitPad*2, 160)
-	recent := a.recent()
+	recent := a.continueEntries()
 
 	// Rows under the search: label, covers, title, progress, details, then
 	// (when it fits) the band — where you left off, this week, stats — and
@@ -287,9 +287,17 @@ func (h *home) novaView(a *App, w, ht int) string {
 		line := fmt.Sprintf("Sezon %d · Bölüm %s", e.Season, source.EpNum(e.Episode))
 		if strings.EqualFold(e.Kind, "film") {
 			line = "Film"
+		} else if e.Source == "mal" {
+			if e.Watched[store.EpKey(e.Season, e.Episode)] {
+				line = fmt.Sprintf("MAL listenden · Bölüm %s bitti", source.EpNum(e.Episode))
+			} else {
+				line = "MAL listenden · izliyor"
+			}
 		}
 		detail := stText.Render(line)
-		if e.Watched[store.EpKey(e.Season, e.Episode)] {
+		if e.Source == "mal" {
+			detail += fg(cSky).Render("  ·  enter kaynakta açar")
+		} else if e.Watched[store.EpKey(e.Season, e.Episode)] {
 			detail += stOK.Render("  ·  ✓ bitti, enter sıradakini açar")
 		} else if p := e.Percent(); p > 0 {
 			detail += stMuted.Render(fmt.Sprintf("  ·  %%%d", p))
@@ -367,7 +375,13 @@ func (h *home) novaResume(a *App, e store.Entry, w, ht int) []string {
 		line = "Film"
 	}
 	txt = append(txt, stText.Render(line), "")
-	if e.Watched[store.EpKey(e.Season, e.Episode)] {
+	if e.Source == "mal" {
+		if e.Watched[store.EpKey(e.Season, e.Episode)] {
+			txt = append(txt, fg(cSky).Render("MAL · izliyor"), stMuted.Render(fmt.Sprintf("sıradaki: %d. bölüm", e.Episode+1)))
+		} else {
+			txt = append(txt, fg(cSky).Render("MAL · izliyor"), stMuted.Render("enter kaynakta açar"))
+		}
+	} else if e.Watched[store.EpKey(e.Season, e.Episode)] {
 		txt = append(txt, stOK.Render("✓ bitti"), stMuted.Render("enter sıradakini açar"))
 	} else {
 		txt = append(txt, renderSpans(miniBar(max(6, txtW-6), float64(e.Percent())/100, acc.hex()))+stMuted.Render(fmt.Sprintf(" %%%d", e.Percent())))

@@ -39,7 +39,7 @@ func (a *App) homeOf() *home {
 
 func (h *home) items(a *App) []mItem {
 	var out []mItem
-	recent := a.recent()
+	recent := a.continueEntries()
 	if n := min(len(recent), max(1, h.shelfN)); n > 0 {
 		out = append(out, mItem{group: "devam et"})
 		for i, e := range recent[:n] {
@@ -47,9 +47,17 @@ func (h *home) items(a *App) []mItem {
 			pos := fmt.Sprintf("S%d · B%d", e.Season, e.Episode)
 			if strings.EqualFold(e.Kind, "film") {
 				pos = "film"
+			} else if e.Source == "mal" {
+				if e.Watched[store.EpKey(e.Season, e.Episode)] {
+					pos = fmt.Sprintf("MAL · B%d", e.Episode)
+				} else {
+					pos = "MAL · izliyor"
+				}
 			}
 			meta, mc := fmt.Sprintf("%%%d", e.Percent()), cMuted
-			if e.Watched[store.EpKey(e.Season, e.Episode)] {
+			if e.Source == "mal" && !e.Watched[store.EpKey(e.Season, e.Episode)] {
+				meta, mc = "MAL", cSky
+			} else if e.Watched[store.EpKey(e.Season, e.Episode)] {
 				meta, mc = "sıradaki", cOK
 			}
 			out = append(out, mItem{id: fmt.Sprintf("rec:%d", i), icon: ic("play"), label: e.Title, desc: pos, meta: meta, metaC: mc,
@@ -126,9 +134,13 @@ func countDone(a *App) int {
 	return n
 }
 
-// continueEntry opens a history entry where it was left (the next episode
-// when that one was finished).
+// continueEntry opens a history (or MAL watching) entry where it was left.
 func continueEntry(a *App, e store.Entry) tea.Cmd {
+	if e.Source == "mal" {
+		if it, ok := a.lib.Get(e.Anime().Key()); ok {
+			return a.openItem(it)
+		}
+	}
 	a.flash()
 	s, ep := e.Season, e.Episode
 	if e.Watched[store.EpKey(s, ep)] {
@@ -178,7 +190,7 @@ func (h *home) hints() []hint {
 // menuKey handles keys while the menu (not the search box) has focus.
 func (h *home) menuKey(a *App, k tea.KeyMsg) tea.Cmd {
 	it, items := h.selItem(a)
-	recent := a.recent()
+	recent := a.continueEntries()
 	switch k.String() {
 	case "/":
 		h.focus = 0
@@ -210,6 +222,10 @@ func (h *home) menuKey(a *App, k tea.KeyMsg) tea.Cmd {
 		}
 	case "delete", "x":
 		if i := recentIdx(it); i >= 0 && i < len(recent) {
+			if recent[i].Source == "mal" {
+				a.notify("MAL listende izliyor — durumu a ile değiştirebilirsin", "warn")
+				return a.tick()
+			}
 			// the card stands for the show on every source: remove them all,
 			// or the older source's entry would pop right back in
 			gone := []store.Entry{}
@@ -329,7 +345,7 @@ func (h *home) sideCol(a *App, w, ht int) []string {
 // preview is the panel beside the menu: what the selected item opens.
 // side says the calendar and stats are already on screen.
 func (h *home) preview(a *App, it mItem, side bool) pane {
-	recent := a.recent()
+	recent := a.continueEntries()
 	if i := recentIdx(it); i >= 0 && i < len(recent) {
 		e := recent[i]
 		an := e.Anime()
@@ -527,7 +543,7 @@ func (h *home) prefetchShelf(a *App) tea.Cmd {
 	if !a.cfg.Posters {
 		return nil
 	}
-	recent := a.recent()
+	recent := a.continueEntries()
 	var cmds []tea.Cmd
 	for i := 0; i < len(recent) && i < max(1, h.shelfN); i++ {
 		an := recent[i].Anime()
@@ -538,7 +554,7 @@ func (h *home) prefetchShelf(a *App) tea.Cmd {
 			cmds = append(cmds, a.posters.want(an.Poster))
 		} else if d, ok := a.details[an.Key()]; ok && d.Poster != "" {
 			cmds = append(cmds, a.posters.want(d.Poster))
-		} else {
+		} else if an.Source != "mal" {
 			cmds = append(cmds, a.fetchDetails(an))
 		}
 	}

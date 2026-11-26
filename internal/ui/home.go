@@ -216,7 +216,7 @@ func dockItems() []dockItem {
 		{ic("theme"), "Tema", "ctrl+t", func(a *App, h *home) tea.Cmd { a.openPalette("tema "); return a.tick() }},
 		{ic("palette"), "Komutlar", "ctrl+k", func(a *App, h *home) tea.Cmd { a.openPalette(""); return a.tick() }},
 		{ic("settings"), "Ayarlar", "ctrl+o", func(a *App, h *home) tea.Cmd { return a.push(newSettings()) }},
-		{"?", "Yardım", "?", func(a *App, h *home) tea.Cmd { a.help = true; return nil }},
+		{"?", "Yardım", "F1", func(a *App, h *home) tea.Cmd { a.help = true; return nil }},
 		{ic("spark"), "Sürpriz", "", func(a *App, h *home) tea.Cmd { return surprise(a) }},
 	}
 }
@@ -256,7 +256,7 @@ func indexOfTheme(ts []Theme, name string) int {
 }
 
 func (h *home) key(a *App, k tea.KeyMsg) tea.Cmd {
-	recent := a.recent()
+	recent := a.continueEntries()
 	if h.focus == 0 && h.sug.open() {
 		if cmd, ok := h.sug.key(a, h, k); ok {
 			return cmd

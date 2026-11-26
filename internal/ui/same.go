@@ -50,6 +50,56 @@ next:
 	return out
 }
 
+// continueEntries returns the "Devam et" list: local watch history first,
+// followed by shows currently marked "izliyor" on MyAnimeList / the library
+// that have not been opened in aniclitr yet.
+func (a *App) continueEntries() []store.Entry {
+	base := a.recent()
+	out := make([]store.Entry, len(base))
+	copy(out, base)
+	added := 0
+	for _, it := range a.lib.All() {
+		if it.Status != store.Watching || added >= 6 {
+			continue
+		}
+		dup := false
+		for _, o := range out {
+			if sameAnime(o.Anime(), it.Anime()) {
+				dup = true
+				break
+			}
+		}
+		if dup {
+			continue
+		}
+		ep := max(1, it.Watched)
+		watched := map[string]bool{}
+		if it.Watched > 0 {
+			watched[store.EpKey(1, it.Watched)] = true
+		}
+		var pos, dur float64
+		if it.EpCount > 0 && it.Watched > 0 {
+			pos, dur = float64(it.Watched), float64(it.EpCount)
+		}
+		out = append(out, store.Entry{
+			Source:    it.Source,
+			AnimeID:   it.AnimeID,
+			Title:     it.Title,
+			Poster:    it.Poster,
+			Kind:      it.Kind,
+			MalID:     it.MalID,
+			Season:    1,
+			Episode:   ep,
+			Position:  pos,
+			Duration:  dur,
+			Watched:   watched,
+			UpdatedAt: it.UpdatedAt,
+		})
+		added++
+	}
+	return out
+}
+
 // siblings lists the same anime on other sources, from history and the
 // library (newest first), so `s` works without a lookup.
 func (a *App) siblings(an source.Anime) []source.Anime {

@@ -190,6 +190,9 @@ func (p *playing) save(a *App, final bool) {
 		e.Season, e.Episode, e.EpTitle = p.ep.Season, p.ep.Number, p.ep.Title
 		e.Position, e.Duration = p.pos, p.dur
 		e.Fansub, e.Host = p.fansub, p.host
+		if p.q.Label != "" {
+			e.Quality = p.q.Label
+		}
 		if frac >= watchedAt {
 			e.Watched[key] = true
 			delete(e.Progress, key)

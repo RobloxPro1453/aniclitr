@@ -371,7 +371,7 @@ func (p *picker) tryPlay(a *App) tea.Cmd {
 			return nil
 		case st.st != nil:
 			p.pending = false
-			return p.play(a, v, st.st, a.pickQuality(st.st))
+			return p.play(a, v, st.st, a.pickQualityFor(p.an, st.st))
 		default:
 			p.pending = false
 			a.notify(v.Host+" çalışmıyor: "+shortErr(st.err), "err")

@@ -30,6 +30,7 @@ type Entry struct {
 	Duration  float64           `json:"duration"`
 	Fansub    string            `json:"fansub,omitempty"`
 	Host      string            `json:"host,omitempty"`
+	Quality   string            `json:"quality,omitempty"`
 	Watched   map[string]bool   `json:"watched,omitempty"`  // "s:e" -> done
 	Progress  map[string]int    `json:"progress,omitempty"` // "s:e" -> percent for partial eps
 	Notes     map[string]string `json:"notes,omitempty"`    // "s:e" -> your note on that episode

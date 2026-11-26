@@ -2,6 +2,17 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [0.18.0]
+
+### Eklenenler
+- **Keşfet ekranı baştan tasarlandı (`nova_discover.go`):** Üç sütunlu stüdyo yerleşimi (sol navigasyon şeridi + orta odak sahnesi + sağ kapaklı ayrıntı kartı), 2 sütunlu tür seçici ızgara, etkileşimli süre hapları (`Bu akşam`), dar terminallerde tam ekran katlanma.
+- **MAL "Devam et" köprüsü:** MyAnimeList listesinde `izliyor` durumunda olup henüz `aniclitr`'de açılmamış seriler artık ana sayfadaki "Devam et" kartlarında görünür ve `enter` ile doğrudan açık kaynaklarda aranıp kaldığın bölümden açılır.
+- **Seri bazında kalite hafızası:** Her seri için son izlenen kalite (`1080p`, `720p` vb.) geçmişte ayrı hatırlanır ve otomatik oynatmada o seri için öncelikli seçilir.
+
+### Değişenler
+- **Keşfet klavye akışı düzeltildi:** `←` / `→` artık bölüm içinde habersiz sekme değiştirmiyor; `→`/`enter` sol şeritten seçili bölüme girer, `←`/`esc` temizce bir adım geri döner (`tab` / `1-6` hızlı geçiş olarak kalır).
+- **Türkçe klavye uyumu (`F1 işlemler`):** Alt çubuktaki işlemler ipucu her ekranda `?` yerine tek tuş olan `F1` olarak gösterilir (`?` yedek kısayol olarak çalışmaya devam eder).
+
 ## [0.17.0]
 
 ### Eklenenler
