@@ -34,16 +34,17 @@
 5. [Hızlı Başlangıç](#hızlı-başlangıç)
 6. [Arayüz ve Ekranlar](#arayüz-ve-ekranlar)
 7. [Klavye Kısayolları](#klavye-kısayolları)
-8. [Altyazı Desteği (AniSub & Yerel Dosya)](#altyazı-desteği-anisub--yerel-dosya)
-9. [Kaynaklar ve Yerel Çözücüler](#kaynaklar-ve-yerel-çözücüler)
-10. [MyAnimeList Entegrasyonu](#myanimelist-entegrasyonu)
-11. [İndirme ve Çevrimdışı Kullanım](#i̇ndirme-ve-çevrimdışı-kullanım)
-12. [Görünüm ve Temalar](#görünüm-ve-temalar)
-13. [Yapılandırma](#yapılandırma)
-14. [Sorun Giderme](#sorun-giderme)
-15. [Geliştirme](#geliştirme)
-16. [Teşekkürler](#teşekkürler)
-17. [Lisans ve Sorumluluk Reddi](#lisans-ve-sorumluluk-reddi)
+8. [mpv Kontrol Merkezi & Video Motoru](#mpv-kontrol-merkezi--video-motoru)
+9. [Altyazı Desteği (AniSub, mpv İçi OSD & Senkron Ayarı)](#altyazı-desteği-anisub-mpv-i̇çi-osd--senkron-ayarı)
+10. [Kaynaklar ve Yerel Çözücüler](#kaynaklar-ve-yerel-çözücüler)
+11. [MyAnimeList & AniList Entegrasyonu](#myanimelist--anilist-entegrasyonu)
+12. [İndirme ve Çevrimdışı Kullanım](#i̇ndirme-ve-çevrimdışı-kullanım)
+13. [Görünüm ve Temalar](#görünüm-ve-temalar)
+14. [Yapılandırma](#yapılandırma)
+15. [Sorun Giderme](#sorun-giderme)
+16. [Geliştirme](#geliştirme)
+17. [Teşekkürler](#teşekkürler)
+18. [Lisans ve Sorumluluk Reddi](#lisans-ve-sorumluluk-reddi)
 
 </details>
 
@@ -51,9 +52,9 @@
 
 ## Proje Hakkında
 
-**aniclitr**; canlı kaynaklarda anime arama, çeviri grubu (fansub) seçimi, `mpv` ile oynatma, topluluk altyazı yükleme, toplu/aralıklı indirme, karakter kadrosu inceleme ve MyAnimeList eşitlemeyi tek bir hafif Go terminal uygulamasında birleştirir.
+**aniclitr**; altı canlı anime kaynağında ve Nyaa.si'nin tüm 5 torrent sekmesinde birleşik akıllı arama, gömülü BitTorrent akışı ve otomatik klasörleme, çeviri grubu (fansub) seçimi, `mpv` içi **Tokyo Studio kontrol merkezi**, iki bağımsız açık kaynak (MIT) video motoru (**AMD FidelityFX FSR 1.0** gerçek çözünürlük ölçekleme + **Bloc97/Anime4K v4 CNN** kalite onarımı + **GPU Frame-Gen**), canlı AniSub altyazı/senkron, **Watch Party**, **Anime Özeti (Wrapped + PNG)**, **Tam Arayüz Discord Rich Presence** ve iki yönlü **MyAnimeList & AniList** eşitlemeyi tek bir hafif Go terminal uygulamasında birleştirir.
 
-Kalınan saniye, seri bazlı çözünürlük tercihi, çok sezonlu seri hizalaması ve açılış/bitiş (OP/ED) jenerik atlama otomatik yönetilir; oynatma sırasında terminal boşa çekilir ve işlemci kullanmaz.
+Kalınan saniye, seri bazlı çözünürlük tercihi, çok sezonlu seri hizalaması ve açılış/bitiş (OP/ED) jenerik atlama otomatik yönetilir; çift-hızlı 60/20/0 FPS motoru sayesinde oynatma sırasında terminal boşa çekilir ve işlemci kullanmaz.
 
 > **English summary.** `aniclitr` v1.3 is an open-source (GPL-3.0), keyboard-driven Go terminal anime player built for Turkish-subtitled content. Powered by a zero-flicker 60/20/0 FPS adaptive cell renderer (zero mouse-motion repaints, `<1 ms` TrueColor frame compose), it searches six live sources in parallel plus all 5 Nyaa.si tabs with unified smart title-relevance ranking and embedded pure-Go BitTorrent streaming, plays via `mpv` with a **Tokyo Studio in-mpv control console (`m` / `Tab`)**, two independent MIT open-source video pipelines (**AMD FidelityFX FSR 1.0** real `1080p / 2K / 4K` resolution upscaling + **Bloc97/Anime4K v4 CNN** smooth restoration & **mpv GPU Frame-Gen**), **zero-wait next-episode pre-fetching**, **Watch Party** LAN/TCP sync, **Sleep Timer** (`Alt+s`), full-app **Discord Rich Presence** (live browsing + pause/seek sync), in-mpv **AniSub** OSD subtitles (`y`) & sync fine-tuning (`z`/`x`), OP/ED skip, animated **Anime Wrapped** with zero-model Turkish persona commentary & shareable PNG card (`aniclitr ozet --png`), **Keşfet Mood Wizard**, one-key auto tool installer (`aniclitr kur`), auto-organized offline downloads, Sixel/half-block Nova UI, and two-way MyAnimeList & AniList OAuth sync.
 
@@ -276,11 +277,26 @@ Arayüz öngörülebilir katmanlarla ilerler: **menü → liste → öğe → ey
 
 ---
 
+## mpv Kontrol Merkezi & Video Motoru
+
+Video izlerken doğrudan `mpv` penceresinde **`m`**, **`Tab`** veya **`Alt+4`** tuşuna basıldığında Alt-Tab yapmadan iki katmanlı **Tokyo Studio Kontrol Merkezi** açılır (`↑↓` gez · `Enter`/`→` alt menü aç · `←→` anlık ayarla · `Esc`/`Backspace` üst menüye dön):
+
+1. **Çözünürlük Yükseltme (AI'sız · AMD FidelityFX FSR v1.0.2, MIT):**
+   - `Otomatik (monitör)`, `1080p (1920×1080)`, `2K (2560×1440)` ve `4K (3840×2160)` gerçek GPU hedef ölçeklemesi — videoyu monitörünüzün doğal çözünürlüğüne piksel piksel yapmadan uyarlar.
+2. **Kalite İyileştirme (Resmi Bloc97/Anime4K v4.0.1 CNN, MIT) & Akıcılık / Frame-Gen:**
+   - **Kalite:** `Hızlı (CNN-S · iGPU dostu)`, `Cam Gibi (CNN-Soft-M · 480p/720p'de pürüzsüz berraklık)` ve `Sinema (Çift CNN)`.
+   - **Akıcılık (Frame-Gen):** `Akıcı (Smooth Motion · display-resample + oversample)` ve `60+ FPS (Catmull-Rom)` zamansal ara kare üretimi.
+   - Tüm profiller sıfır-kopya (`--hwdec=auto-safe`) çalışır ve `mpv` yeniden başlatılmadan canlı değiştirilebilir.
+
+<p align="right">(<a href="#readme-top">başa dön ↑</a>)</p>
+
+---
+
 ## Altyazı Desteği (AniSub, mpv İçi OSD & Senkron Ayarı)
 
-Oynatma sırasında **doğrudan `mpv` penceresindeyken** (veya terminalde) `y` tuşuna basıldığında oynatmayı kesmeden altyazı seçici açılır:
+Oynatma sırasında **doğrudan `mpv` penceresindeyken** `y` (veya `m` → `Altyazı & Senkron`) tuşuna basıldığında oynatmayı kesmeden altyazı seçici açılır:
 
-- **`mpv` içi OSD menüsü (Alt-Tab yok):** `y` tuşu videonun üzerinde şeffaf bir ASS menüsü açar; `↑`/`↓` veya `1`–`8` ve `Enter` ile altyazı seçilip anında yüklenir, `Esc` menüyü kapatır.
+- **`mpv` içi OSD menüsü (Alt-Tab yok):** `y` tuşu videonun üzerinde yüksek kontrastlı opak Tokyo Studio altyazı kartı açar; `↑`/`↓` veya `1`–`8` ve `Enter` ile altyazı seçilip anında yüklenir, `Esc` menüden açıldıysa üst menüye döner, yoksa kapatır.
 - **[AniSub](https://anisub.co/) (varsayılan, anahtarsız):** Topluluk tabanlı açık Türkçe anime altyazı arşivi otomatik taranır. Tek bölüm (`.ass`/`.srt`/`.vtt`) veya sezon paketi (`.zip`) içinden o an izlediğiniz bölüme karşılık gelen altyazı otomatik ayıklanıp `mpv`'ye eklenir.
 - **Senkron ince ayarı (fine-tuning):** Kaymış altyazıları hem `mpv` penceresinde hem terminalde `z` / `x` (`±0,1 sn`), `Shift+Z` / `Shift+X` (`±0,5 sn`) ve `Alt+0` / `0` (sıfırla) tuşlarıyla anlık hizalayabilirsiniz.
 - **Yerel altyazı (`l`):** Terminal altyazı kartındayken `l` tuşuna basıp bilgisayarınızdaki herhangi bir `.ass`, `.srt`, `.ssa` veya `.vtt` dosyasının yolunu yapıştırarak anında yükleyebilirsiniz.
