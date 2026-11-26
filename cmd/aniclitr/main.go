@@ -38,7 +38,7 @@ import (
 
 // version is bumped on release; CI release builds also stamp it
 // from the git tag (-ldflags "-X main.version=…").
-var version = "1.2.0"
+var version = "1.2.1"
 
 func main() {
 	var initialURL string

@@ -12,12 +12,21 @@ import (
 	"aniclitr/internal/download"
 	"aniclitr/internal/mal"
 	"aniclitr/internal/nyaa"
+	"aniclitr/internal/source"
+	"aniclitr/internal/tstream"
 )
 
 type nyaaMsg struct {
 	id    int
 	items []nyaa.Item
 	err   error
+}
+
+type torrentOpenMsg struct {
+	id   int
+	item nyaa.Item
+	sess *tstream.Session
+	err  error
 }
 
 type torrentTab struct {
@@ -42,7 +51,7 @@ var torrentReqID int
 
 type torrentScreen struct {
 	in       input
-	focus    int // 0 search box, 1 list
+	focus    int // 0 search box, 1 results list, 2 embedded file picker
 	tab      int
 	sortMode nyaa.SortMode
 	qualIdx  int
@@ -56,15 +65,21 @@ type torrentScreen struct {
 	off      int
 	gl       glide
 	queried  string
-	hasAria2 bool
-	hasWT    bool
+
+	// Embedded BitTorrent streaming session & batch file picker
+	openReqID int
+	opening   bool
+	openItem  nyaa.Item
+	sess      *tstream.Session
+	files     []tstream.VideoFile
+	fCur      int
+	fOff      int
+	fGl       glide
 }
 
 func newTorrentScreen(initial string) *torrentScreen {
 	s := &torrentScreen{
-		in:       input{placeholder: "Nyaa.si'de ara (örn: frieren 1080p, one piece raw, dandadan batch)…"},
-		hasAria2: nyaa.HasAria2(),
-		hasWT:    nyaa.HasWebTorrent(),
+		in: input{placeholder: "Nyaa.si'de ara (örn: another, frieren 1080p, one piece raw)…"},
 	}
 	if q := strings.TrimSpace(initial); q != "" {
 		s.in.Set(q)
@@ -73,23 +88,45 @@ func newTorrentScreen(initial string) *torrentScreen {
 	return s
 }
 
+func (s *torrentScreen) closeStream() {
+	if s.sess != nil {
+		s.sess.Close()
+		s.sess = nil
+	}
+	s.files = nil
+	s.opening = false
+	s.fCur, s.fOff = 0, 0
+}
+
 func (s *torrentScreen) crumb() string {
+	if s.focus == 2 {
+		return "torrent › dosyalar"
+	}
 	return "torrent › " + strings.ToLower(torrentTabs[s.tab].label)
 }
 
 func (s *torrentScreen) typing() bool { return s.focus == 0 }
 
 func (s *torrentScreen) animating(a *App) bool {
-	return a.top() == screen(s) && s.busy
+	return a.top() == screen(s) && (s.busy || s.opening)
 }
 
 func (s *torrentScreen) hints() []hint {
 	if s.focus == 0 {
 		return []hint{{"enter", "ara"}, {"↓", "sonuçlar"}, {"esc", "geri"}}
 	}
+	if s.focus == 2 {
+		return []hint{
+			{"enter", "anlık izle (mpv)"},
+			{"d", "seçili bölümü indir"},
+			{"D", "tüm paketi indir"},
+			{"↑↓", "dosya seç"},
+			{"esc", "listeye dön"},
+		}
+	}
 	return []hint{
-		{"d", "aria2c indir"},
-		{"enter", "magnet / izle"},
+		{"enter", "anlık izle / dosyalar"},
+		{"d", "indir (ctrl+d)"},
 		{"c", "magnet kopyala"},
 		{"1-5", "kategori (4: Raw)"},
 		{"o", "sırala"},
@@ -112,6 +149,7 @@ func (s *torrentScreen) search(a *App, q string) tea.Cmd {
 	if q == "" {
 		return nil
 	}
+	s.closeStream()
 	torrentReqID++
 	s.reqID = torrentReqID
 	s.busy = true
@@ -128,6 +166,87 @@ func (s *torrentScreen) search(a *App, q string) tea.Cmd {
 		items, err := nyaa.Search(ctx, q, t.cat, flt)
 		return nyaaMsg{id: id, items: items, err: err}
 	}))
+}
+
+func (s *torrentScreen) openTorrent(a *App, it nyaa.Item) tea.Cmd {
+	s.closeStream()
+	s.openReqID++
+	id := s.openReqID
+	s.opening = true
+	s.openItem = it
+	a.notify("torrent dosya listesi alınıyor…", "")
+	return tea.Batch(a.tick(), run(35*time.Second, func(ctx context.Context) tea.Msg {
+		sess, err := tstream.Open(ctx, it.Torrent, it.Magnet)
+		return torrentOpenMsg{id: id, item: it, sess: sess, err: err}
+	}))
+}
+
+func (s *torrentScreen) streamFile(a *App, idx int) tea.Cmd {
+	if s.sess == nil || idx < 0 || idx >= len(s.files) {
+		return nil
+	}
+	u, vf, err := s.sess.ServeFile(idx)
+	if err != nil {
+		a.notify("akış başlatılamadı: "+err.Error(), "err")
+		return a.tick()
+	}
+	parsed := download.ParseRelease(vf.Name)
+	title := parsed.Series
+	if title == "" || title == "anime" {
+		title = download.ParseRelease(s.openItem.Title).Series
+	}
+	if title == "" {
+		title = s.openItem.Title
+	}
+	an := source.Anime{
+		Source: "nyaa",
+		ID:     s.openItem.InfoHash,
+		Title:  title,
+	}
+	if parsed.IsMovie {
+		an.Kind = "Film"
+	}
+	epNum := max(1, vf.Episode)
+	ep := source.Episode{
+		ID:     vf.RelPath,
+		Season: max(1, vf.Season),
+		Number: epNum,
+		Title:  vf.Name,
+	}
+	qual := s.openItem.Resolution
+	if qual == "" {
+		qual = parsed.Resolution
+	}
+	if qual == "" {
+		qual = "Torrent"
+	}
+	st := &source.Stream{
+		Qualities: []source.Quality{{Label: qual, URL: u}},
+	}
+	fansub := s.openItem.Group
+	if fansub == "" {
+		fansub = "Nyaa.si"
+	}
+	pl := newPlaying(an, ep, []source.Episode{ep}, fansub, "Gömülü Torrent", st, st.Qualities[0])
+	a.notify("▶ gömülü torrent akışı mpv'de başlatılıyor…", "ok")
+	return tea.Batch(a.push(pl), pl.start(a))
+}
+
+func (s *torrentScreen) queueTorrentDownload(a *App, it nyaa.Item, filePath string) tea.Cmd {
+	req := download.TorrentRequest{
+		Title:      it.Title,
+		TorrentURL: it.Torrent,
+		Magnet:     it.Magnet,
+		FilePath:   filePath,
+		Group:      it.Group,
+		Resolution: it.Resolution,
+		Size:       it.SizeBytes,
+		LibTitles:  a.libTitles(),
+	}
+	job, _ := a.dl.AddTorrent(req)
+	a.flash()
+	a.notify(fmt.Sprintf("↓ İndirilenler kuyruğuna eklendi → %s (ctrl+d)", job.Title), "ok")
+	return a.tick()
 }
 
 func (s *torrentScreen) applyLocal() {
@@ -166,6 +285,29 @@ func (s *torrentScreen) update(a *App, msg tea.Msg) tea.Cmd {
 			s.focus = 1
 		}
 		return nil
+	case torrentOpenMsg:
+		if m.id != s.openReqID {
+			if m.sess != nil {
+				m.sess.Close()
+			}
+			return nil
+		}
+		s.opening = false
+		if m.err != nil {
+			a.notify("torrent açılamadı: "+m.err.Error(), "err")
+			return a.tick()
+		}
+		s.sess = m.sess
+		s.files = m.sess.Files()
+		s.fCur, s.fOff = 0, 0
+		if len(s.files) == 1 {
+			// Single video file: stream immediately into mpv!
+			s.focus = 2
+			return s.streamFile(a, 0)
+		}
+		s.focus = 2
+		a.notify(fmt.Sprintf("✓ %d video dosyası hazır — enter ile anlık izle", len(s.files)), "ok")
+		return a.tick()
 	case tea.KeyMsg:
 		if s.focus == 0 {
 			switch m.Type {
@@ -174,6 +316,7 @@ func (s *torrentScreen) update(a *App, msg tea.Msg) tea.Cmd {
 					s.focus = 1
 					return nil
 				}
+				s.closeStream()
 				a.pop()
 				return nil
 			case tea.KeyDown:
@@ -188,8 +331,40 @@ func (s *torrentScreen) update(a *App, msg tea.Msg) tea.Cmd {
 			return nil
 		}
 
+		// Embedded torrent file picker mode
+		if s.focus == 2 {
+			switch m.String() {
+			case "esc", "backspace", "left", "h":
+				s.closeStream()
+				s.focus = 1
+				return a.tick()
+			case "up", "k":
+				s.fCur = max(0, s.fCur-1)
+			case "down", "j":
+				if len(s.files) > 0 {
+					s.fCur = clamp(s.fCur+1, 0, len(s.files)-1)
+				}
+			case "pgup":
+				s.fCur = max(0, s.fCur-8)
+			case "pgdown":
+				if len(s.files) > 0 {
+					s.fCur = clamp(s.fCur+8, 0, len(s.files)-1)
+				}
+			case "enter", " ":
+				return s.streamFile(a, s.fCur)
+			case "d":
+				if s.fCur < len(s.files) {
+					return s.queueTorrentDownload(a, s.openItem, s.files[s.fCur].RelPath)
+				}
+			case "D":
+				return s.queueTorrentDownload(a, s.openItem, "")
+			}
+			return nil
+		}
+
 		switch m.String() {
 		case "esc":
+			s.closeStream()
 			a.pop()
 		case "/":
 			s.focus = 0
@@ -261,44 +436,11 @@ func (s *torrentScreen) update(a *App, msg tea.Msg) tea.Cmd {
 			}
 		case "d":
 			if s.cur < len(s.items) {
-				it := s.items[s.cur]
-				target := it.Magnet
-				if target == "" {
-					target = it.Torrent
-				}
-				dir := a.cfg.DownloadDir
-				if dir == "" {
-					dir = download.DefaultDir()
-				}
-				if err := nyaa.StartAria2(dir, target); err != nil {
-					a.notify(err.Error(), "err")
-				} else {
-					a.notify("aria2c torrent indirmesi başladı → "+dir, "ok")
-					a.flash()
-				}
-				return a.tick()
+				return s.queueTorrentDownload(a, s.items[s.cur], "")
 			}
 		case "enter":
-			if s.cur < len(s.items) {
-				it := s.items[s.cur]
-				if it.Magnet == "" {
-					if it.PageURL != "" {
-						_ = mal.OpenBrowser(it.PageURL)
-					}
-					return nil
-				}
-				if s.hasWT {
-					if err := nyaa.StreamWebTorrent(it.Magnet); err == nil {
-						a.notify("webtorrent + mpv akışı başlatılıyor…", "ok")
-						return a.tick()
-					}
-				}
-				if err := mal.OpenBrowser(it.Magnet); err != nil {
-					a.notify("magnet açılamadı: "+err.Error(), "err")
-				} else {
-					a.notify("magnet sistem torrent istemcisinde açıldı", "ok")
-				}
-				return a.tick()
+			if s.cur < len(s.items) && !s.opening {
+				return s.openTorrent(a, s.items[s.cur])
 			}
 		case "w":
 			if s.cur < len(s.items) && s.items[s.cur].PageURL != "" {
@@ -316,42 +458,49 @@ func (s *torrentScreen) view(a *App, w, h int) string {
 	inner := max(48, w-pad*2)
 	activeTab := torrentTabs[s.tab]
 
-	// Top Nova studio header strip (matches Keşfet).
 	leftHead := gradient("Torrent · Nyaa.si", brand, true) + "   " + pill(activeTab.short, activeTab.accent)
-	if s.noRemake {
+	if s.focus == 2 {
+		leftHead = gradient("Torrent · Dosya Seçici", brand, true) + "   " + pill("GÖMÜLÜ AKIŞ", cOK)
+	} else if s.noRemake {
 		leftHead += " " + fg(cSub).Background(colorOf(cSurface)).Render(" remake hariç ")
 	}
 	rightHead := keycap("o") + " " + stSub.Render(s.sortMode.Label()) + "   " +
 		keycap("q") + " " + stSub.Render(torrentQualFilters[s.qualIdx])
+	if s.focus == 2 {
+		rightHead = keycap("enter") + " " + stSub.Render("anlık izle") + "   " + keycap("d") + " " + stSub.Render("indir") + "   " + keycap("esc") + " " + stMuted.Render("listeye dön")
+	}
 	gap := max(2, inner-lipgloss.Width(leftHead)-lipgloss.Width(rightHead))
 	headLine := fit(leftHead+strings.Repeat(" ", gap)+rightHead, inner)
 
-	// Search input + 5 category tabs (including 4 Raw (Ham)!).
 	var top []string
 	top = append(top, headLine)
-	top = append(top, s.in.view(inner, s.focus == 0, a.frame)...)
-	var tabs []string
-	for i, t := range torrentTabs {
-		lbl := fmt.Sprintf("%d %s", i+1, t.label)
-		if i == s.tab {
-			tabs = append(tabs, pill(lbl, t.accent))
-		} else {
-			tabs = append(tabs, fg(cMuted).Background(colorOf(cSurface)).Render(" "+lbl+" "))
+	if s.focus == 2 {
+		top = append(top, stSub.Render(truncate(s.openItem.Title, inner)))
+	} else {
+		top = append(top, s.in.view(inner, s.focus == 0, a.frame)...)
+		var tabs []string
+		for i, t := range torrentTabs {
+			lbl := fmt.Sprintf("%d %s", i+1, t.label)
+			if i == s.tab {
+				tabs = append(tabs, pill(lbl, t.accent))
+			} else {
+				tabs = append(tabs, fg(cMuted).Background(colorOf(cSurface)).Render(" "+lbl+" "))
+			}
 		}
+		top = append(top, truncate(strings.Join(tabs, " "), inner))
 	}
-	top = append(top, truncate(strings.Join(tabs, " "), inner))
 
 	bodyH := max(6, h-len(top)-1)
 	var body []string
-	if inner >= 102 {
-		// Wide 2-column Nova studio layout: results list + right showcase detail card.
+	if s.focus == 2 {
+		body = s.renderFilePickerPane(a, inner, bodyH)
+	} else if inner >= 102 {
 		detW := clamp(inner*34/100, 34, 46)
 		listW := inner - detW - 2
 		leftPane := s.renderListPane(a, listW, bodyH, activeTab.accent)
-		rightPane := s.renderDetailPane(detW, bodyH, activeTab.accent)
+		rightPane := s.renderDetailPane(a, detW, bodyH, activeTab.accent)
 		body = hjoin(2, leftPane, rightPane)
 	} else {
-		// Compact terminal: full-width list panel.
 		body = s.renderListPane(a, inner, bodyH, activeTab.accent)
 	}
 
@@ -366,11 +515,69 @@ func (s *torrentScreen) view(a *App, w, h int) string {
 	return strings.Join(block(out, w, h), "\n")
 }
 
+func (s *torrentScreen) renderFilePickerPane(a *App, w, h int) []string {
+	innerW := max(20, w-4)
+	listH := max(3, h-2)
+	tag := fmt.Sprintf("%d video", len(s.files))
+	if s.sess != nil {
+		if st := s.sess.Stats(); st.Peers > 0 {
+			tag += fmt.Sprintf(" · %d eş", st.Peers)
+		}
+	}
+
+	var rows []string
+	if len(s.files) == 0 {
+		rows = append(rows, "", stMuted.Render("Oynatılabilir video dosyası yok."))
+	} else {
+		s.fCur = clamp(s.fCur, 0, len(s.files)-1)
+		s.fOff = scroll(s.fCur, s.fOff, listH, len(s.files))
+		band := s.fGl.row(a, s.fCur)
+		for i := s.fOff; i < len(s.files) && len(rows) < listH; i++ {
+			f := s.files[i]
+			sel := i == band
+			bg, bar := "", sp("  ", cText)
+			if sel {
+				bg, bar = cBand, sp("▌ ", cOK)
+			}
+			left := []span{bar, sp(fmt.Sprintf("%2d  ", i+1), cMuted)}
+			if f.Episode > 0 {
+				left = append(left, spb(fmt.Sprintf("S%02dE%02d ", max(1, f.Season), f.Episode), cAccent))
+			}
+			left = append(left, span{t: f.Name, c: cText, bold: sel})
+			right := []span{sp(fmtTorrentBytes(f.Size)+" ", cSub)}
+			rows = append(rows, row(innerW-1, bg, left, right))
+		}
+		rows = hjoin(0, block(rows, innerW-1, listH), scrollbar(listH, s.fOff, len(s.files)))
+	}
+	return panel("torrent dosyaları · seç ve anlık izle", rows, w, h, true, cOK, tag)
+}
+
+func fmtTorrentBytes(b int64) string {
+	const (
+		kib = 1024.0
+		mib = kib * 1024
+		gib = mib * 1024
+	)
+	f := float64(b)
+	switch {
+	case f >= gib:
+		return fmt.Sprintf("%.2f GiB", f/gib)
+	case f >= mib:
+		return fmt.Sprintf("%.1f MiB", f/mib)
+	case f >= kib:
+		return fmt.Sprintf("%.0f KiB", f/kib)
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
+}
+
 func (s *torrentScreen) renderListPane(a *App, w, h int, acc string) []string {
 	innerW := max(20, w-4)
 	listH := max(3, h-2)
 	tag := ""
-	if s.queried != "" && !s.busy {
+	if s.opening {
+		tag = spinner(a.frame/2) + " açılıyor…"
+	} else if s.queried != "" && !s.busy {
 		if len(s.items) != len(s.rawItems) {
 			tag = fmt.Sprintf("%d / %d sonuç", len(s.items), len(s.rawItems))
 		} else {
@@ -394,14 +601,14 @@ func (s *torrentScreen) renderListPane(a *App, w, h int, acc string) []string {
 		)
 	case s.queried == "":
 		rows = append(rows, "",
-			stText.Bold(true).Render("Nyaa.si Anime Torrent Araması"),
+			stText.Bold(true).Render("Nyaa.si Gömülü Torrent Akışı & İndirme"),
 			stSub.Render("Yukarıdaki kutuya anime adını yazıp Enter'a bas."),
 			"",
 			stMuted.Render("Kategoriler:"),
 			"  "+keycap("1")+" "+stSub.Render("Tümü")+"   "+keycap("2")+" "+fg(cSky).Render("Türkçe / Diğer")+"   "+keycap("3")+" "+stSub.Render("İngilizce"),
 			"  "+keycap("4")+" "+fg(cWarn).Bold(true).Render("Raw (Ham Japonca)")+"   "+keycap("5")+" "+fg(cOK).Render("Güvenilir"),
 			"",
-			stMuted.Render("Örnek aramalar: frieren 1080p · one piece raw · dandadan batch"),
+			stMuted.Render("Enter: harici istemci olmadan anlık mpv akışı  ·  d: düzenli indir (ctrl+d)"),
 		)
 	case len(s.items) == 0:
 		rows = append(rows, "", stMuted.Render("Bu filtrede sonuç yok."))
@@ -457,17 +664,17 @@ func (s *torrentScreen) renderListPane(a *App, w, h int, acc string) []string {
 	return panel("torrentler", rows, w, h, s.focus == 1, acc, tag)
 }
 
-func (s *torrentScreen) renderDetailPane(w, h int, acc string) []string {
+func (s *torrentScreen) renderDetailPane(a *App, w, h int, acc string) []string {
 	innerW := max(20, w-4)
 	bodyH := max(3, h-2)
 
 	if len(s.items) == 0 || s.cur >= len(s.items) {
 		empty := []string{
 			"",
-			center(stText.Bold(true).Render("Ayrıntı & İndirme"), innerW),
+			center(stText.Bold(true).Render("Ayrıntı & Anlık Akış"), innerW),
 			center(stMuted.Render("Bir torrent seçildiğinde"), innerW),
 			center(stMuted.Render("grup, çözünürlük, seed sağlığı"), innerW),
-			center(stMuted.Render("ve indirme araçları burada görünür."), innerW),
+			center(stMuted.Render("ve gömülü mpv akışı burada görünür."), innerW),
 		}
 		return panel("ayrıntı", block(empty, innerW, bodyH), w, h, false, cFaint, "")
 	}
@@ -476,7 +683,6 @@ func (s *torrentScreen) renderDetailPane(w, h int, acc string) []string {
 	tag := it.Group
 	var out []string
 
-	// Full unwrapped release title.
 	for i, l := range wrap(it.Title, innerW) {
 		if i == 0 {
 			out = append(out, gradient(l, []string{acc, cAccent2}, true))
@@ -486,7 +692,6 @@ func (s *torrentScreen) renderDetailPane(w, h int, acc string) []string {
 	}
 	out = append(out, "")
 
-	// Metadata chips.
 	var chips []string
 	if it.Raw {
 		chips = append(chips, pill("RAW · HAM", cWarn))
@@ -510,7 +715,6 @@ func (s *torrentScreen) renderDetailPane(w, h int, acc string) []string {
 		out = append(out, "")
 	}
 
-	// Health & stats block.
 	sc := cOK
 	healthText := "sağlıklı"
 	if it.Seeders == 0 {
@@ -542,22 +746,18 @@ func (s *torrentScreen) renderDetailPane(w, h int, acc string) []string {
 	if !it.Published.IsZero() {
 		out = append(out, kv("Tarih", agoLong(it.Published)+" ("+it.Published.Local().Format("02.01.2006")+")"))
 	}
-	if it.InfoHash != "" {
-		out = append(out, kv("Hash", it.InfoHash[:min(16, len(it.InfoHash))]+"…"))
-	}
 
-	// Actions strip at bottom of detail card.
 	out = append(out, "", stFaint.Render(strings.Repeat("─", innerW)))
-	ariaStatus := stErr.Render("○ yok")
-	if s.hasAria2 {
-		ariaStatus = stOK.Render("● hazır")
+	if s.opening {
+		out = append(out, fg(cOK).Bold(true).Render(spinner(a.frame/2)+" Dosya listesi hazırlanıyor…"))
+	} else {
+		out = append(out,
+			keycap("enter")+" "+fg(cOK).Bold(true).Render("anlık izle (gömülü mpv)"),
+			keycap("d")+" "+stText.Bold(true).Render("indir → ctrl+d (oto klasörle)"),
+			keycap("c")+" "+stSub.Render("magnet bağlantısını kopyala"),
+			keycap("w")+" "+stMuted.Render("nyaa.si sayfasını aç"),
+		)
 	}
-	out = append(out,
-		keycap("d")+" "+stText.Bold(true).Render("aria2c ile indir")+"  "+ariaStatus,
-		keycap("enter")+" "+stSub.Render(map[bool]string{true: "webtorrent + mpv izle", false: "magnet istemcide aç"}[s.hasWT]),
-		keycap("c")+" "+stSub.Render("magnet bağlantısını kopyala"),
-		keycap("w")+" "+stMuted.Render("nyaa.si sayfasını aç"),
-	)
 
 	return panel("ayrıntı", block(out, innerW, bodyH), w, h, false, acc, tag)
 }

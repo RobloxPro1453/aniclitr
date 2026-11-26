@@ -56,6 +56,7 @@ internal/
   nyaa/                   public Nyaa.si RSS torrent search, relevance ranking, magnet builder, aria2c/webtorrent launchers
   shaders/                embedded optimized Anime4K GLSL shaders (4 profiles, live Alt+4 mpv switching)
   tools/                  managed portable tools dir & auto-installer (mpv, yt-dlp, aria2c, ffmpeg)
+  tstream/                embedded pure-Go BitTorrent streamer (anacrolix/torrent + local HTTP Range -> mpv)
   watchparty/             zero-dependency LAN/TCP Watch Together playback sync room
   wrapped/                deterministic Turkish Wrapped persona/narrative engine & pure-Go 900x1200 PNG card exporter
   logx/                   rotating log at %APPDATA%\aniclitr\aniclitr.log, Panic() with stack

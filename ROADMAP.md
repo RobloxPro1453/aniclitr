@@ -14,8 +14,10 @@ Bu belge `aniclitr`'in tamamlanan temel kilometre taşlarını ve `v1.0.0` sonra
 - **Hızlı CLI & taşınabilirlik:** `devam`, `ara`, `izle`, `indir`, `torrent`, tek dosya güvenli `yedekle`/`geri-yukle`, `keys.json` özel kısayollar ve ekran geçmişi (`alt+←`/`alt+→`).
 - **Ekosistem:** Discord Rich Presence (sıfır bağımlılık yerel IPC), işletim sistemi masaüstü bildirimleri, kaynak OP/ED zamanları, HiAnime `filler` rozeti ve otomatik atlama.
 
-## v1.2.0 ile Tamamlananlar
+## v1.2.0 – v1.2.1 ile Tamamlananlar
 
+- **Gömülü BitTorrent akışı & otomatik klasörleme:** Harici magnet istemcisi olmadan torrent içinden bölüm seçip `mpv` ile anlık izleme, `ctrl+d` kuyruğunda canlı takip ve ham torrent dosyalarını otomatik `<Seri Adı>/SxxEyy [Grup] [Kalite].mkv` klasörleme.
+- **Discord Rich Presence sıfır-ayar düzeltmesi:** Windows `winio` named pipe ve kayıtlı genel App ID ile doğrudan çalışma.
 - **Anime4K GPU görüntü iyileştirme:** 4 profilli gömülü GLSL shader motoru + `mpv` içinde `Alt+4` canlı geçiş.
 - **Canlı animasyonlu Anime Özeti (Wrapped):** 6 slaytlık hikâye, sıfır-model Türkçe kişilik/yorum motoru ve `900×1200` paylaşılabilir PNG kart (`aniclitr ozet --png`).
 - **Birlikte İzle (Watch Party) & Uyku Zamanlayıcısı:** Sıfır bağımlılık TCP oda eşitleme (`P` / `ctrl+k`) ve bölüm/süre/PC uyutma zamanlayıcısı (`Alt+s` / `T`).
@@ -24,5 +26,4 @@ Bu belge `aniclitr`'in tamamlanan temel kilometre taşlarını ve `v1.0.0` sonra
 
 ## Sonraki Sürümler için Değerlendirilenler
 
-- **Gömülü torrent akışı:** İndirmeye gerek kalmadan torrent içindeki video dosyasını seçip doğrudan `mpv` ile oynatma ve düzenli seri klasörlemesi.
 - **Ek açık kaynak sağlayıcıları:** Bot koruması ve Cloudflare engeli olmayan açık API/HTML sunan yeni Türkçe kaynaklar.

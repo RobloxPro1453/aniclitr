@@ -2,6 +2,16 @@
 
 Bu projedeki önemli değişiklikler bu dosyada belgelenir. Sürüm numaraları [Anlamsal Sürümleme](https://semver.org/lang/tr/) kurallarını izler. Uygulama içindeki "Yenilikler" kartı aynı bilgiyi özet olarak gösterir. 0.11.0 öncesindeki sürümler GitHub üzerinden yayımlanmamıştır.
 
+## [1.2.1]
+
+### Eklenenler
+- **Gömülü BitTorrent akışı & dosya seçici (`internal/tstream`, `torrentui.go`):** Harici torrent istemcisine veya Windows `magnet:` uyarısına gerek kalmadan `enter` ile torrentin video listesi açılır; seçilen tek bölüm yerel HTTP Range üzerinden indirmeyi beklemeden doğrudan `mpv` ile anlık izlenir.
+- **İndirilenler kuyruğuna bağlı torrent indirme (`internal/download/torrent.go`):** Torrent ekranında `d` (seçili bölüm veya torrent) ve `D` (tüm paket) artık kör arka plan `aria2c` yerine doğrudan `ctrl+d` **İndirilenler** kuyruğuna ve üst çubuktaki canlı hız/yüzde dalgasına bağlanır.
+- **Akıllı torrent sınıflandırıcı & otomatik klasörleme (`internal/download/organizer.go`):** Sıfır modelle çalışan ayrıştırıcı, ham torrent dosyalarını (`ReZero.kara...S04E18.1080p.WEB-DL.mkv`) mevcut klasörlerin ve kitaplığınla eşleştirip `<Seri Adı>/S04E18 [Grup] [1080p].mkv` biçiminde klasörler, `.mkv` dosyalarını `ctrl+d` çevrimdışı kitaplığına bağlar ve kök dizinde kalmış eski dağınık torrent videolarını açılışta otomatik düzenler.
+
+### Düzeltilenler
+- **Discord Rich Presence sıfır-ayar düzeltmesi (`internal/discord`):** Windows named pipe bağlantısı `go-winio` (`winio.DialPipe`) üzerine taşındı, geçersiz yer tutucu App ID yerine kayıtlı genel App ID tanımlandı, el sıkışma/hata yanıtı doğrulaması ve `aniclitr.log` kaydı eklendi — ekstra Discord ayarı gerekmeden doğrudan çalışır.
+
 ## [1.2.0]
 
 ### Eklenenler

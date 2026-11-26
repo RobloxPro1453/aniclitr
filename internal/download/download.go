@@ -33,6 +33,7 @@ import (
 	"aniclitr/internal/logx"
 	"aniclitr/internal/netx"
 	"aniclitr/internal/source"
+	"aniclitr/internal/tools"
 )
 
 // Job states.
@@ -83,6 +84,7 @@ type Job struct {
 	variant    *source.Variant
 	stream     *source.Stream
 	quality    *source.Quality
+	torrentReq *TorrentRequest
 	cancel     context.CancelFunc
 }
 
@@ -156,7 +158,7 @@ func Open(dir string) *Manager {
 	return m
 }
 
-var reDiskFile = regexp.MustCompile(`(?i)^(?:S(\d+)E(\d+(?:\.\d+)?)|(Film))(?:\s*\[([^\]]+)\])?(?:\s*\[([^\]]+)\])?\.mp4$`)
+var reDiskFile = regexp.MustCompile(`(?i)^(?:S(\d+)E(\d+(?:\.\d+)?)|(Film))(?:\s*\[([^\]]+)\])?(?:\s*\[([^\]]+)\])?\.(?:mp4|mkv|webm|avi)$`)
 
 // ScanDisk discovers downloaded .mp4 files in m.dir that were orphaned when
 // the queue was cleared, restoring them into the offline shelf.
@@ -178,7 +180,7 @@ func (m *Manager) ScanDisk() {
 	}
 	added := false
 	for _, sub := range entries {
-		if !sub.IsDir() {
+		if !sub.IsDir() || strings.HasPrefix(sub.Name(), ".") {
 			continue
 		}
 		subPath := filepath.Join(dir, sub.Name())
@@ -619,6 +621,9 @@ func (m *Manager) set(f func()) {
 }
 
 func (m *Manager) do(ctx context.Context, j *Job) error {
+	if j.torrentReq != nil {
+		return m.doTorrent(ctx, j, j.torrentReq)
+	}
 	st, q, err := m.resolve(ctx, j)
 	if err != nil {
 		return err
@@ -772,7 +777,7 @@ func have(bin string) bool {
 	if noTools {
 		return false
 	}
-	_, err := exec.LookPath(bin)
+	_, err := tools.LookPath(bin)
 	return err == nil
 }
 
@@ -865,6 +870,9 @@ func (m *Manager) ytdlp(ctx context.Context, j *Job, st *source.Stream, q source
 }
 
 func (m *Manager) runTool(ctx context.Context, j *Job, bin string, args []string, onLine func(string)) error {
+	if p, err := tools.LookPath(bin); err == nil {
+		bin = p
+	}
 	cmd := exec.CommandContext(ctx, bin, args...)
 	hideWindow(cmd)
 	out, err := cmd.StdoutPipe()

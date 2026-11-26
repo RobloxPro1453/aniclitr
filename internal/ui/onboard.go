@@ -15,6 +15,11 @@ var Version = "dev"
 
 // whatsNew: shown once after updating to that version. Keep it short.
 var whatsNew = map[string][]string{
+	"1.2.1": {
+		"Gömülü torrent akışı: Nyaa.si'de enter basınca harici magnet istemcisi gerekmeden torrent içindeki bölümler listelenir ve seçtiğin bölüm indirmeyi beklemeden doğrudan mpv'de oynar",
+		"Takip edilen torrent indirmeleri + otomatik klasörleme: torrentte d artık ctrl+d İndirilenler kuyruğunda canlı hızla görünür; inen .mkv/.mp4 dosyaları otomatik olarak doğru seri klasörüne (S04E18 [Grup] [1080p].mkv) yerleştirilir",
+		"Discord Rich Presence sıfır-ayar düzeltmesi: Windows named pipe (winio) ve kayıtlı App ID ile ekstra ayar yapmadan doğrudan çalışır",
+	},
 	"1.2.0": {
 		"Anime4K GPU görüntü iyileştirme: Ayarlar → Oynatma → Anime4K (kapalı/hafif/dengeli/yüksek) veya video izlerken mpv içinde Alt+4 ile canlı geçiş",
 		"Canlı animasyonlu Anime Özeti (Wrapped): aniclitr ozet (veya Kitaplık'ta W / ctrl+k) ile 6 slaytlık izleyici kişiliği, yorumlar ve tek tuşla 900×1200 PNG kart (aniclitr ozet --png)",

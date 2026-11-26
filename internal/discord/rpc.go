@@ -10,18 +10,24 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
+
+	"aniclitr/internal/logx"
 )
 
-// DefaultAppID is the Discord application ID used for Rich Presence.
-// Users can override it via ANICLITR_DISCORD_APP_ID.
-const DefaultAppID = "1312860542100734042"
+// DefaultAppID is a registered public Discord Application ID for mpv playback
+// so Rich Presence works out-of-the-box with zero user configuration.
+// Override via ANICLITR_DISCORD_APP_ID to use a custom Discord application.
+const DefaultAppID = "448016723057049601"
 
 const (
 	opHandshake = 0
 	opFrame     = 1
 	opClose     = 2
+	opPing      = 3
+	opPong      = 4
 )
 
 // Activity describes the currently playing anime shown in Discord.
@@ -39,15 +45,23 @@ type Client struct {
 	enabled bool
 	appID   string
 	conn    net.Conn
+	lastErr string
 }
 
 // New creates a Discord RPC client (does not connect until SetActivity is called).
 func New(enabled bool) *Client {
-	id := os.Getenv("ANICLITR_DISCORD_APP_ID")
+	id := strings.TrimSpace(os.Getenv("ANICLITR_DISCORD_APP_ID"))
 	if id == "" {
 		id = DefaultAppID
 	}
 	return &Client{enabled: enabled, appID: id}
+}
+
+// LastError returns the most recent IPC error (empty when connected cleanly).
+func (c *Client) LastError() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastErr
 }
 
 // SetEnabled toggles Discord Rich Presence; turning it off clears any active presence.
@@ -70,14 +84,32 @@ func (c *Client) SetActivity(act Activity) {
 			return
 		}
 		if err := c.ensureConnectedLocked(); err != nil {
+			c.lastErr = err.Error()
+			logx.Errorf("discord rpc bağlanamadı: %v", err)
 			return
 		}
 		payload := buildActivityFrame(os.Getpid(), act, fmt.Sprintf("aniclitr-%d", time.Now().UnixNano()))
 		if err := writePacket(c.conn, opFrame, payload); err != nil {
+			c.lastErr = err.Error()
+			logx.Errorf("discord rpc yazılamadı: %v", err)
 			c.closeLocked()
 			return
 		}
-		_, _, _ = readPacket(c.conn)
+		op, reply, err := readPacket(c.conn)
+		if err != nil {
+			c.lastErr = err.Error()
+			c.closeLocked()
+			return
+		}
+		if op == opClose || isDiscordError(reply) {
+			c.lastErr = strings.TrimSpace(string(reply))
+			logx.Errorf("discord rpc etkinlik reddedildi (op=%d): %s", op, c.lastErr)
+			if op == opClose {
+				c.closeLocked()
+			}
+			return
+		}
+		c.lastErr = ""
 	}()
 }
 
@@ -127,31 +159,64 @@ func (c *Client) ensureConnectedLocked() error {
 		_ = conn.Close()
 		return err
 	}
-	if _, _, err := readPacket(conn); err != nil {
+	op, reply, err := readPacket(conn)
+	if err != nil {
 		_ = conn.Close()
 		return err
+	}
+	if op == opClose || isDiscordError(reply) {
+		_ = conn.Close()
+		return fmt.Errorf("el sıkışma reddedildi (op=%d): %s", op, strings.TrimSpace(string(reply)))
 	}
 	c.conn = conn
 	return nil
 }
 
+func isDiscordError(payload []byte) bool {
+	var resp struct {
+		Evt  string `json:"evt"`
+		Code int    `json:"code"`
+	}
+	if json.Unmarshal(payload, &resp) != nil {
+		return false
+	}
+	return strings.EqualFold(resp.Evt, "ERROR") || resp.Code >= 4000
+}
+
+func clampDiscordStr(s string, minLen, maxLen int) string {
+	s = strings.TrimSpace(s)
+	rs := []rune(s)
+	if len(rs) > maxLen {
+		rs = append(rs[:maxLen-1], '…')
+	}
+	s = string(rs)
+	for len([]rune(s)) < minLen {
+		s += " "
+	}
+	return s
+}
+
 func buildActivityFrame(pid int, act Activity, nonce string) []byte {
+	details := clampDiscordStr(act.Details, 2, 128)
+	state := clampDiscordStr(act.State, 2, 128)
 	body := map[string]any{
-		"details": act.Details,
-		"state":   act.State,
-		"type":    3, // Watching
+		"details":  details,
+		"state":    state,
+		"type":     3, // Watching
+		"instance": false,
 	}
 	if !act.Start.IsZero() {
 		body["timestamps"] = map[string]int64{"start": act.Start.Unix()}
 	}
-	if act.LargeImage != "" || act.LargeText != "" {
-		assets := map[string]string{}
-		if act.LargeImage != "" {
-			assets["large_image"] = act.LargeImage
-		}
-		if act.LargeText != "" {
-			assets["large_text"] = act.LargeText
-		}
+	assets := map[string]string{}
+	img := strings.TrimSpace(act.LargeImage)
+	if strings.HasPrefix(img, "https://") || strings.HasPrefix(img, "http://") {
+		assets["large_image"] = img
+	}
+	if txt := strings.TrimSpace(act.LargeText); txt != "" {
+		assets["large_text"] = clampDiscordStr(txt, 2, 128)
+	}
+	if len(assets) > 0 {
 		body["assets"] = assets
 	}
 	frame := map[string]any{

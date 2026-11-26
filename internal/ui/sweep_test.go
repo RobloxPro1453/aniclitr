@@ -15,6 +15,7 @@ import (
 	"aniclitr/internal/nyaa"
 	"aniclitr/internal/source"
 	"aniclitr/internal/store"
+	"aniclitr/internal/tstream"
 )
 
 // Every screen at several terminal sizes: no panics, no line wider than
@@ -60,6 +61,16 @@ func TestScreenSweep(t *testing.T) {
 						{Title: "[HolySubs] Sousou no Frieren - 01-28 [1080p][TR Altyazılı]", Group: "HolySubs", Resolution: "1080p", Size: "32.5 GiB", SizeBytes: 32 << 30, Seeders: 180, Leechers: 14, Downloads: 2100, Category: "Anime - Non-English-translated", Turkish: true, Batch: true, InfoHash: "1234567890abcdef1234567890abcdef12345678"},
 					}
 					ts.applyLocal()
+					return ts
+				},
+				"torrent_files": func() screen {
+					ts := newTorrentScreen("another")
+					ts.focus = 2
+					ts.openItem = nyaa.Item{Title: "[Shiniori-Raws] Another (BD 1920x1080 x265 10bit FLAC)", Group: "Shiniori-Raws", Resolution: "1080p"}
+					ts.files = []tstream.VideoFile{
+						{Index: 0, Name: "[Shiniori-Raws] Another - 01 (BD 1080p).mkv", Size: 680 << 20, Season: 1, Episode: 1},
+						{Index: 1, Name: "[Shiniori-Raws] Another - 02 (BD 1080p).mkv", Size: 695 << 20, Season: 1, Episode: 2},
+					}
 					return ts
 				},
 				"onboard":   func() screen { return &onboard{tools: map[string]bool{"mpv": true}} },

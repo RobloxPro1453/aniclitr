@@ -326,7 +326,7 @@ func (a *App) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		a.tick(), a.loadFeed(), a.loadSchedule(), a.checkHealth(),
 		probeNet(), a.waitDL(), a.waitMal(), a.waitAniList(), tea.SetWindowTitle("aniclitr"),
-		a.migratePath(), a.checkUpdate(false),
+		a.migratePath(), a.checkUpdate(false), a.organizeLooseDownloads(),
 	}
 	if a.initURL != "" {
 		cmds = append(cmds, a.openURL(a.initURL))
@@ -375,6 +375,27 @@ func (a *App) SetInitialDownload(query, epRange string) {
 // SetInitialWrapped opens the animated Wrapped summary immediately on startup.
 func (a *App) SetInitialWrapped() {
 	a.initWrapped = true
+}
+
+func (a *App) libTitles() []string {
+	items := a.lib.All()
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		if it.Title != "" {
+			out = append(out, it.Title)
+		}
+	}
+	return out
+}
+
+func (a *App) organizeLooseDownloads() tea.Cmd {
+	titles := a.libTitles()
+	return guard("klasörleme", func() tea.Msg {
+		if n := a.dl.OrganizeLooseFiles(titles); n > 0 {
+			return toastMsg{text: fmt.Sprintf("✓ %d dağınık video otomatik klasörlendi (ctrl+d)", n), kind: "ok"}
+		}
+		return nil
+	})
 }
 
 func (a *App) waitParty() tea.Cmd {
@@ -823,6 +844,11 @@ func (a *App) Update(msg tea.Msg) (model tea.Model, cmd tea.Cmd) {
 		if m.Type == tea.KeyCtrlC {
 			if pl, ok := a.top().(*playing); ok && pl.sess != nil {
 				pl.sess.Quit()
+			}
+			for _, sc := range a.stack {
+				if ts, ok := sc.(*torrentScreen); ok {
+					ts.closeStream()
+				}
 			}
 			if a.party != nil {
 				a.party.Close()
